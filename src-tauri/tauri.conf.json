@@ -1,6 +1,6 @@
 {
   "build": {
-    "beforeBuildCommand": "npm vite build",
+    "beforeBuildCommand": "vite build",
     "beforeDevCommand": "vite dev --clearScreen=false --port 3000",
     "devPath": "http://localhost:3000",
     "distDir": "../build"
@@ -28,7 +28,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "com.tauri.dev",
+      "identifier": "sh.synth.glitch",
       "longDescription": "",
       "macOS": {
         "entitlements": null,

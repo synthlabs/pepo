@@ -42,6 +42,10 @@
 
 <div>
 	{#each messages as msg}
-		<div>[{msg.ts}] {msg.username}: {msg.message}</div>
+		<div>
+			<span class="text-primary text-opacity-80">{msg.ts}</span>
+			<span class="text-secondary">{msg.username}</span><span>:</span>
+			<span>{msg.message}</span>
+		</div>
 	{/each}
 </div>
