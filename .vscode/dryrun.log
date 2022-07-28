@@ -1,0 +1,5 @@
+make.exe --dry-run --always-make --keep-going --print-directory
+make: Entering directory '/c/Users/Jerod/Documents/github.com/synthlabs/glitch'
+pnpm dev
+make: Leaving directory '/c/Users/Jerod/Documents/github.com/synthlabs/glitch'
+ 
