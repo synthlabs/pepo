@@ -2,6 +2,13 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
+
+extern crate pretty_env_logger;
+#[macro_use]
+extern crate log;
+
+use std::process;
+
 use tauri::Manager;
 use tauri::Window;
 use tauri::WindowEvent;
@@ -104,13 +111,27 @@ pub async fn main_loop(mut runner: AsyncRunner) -> anyhow::Result<()> {
 }
 
 fn main() {
+    pretty_env_logger::formatted_builder()
+        .parse_filters(
+            std::env::var("RUST_LOG")
+                .unwrap_or("DEBUG".to_string())
+                .as_str(),
+        )
+        .init();
+
     smol::block_on(async {
         let config = UserConfig::builder().anonymous().build().unwrap();
 
         let channels = vec![String::from("#carter")];
 
         // connect and join the provided channels
-        let runner = connect(&config, &channels).await.unwrap();
+        let runner = match connect(&config, &channels).await {
+            Ok(runner) => runner,
+            Err(err) => {
+                error!("failed to connect: {}", err);
+                process::exit(-1)
+            }
+        };
 
         // you can get a handle to shutdown the runner
         let _quit_handle = runner.quit_handle();
