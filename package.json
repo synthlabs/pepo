@@ -32,6 +32,9 @@
 	},
 	"type": "module",
 	"dependencies": {
+		"@twurple/api": "^6.0.0",
+		"@twurple/auth": "^6.0.0",
+		"@twurple/chat": "^6.0.0",
 		"elizabot": "^0.0.3"
 	}
 }
