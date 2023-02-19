@@ -3,6 +3,8 @@
 	import { StaticAuthProvider } from '@twurple/auth';
 	import { ChatClient } from "@twurple/chat";
 	import {ClientID, AccessToken} from "$lib/config/config";
+	import { Cog6Tooth } from '@steeze-ui/heroicons'
+	import { Icon } from '@steeze-ui/svelte-icon'
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
@@ -58,7 +60,9 @@
 </style>
 
 <div class="flex flex-col h-full">
-	<h1>#{channel}</h1>
+	<div class="navbar">
+		<span class="normal-case text-xl">#{channel}</span>
+	</div>
 
 	<div class="flex-1 overflow-y-auto" bind:this={div}>
 		{#each messages as msg}
@@ -70,5 +74,13 @@
 		{/each}
 	</div>
 
-	<input placeholder="write your love letter here">
+	<div class="flex flex-col">
+		<input class="w-full" placeholder="write your love letter here">
+		<div class="flex flex-row">
+			<span class="flex-1">some info</span>
+			<Icon src={Cog6Tooth} size="36px" theme="solid" />
+			<button class="btn btn-primary btn-sm">Send</button>
+		</div>
+		
+	</div>
 </div>
