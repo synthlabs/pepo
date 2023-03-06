@@ -59,10 +59,13 @@
 
 </style>
 
-<div class="flex flex-col h-full">
-	<div class="navbar">
+<div class="flex flex-col h-full p-2">
+	<div class="p-1">
 		<span class="normal-case text-xl">#{channel}</span>
 	</div>
+	
+
+	<div class="divider"></div> 
 
 	<div class="flex-1 overflow-y-auto" bind:this={div}>
 		{#each messages as msg}
@@ -74,13 +77,17 @@
 		{/each}
 	</div>
 
-	<div class="flex flex-col">
-		<input class="w-full" placeholder="write your love letter here">
-		<div class="flex flex-row">
+	<div class="form-control p-1">
+		<div class="p-1">
 			<span class="flex-1">some info</span>
-			<Icon src={Cog6Tooth} size="36px" theme="solid" />
-			<button class="btn btn-primary btn-sm">Send</button>
 		</div>
-		
+		<div class="relative">
+			<input type="text" class="input w-full p-1 input-bordered focus:border-0 focus:input-primary" placeholder="Write your love letter here...">
+			<div class="absolute inset-y-0 right-0 flex items-center pr-3">
+				<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+				</svg>
+			</div>
+		</div>
 	</div>
 </div>
