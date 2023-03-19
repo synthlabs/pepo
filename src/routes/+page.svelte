@@ -10,7 +10,7 @@
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
 
-	let channel = "hasanabi";
+	let channel = "denims";
 	let behavior: ScrollBehavior = "auto";
 	let input = "";
 
@@ -98,25 +98,38 @@
 		}
 	});
 
-	$: console.log(input.length > 0)
+	$: hasInput = input.length > 0
+
+	const submitForm = (event: SubmitEvent) => {
+		let target = event.target as HTMLFormElement
+
+		console.log(input)
+
+		if (event.target) { target.reset() }
+	};
 
 </script>
 
 <style>
 
+.neg-horiz-p-2 {
+	margin-left: -0.5rem;
+	margin-right: -0.5rem;
+}
+
 </style>
 
 <div class="flex flex-col h-full p-2">
-	<div class="p-1 border-b-2">
+	<div class="p-1 border-b border-b-base-300">
 		{#await streamInfo then stream}
 			<span class="normal-case text-xl">#{channel}</span>
 			<span class="pl-3 border-l-2 ml-2">{stream?.title}</span>
 		{/await}
 	</div>
 	
-	<div class="flex-1 overflow-y-auto p-2 text-sm" bind:this={div}>
+	<div class="flex-1 overflow-y-auto neg-horiz-p-2" bind:this={div}>
 		{#each messages as msg (msg)}
-			<div>
+			<div class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2">
 				<span class="text-xs text-gray-500">{msg.ts}</span>
 				<span class="text-secondary">{msg.username}</span><span>:</span>
 				<span>{msg.message}</span>
@@ -124,19 +137,21 @@
 		{/each}
 	</div>
 
-	<div class="form-control p-1">
-		<div class="p-1 text-xs">
-			{#await streamInfo then stream}
-				{stream?.viewers} viewers, {formatTime((Date.now() - stream?.startDate)/1000)} uptime 
-			{/await}
-		</div>
-		<div class="relative">
-			<input bind:value={input} type="text" class="input w-full p-1 input-bordered focus:input-primary" placeholder="Chat away...">
-			<div class="absolute inset-y-0 right-0 flex items-center pr-3 btn btn-ghost">
-				<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-				</svg>
+	<form on:submit|preventDefault={submitForm}>
+		<div class="form-control p-1 border-t border-t-base-300">
+			<div class="p-1 text-sm">
+				{#await streamInfo then stream}
+					{stream?.viewers} viewers, {formatTime((Date.now() - stream?.startDate)/1000)} uptime
+				{/await}
+			</div>
+			<div class="relative">
+				<input bind:value={input} type="text" class="input w-full p-1 input-bordered focus:input-primary hover:input-primary" placeholder="Chat away...">
+				<div class="absolute inset-y-0 right-0 flex items-center pr-3 btn btn-ghost">
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" class="w-6 h-6 fill-none" class:stroke-primary={hasInput} class:stroke-current={!hasInput}>
+						<path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+					</svg>
+				</div>
 			</div>
 		</div>
-	</div>
+	</form>
 </div>
