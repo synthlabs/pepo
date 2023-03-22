@@ -10,9 +10,10 @@
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
 
-	let channel = "denims";
+	let channel = "hasanabi";
 	let behavior: ScrollBehavior = "auto";
 	let input = "";
+	let currentUser = "";
 
 	const authProvider = new StaticAuthProvider(ClientID, AccessToken);
 	const chatClient = new ChatClient({ authProvider, channels: [channel] });
@@ -49,7 +50,8 @@
 		ts: string;
 		username: string;
 		message: string;
-		raw: TwitchPrivateMessage;
+		self: boolean;
+		raw?: TwitchPrivateMessage;
 	}
 	let messages: message[] = [];
 
@@ -71,6 +73,7 @@
 			ts: msg.date.toLocaleTimeString("en", {timeStyle: "short"}),
 			username: msg.userInfo.displayName,
 			message: constructedText,
+			self: msg.userInfo.userName === currentUser,
 			raw: msg,
 		}
 		messages = [...messages, m]
@@ -98,14 +101,29 @@
 		}
 	});
 
+	apiClient.getTokenInfo().then((token) => {
+		currentUser = token.userName ?? ""
+	})
+
 	$: hasInput = input.length > 0
 
 	const submitForm = (event: SubmitEvent) => {
 		let target = event.target as HTMLFormElement
 
-		console.log(input)
+		chatClient.say(channel, input).catch(console.log).finally(() => {
+			input = ""
+			if (event.target) { target.reset() }
+		})
 
-		if (event.target) { target.reset() }
+		if (currentUser != "") {
+			let m = {
+				ts: new Date().toLocaleTimeString("en", {timeStyle: "short"}),
+				username: currentUser,
+				message: input,
+				self: true,
+			}
+			messages = [...messages, m]
+		}
 	};
 
 </script>
@@ -129,9 +147,9 @@
 	
 	<div class="flex-1 overflow-y-auto neg-horiz-p-2" bind:this={div}>
 		{#each messages as msg (msg)}
-			<div class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2">
+			<div class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1">
 				<span class="text-xs text-gray-500">{msg.ts}</span>
-				<span class="text-secondary">{msg.username}</span><span>:</span>
+				<span class="{msg.self ? 'text-primary' : 'text-secondary'}">{msg.username}</span><span>:</span>
 				<span>{msg.message}</span>
 			</div>
 		{/each}
