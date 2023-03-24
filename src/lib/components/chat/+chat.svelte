@@ -57,10 +57,11 @@
 	});
 
 	interface message {
+		id: string;
 		ts: string;
 		username: string;
 		message: string;
-		self: boolean;
+		color: string;
 		raw?: TwitchPrivateMessage;
 	}
 	let messages: message[] = [];
@@ -79,11 +80,14 @@
 			}
 		})
 
+
+		console.log(msg.userInfo)
 		let m = {
+			id: msg.id,
 			ts: msg.date.toLocaleTimeString("en", {timeStyle: "short"}),
 			username: msg.userInfo.displayName,
 			message: constructedText,
-			self: msg.userInfo.userName === currentUser,
+			color: msg.userInfo.color ?? "#6B7280",
 			raw: msg,
 		}
 		messages = [...messages, m]
@@ -127,10 +131,11 @@
 
 		if (currentUser != "") {
 			let m = {
+				id: "0000-000-000000-000000",
 				ts: new Date().toLocaleTimeString("en", {timeStyle: "short"}),
 				username: currentUser,
 				message: input,
-				self: true,
+				color: "#6419E6",
 			}
 			messages = [...messages, m]
 		}
@@ -156,10 +161,10 @@
 	</div>
 	
 	<div class="flex-1 overflow-y-auto neg-horiz-p-2" bind:this={div}>
-		{#each messages as msg (msg)}
+		{#each messages as msg (msg.id)}
 			<div class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1">
 				<span class="text-xs text-gray-500">{msg.ts}</span>
-				<span class="{msg.self ? 'text-primary' : 'text-secondary'}">{msg.username}</span><span>:</span>
+				<span style="color: {msg.color};">{msg.username}</span><span>:</span>
 				<span>{msg.message}</span>
 			</div>
 		{/each}
