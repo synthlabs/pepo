@@ -5,7 +5,7 @@
 	import { ClientID, AccessToken } from "$lib/config/config";
 	import { ApiClient, HelixStream } from '@twurple/api';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
-	import type { ParsedMessagePart } from '@twurple/common';
+	import { v4 as uuidv4 } from 'uuid';
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
@@ -81,7 +81,7 @@
 		})
 
 
-		console.log(msg.userInfo)
+		console.log(msg.id, msg.userInfo)
 		let m = {
 			id: msg.id,
 			ts: msg.date.toLocaleTimeString("en", {timeStyle: "short"}),
@@ -91,11 +91,6 @@
 			raw: msg,
 		}
 		messages = [...messages, m]
-
-		
-
-		console.log(constructedText)
-
 	})
 
 	beforeUpdate(() => {
@@ -131,7 +126,7 @@
 
 		if (currentUser != "") {
 			let m = {
-				id: "0000-000-000000-000000",
+				id: uuidv4(),
 				ts: new Date().toLocaleTimeString("en", {timeStyle: "short"}),
 				username: currentUser,
 				message: input,
@@ -160,11 +155,11 @@
 		{/await}
 	</div>
 	
-	<div class="flex-1 overflow-y-auto neg-horiz-p-2" bind:this={div}>
+	<div class="flex-1 overflow-y-auto neg-horiz-p-2 text-sm" bind:this={div}>
 		{#each messages as msg (msg.id)}
 			<div class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1">
 				<span class="text-xs text-gray-500">{msg.ts}</span>
-				<span style="color: {msg.color};">{msg.username}</span><span>:</span>
+				<span style="color: {msg.color}; font-weight: 700;">{msg.username}</span><span>:</span>
 				<span>{msg.message}</span>
 			</div>
 		{/each}
