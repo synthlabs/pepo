@@ -10,8 +10,16 @@
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
 
+	const GREY_NAME_COLOR = "#6B7280";
+
+	interface user {
+		id: string;
+		name: string;
+		color: string;
+	}
+
 	export let channel: string;
-	let currentUser = "";
+	let currentUser: user;
 	let behavior: ScrollBehavior = "auto";
 	let input = "";
 
@@ -67,6 +75,11 @@
 	let messages: message[] = [];
 
 	chatClient.onMessage((_channel, _user, _text, msg) => {
+		twitchMsgHandler(msg)
+	})
+
+	function twitchMsgHandler(msg: TwitchPrivateMessage) {
+		let m: message;
 		let constructedText = ""
 		msg.parseEmotes().forEach((curr, _i, _full) => {
 			switch (curr.type) {
@@ -80,18 +93,20 @@
 			}
 		})
 
-
-		console.log(msg.id, msg.userInfo)
-		let m = {
+		m = {
 			id: msg.id,
 			ts: msg.date.toLocaleTimeString("en", {timeStyle: "short"}),
 			username: msg.userInfo.displayName,
 			message: constructedText,
-			color: msg.userInfo.color ?? "#6B7280",
+			color: msg.userInfo.color ?? GREY_NAME_COLOR,
 			raw: msg,
 		}
-		messages = [...messages, m]
-	})
+		msgHandler(m)
+	}
+
+	function msgHandler(msg: message) {
+		messages = [...messages, msg]
+	}
 
 	beforeUpdate(() => {
 		// determine whether we should auto-scroll
@@ -110,8 +125,14 @@
 		}
 	});
 
-	apiClient.getTokenInfo().then((token) => {
-		currentUser = token.userName ?? ""
+	apiClient.getTokenInfo().then(async (token) => {
+		let u: user = {
+			id: token.userId ?? uuidv4(),
+			name: token.userName ?? "unknown",
+			color: GREY_NAME_COLOR,
+		}
+		u.color = await apiClient.chat.getColorForUser(u.id) ?? u.color;
+		currentUser = u;
 	})
 
 	$: hasInput = input.length > 0
@@ -119,20 +140,19 @@
 	const submitForm = (event: SubmitEvent) => {
 		let target = event.target as HTMLFormElement
 
-		chatClient.say(channel, input).catch(console.log).finally(() => {
-			input = ""
-			if (event.target) { target.reset() }
-		})
+		if (currentUser) {
+			chatClient.say(channel, input).catch(console.log).finally(() => {
+				input = ""
+				if (event.target) { target.reset() }
+			})
 
-		if (currentUser != "") {
-			let m = {
+			msgHandler({
 				id: uuidv4(),
 				ts: new Date().toLocaleTimeString("en", {timeStyle: "short"}),
-				username: currentUser,
+				username: currentUser.name,
 				message: input,
-				color: "#6419E6",
-			}
-			messages = [...messages, m]
+				color: currentUser.color,
+			})
 		}
 	};
 
