@@ -39,14 +39,8 @@
 		return await user.getStream();
 	}
 
-    function uptime(stream: HelixStream | null): number {
-        let start = stream?.startDate;
-
-        if (start) {
-            return (Date.now() - start.getTime())/1000
-        }
-
-        return 0
+    function uptime(stream: HelixStream): number {
+		return (Date.now() - stream.startDate.getTime())/1000
     }
 
 	function formatTime(seconds: number) {
@@ -120,11 +114,7 @@
 	afterUpdate(() => {
 		// ...the DOM is now in sync with the data
 		if (autoscroll) {
-			div.scrollTo({
-				top: div.scrollHeight,
-				left: 0,
-				behavior,
-			});
+			div.scrollTo({ top: div.scrollHeight, left: 0, behavior})
 		}
 	});
 
@@ -173,12 +163,14 @@
 <div class="flex flex-col h-full p-2">
 	<div class="p-1 border-b border-b-base-300 flex">
 		{#await streamInfo then stream}
-			<div class="normal-case text-xl flex items-center">#{channel}</div>
-			<div class="pl-3 border-l-2 ml-2 text-sm">{stream?.title}</div>
+			<div class="flex items-center normal-case text-xl pl-1 pr-1">#{channel}</div>
+			{#if stream}
+				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">{stream.title}</div>
+			{/if}
 		{/await}
 	</div>
 	
-	<div class="flex-1 overflow-y-auto neg-horiz-p-2 text-sm" bind:this={div}>
+	<div class="flex-grow overflow-y-auto neg-horiz-p-2 text-sm" bind:this={div}>
 		{#each messages as msg (msg.id)}
 			<div class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1 space-x-1">
 				<span class="text-xs text-gray-500 whitespace-nowrap">{msg.ts}</span>
@@ -189,11 +181,19 @@
 		{/each}
 	</div>
 
+	<span class="flex items-center justify-center">
+		<button on:click={div.scrollTo({ top: div.scrollHeight, left: 0, behavior})} class:hidden={autoscroll} class="absolute bottom-24 bg-slate-700 hover:bg-slate-600 p-2 rounded-lg items-center justify-center text-center text-xs">
+			Chat Paused - click to scroll
+		</button>
+	</span>
+
 	<form on:submit|preventDefault={submitForm}>
 		<div class="form-control p-1 border-t border-t-base-300">
 			<div class="p-1 text-sm">
 				{#await streamInfo then stream}
-					{stream?.viewers} viewers, {formatTime(uptime(stream))} uptime
+					{#if stream}
+						{stream.viewers} viewers, {formatTime(uptime(stream))} uptime
+					{/if}
 				{/await}
 			</div>
 			<div class="relative">
