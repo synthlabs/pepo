@@ -2,10 +2,13 @@
 	import { beforeUpdate, afterUpdate, onDestroy } from 'svelte';
 	import { StaticAuthProvider } from '@twurple/auth';
 	import { ChatClient } from "@twurple/chat";
-	import { ClientID, AccessToken } from "$lib/config/config";
 	import { ApiClient, HelixStream } from '@twurple/api';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
+
+	import { ClientID, AccessToken } from "$lib/config/config";
+	import Badges from "$lib/components/chat/+badges.svelte";
+	import Badge from "$lib/components/chat/+badge.svelte";
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
@@ -168,19 +171,20 @@
 </style>
 
 <div class="flex flex-col h-full p-2">
-	<div class="p-1 border-b border-b-base-300">
+	<div class="p-1 border-b border-b-base-300 flex">
 		{#await streamInfo then stream}
-			<span class="normal-case text-xl">#{channel}</span>
-			<span class="pl-3 border-l-2 ml-2">{stream?.title}</span>
+			<div class="normal-case text-xl flex items-center">#{channel}</div>
+			<div class="pl-3 border-l-2 ml-2 text-sm">{stream?.title}</div>
 		{/await}
 	</div>
 	
 	<div class="flex-1 overflow-y-auto neg-horiz-p-2 text-sm" bind:this={div}>
 		{#each messages as msg (msg.id)}
-			<div class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1">
-				<span class="text-xs text-gray-500">{msg.ts}</span>
-				<span style="color: {msg.color}; font-weight: 700;">{msg.username}</span><span>:</span>
-				<span>{msg.message}</span>
+			<div class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1 space-x-1">
+				<span class="text-xs text-gray-500 whitespace-nowrap">{msg.ts}</span>
+				<Badges message={msg.raw} />
+				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;">{msg.username}</span>:
+				{msg.message}
 			</div>
 		{/each}
 	</div>
