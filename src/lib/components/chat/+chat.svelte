@@ -133,7 +133,7 @@
 	const submitForm = (event: SubmitEvent) => {
 		let target = event.target as HTMLFormElement
 
-		if (currentUser) {
+		if (hasInput && currentUser) {
 			chatClient.say(channel, input).catch(console.log).finally(() => {
 				input = ""
 				if (event.target) { target.reset() }
@@ -182,7 +182,7 @@
 	</div>
 
 	<span class="flex items-center justify-center">
-		<button on:click={div.scrollTo({ top: div.scrollHeight, left: 0, behavior})} class:hidden={autoscroll} class="absolute bottom-24 bg-slate-700 hover:bg-slate-600 p-2 rounded-lg items-center justify-center text-center text-xs">
+		<button on:click={() => div.scrollTo({ top: div.scrollHeight, left: 0, behavior})} class:hidden={autoscroll} class="absolute bottom-24 bg-slate-700 hover:bg-slate-600 p-2 rounded-lg items-center justify-center text-center text-xs">
 			Chat Paused - click to scroll
 		</button>
 	</span>
@@ -198,11 +198,12 @@
 			</div>
 			<div class="relative">
 				<input bind:value={input} type="text" class="input w-full p-1 input-bordered focus:input-primary hover:input-primary" placeholder="Chat away...">
-				<div class="absolute inset-y-0 right-0 flex items-center pr-3 btn btn-ghost">
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" class="w-6 h-6 fill-none" class:stroke-primary={hasInput} class:stroke-current={!hasInput}>
+				<!-- svelte-ignore a11y-click-events-have-key-events -->
+				<button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-3 btn btn-ghost" style="{(hasInput) ? "" : "pointer-events: none;"}">
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" class="w-6 h-6 fill-none" class:stroke-primary={hasInput} class:stroke-slate-600={!hasInput}>
 						<path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
 					</svg>
-				</div>
+				</button>
 			</div>
 		</div>
 	</form>
