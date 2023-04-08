@@ -7,8 +7,8 @@
 	import { v4 as uuidv4 } from 'uuid';
 
 	import { ClientID, AccessToken } from "$lib/config/config";
+	import Logger from "$lib/logger/log";
 	import Badges from "$lib/components/chat/+badges.svelte";
-	import Badge from "$lib/components/chat/+badge.svelte";
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
@@ -56,7 +56,7 @@
 
 	let streamInfo = getStream(channel)
 
-	chatClient.connect().then(()=> {console.log("connected")})
+	chatClient.connect().then(()=> {Logger.info("connected to chat")})
 	onDestroy(() => {
 		chatClient.quit()
 	});
@@ -134,7 +134,7 @@
 		let target = event.target as HTMLFormElement
 
 		if (hasInput && currentUser) {
-			chatClient.say(channel, input).catch(console.log).finally(() => {
+			chatClient.say(channel, input).catch(Logger.error).finally(() => {
 				input = ""
 				if (event.target) { target.reset() }
 			})
