@@ -1,19 +1,20 @@
 <script lang="ts">
 	import { beforeUpdate, afterUpdate, onDestroy } from 'svelte';
 	import { StaticAuthProvider } from '@twurple/auth';
-	import { ChatClient } from "@twurple/chat";
+	import { ChatClient } from '@twurple/chat';
 	import { ApiClient, HelixStream } from '@twurple/api';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
 
-	import { ClientID, AccessToken } from "$lib/config/config";
-	import Logger from "$lib/logger/log";
-	import Badges from "$lib/components/chat/+badges.svelte";
+	import { ClientID, AccessToken } from '$lib/config/config';
+	import Logger from '$lib/logger/log';
+	import Badges from '$lib/components/chat/+badges.svelte';
+	import * as types from '$lib/config/constants';
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
 
-	const GREY_NAME_COLOR = "#6B7280";
+	const GREY_NAME_COLOR = '#6B7280';
 
 	interface user {
 		id: string;
@@ -23,8 +24,8 @@
 
 	export let channel: string;
 	let currentUser: user;
-	let behavior: ScrollBehavior = "auto";
-	let input = "";
+	let behavior: ScrollBehavior = 'auto';
+	let input = '';
 
 	const authProvider = new StaticAuthProvider(ClientID, AccessToken);
 	const chatClient = new ChatClient({ authProvider, channels: [channel] });
@@ -39,26 +40,24 @@
 		return await user.getStream();
 	}
 
-    function uptime(stream: HelixStream): number {
-		return (Date.now() - stream.startDate.getTime())/1000
-    }
+	function uptime(stream: HelixStream): number {
+		return (Date.now() - stream.startDate.getTime()) / 1000;
+	}
 
 	function formatTime(seconds: number) {
 		const h = Math.floor(seconds / 3600);
 		const m = Math.floor((seconds % 3600) / 60);
 		const s = Math.round(seconds % 60);
-		return [
-			h,
-			m > 9 ? m : (h ? '0' + m : m || '0'),
-			s > 9 ? s : '0' + s
-		].filter(Boolean).join(':');
+		return [h, m > 9 ? m : h ? '0' + m : m || '0', s > 9 ? s : '0' + s].filter(Boolean).join(':');
 	}
 
-	let streamInfo = getStream(channel)
+	let streamInfo = getStream(channel);
 
-	chatClient.connect().then(()=> {Logger.info("connected to chat")})
+	chatClient.connect().then(() => {
+		Logger.info('connected to chat');
+	});
 	onDestroy(() => {
-		chatClient.quit()
+		chatClient.quit();
 	});
 
 	interface message {
@@ -72,93 +71,88 @@
 	let messages: message[] = [];
 
 	chatClient.onMessage((_channel, _user, _text, msg) => {
-		twitchMsgHandler(msg)
-	})
+		twitchMsgHandler(msg);
+	});
 
 	function twitchMsgHandler(msg: TwitchPrivateMessage) {
 		let m: message;
-		let constructedText = ""
+		let constructedText = '';
 		msg.parseEmotes().forEach((curr, _i, _full) => {
 			switch (curr.type) {
-				case "text":
-					constructedText += curr.text
-					return
-				case "emote":
-				case "cheer":
-					constructedText += `[${curr.name}]`
-					return
+				case types.TEXT_TOKEN:
+					constructedText += curr.text;
+					return;
+				case types.EMOTE_TOKEN:
+				case types.CHEER_TOKEN:
+					constructedText += `[${curr.name}]`;
+					return;
 			}
-		})
+		});
 
 		m = {
 			id: msg.id,
-			ts: msg.date.toLocaleTimeString("en", {timeStyle: "short"}),
+			ts: msg.date.toLocaleTimeString('en', { timeStyle: 'short' }),
 			username: msg.userInfo.displayName,
 			message: constructedText,
 			color: msg.userInfo.color ?? GREY_NAME_COLOR,
-			raw: msg,
-		}
-		msgHandler(m)
+			raw: msg
+		};
+		msgHandler(m);
 	}
 
 	function msgHandler(msg: message) {
-		messages = [...messages, msg]
+		messages = [...messages, msg];
 	}
 
 	beforeUpdate(() => {
 		// determine whether we should auto-scroll
 		// once the DOM is updated...
-		autoscroll = div && (div.offsetHeight + div.scrollTop) > (div.scrollHeight - 20);
+		autoscroll = div && div.offsetHeight + div.scrollTop > div.scrollHeight - 20;
 	});
 
 	afterUpdate(() => {
 		// ...the DOM is now in sync with the data
 		if (autoscroll) {
-			div.scrollTo({ top: div.scrollHeight, left: 0, behavior})
+			div.scrollTo({ top: div.scrollHeight, left: 0, behavior });
 		}
 	});
 
 	apiClient.getTokenInfo().then(async (token) => {
 		let u: user = {
 			id: token.userId ?? uuidv4(),
-			name: token.userName ?? "unknown",
-			color: GREY_NAME_COLOR,
-		}
-		u.color = await apiClient.chat.getColorForUser(u.id) ?? u.color;
+			name: token.userName ?? 'unknown',
+			color: GREY_NAME_COLOR
+		};
+		u.color = (await apiClient.chat.getColorForUser(u.id)) ?? u.color;
 		currentUser = u;
-	})
+	});
 
-	$: hasInput = input.length > 0
+	$: hasInput = input.length > 0;
 
 	const submitForm = (event: SubmitEvent) => {
-		let target = event.target as HTMLFormElement
+		let target = event.target as HTMLFormElement;
 
 		if (hasInput && currentUser) {
-			chatClient.say(channel, input).catch(Logger.error).finally(() => {
-				input = ""
-				if (event.target) { target.reset() }
-			})
+			chatClient
+				.say(channel, input)
+				.catch(Logger.error)
+				.finally(() => {
+					input = '';
+					if (event.target) {
+						target.reset();
+					}
+				});
 
 			msgHandler({
 				id: uuidv4(),
-				ts: new Date().toLocaleTimeString("en", {timeStyle: "short"}),
+				ts: new Date().toLocaleTimeString('en', { timeStyle: 'short' }),
 				username: currentUser.name,
 				message: input,
-				color: currentUser.color,
-			})
+				color: currentUser.color
+			});
 		}
 	};
-
 </script>
-
-<style>
-
-.neg-horiz-p-2 {
-	margin-left: -0.5rem;
-	margin-right: -0.5rem;
-}
-
-</style>
 
 <div class="flex flex-col h-full p-2">
 	<div class="p-1 border-b border-b-base-300 flex">
@@ -169,20 +163,26 @@
 			{/if}
 		{/await}
 	</div>
-	
+
 	<div class="flex-grow overflow-y-auto neg-horiz-p-2 text-sm" bind:this={div}>
 		{#each messages as msg (msg.id)}
 			<div class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1 space-x-1">
 				<span class="text-xs text-gray-500 whitespace-nowrap">{msg.ts}</span>
 				<Badges message={msg.raw} />
-				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;">{msg.username}</span>:
+				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
+					>{msg.username}</span
+				>:
 				{msg.message}
 			</div>
 		{/each}
 	</div>
 
 	<span class="flex items-center justify-center">
-		<button on:click={() => div.scrollTo({ top: div.scrollHeight, left: 0, behavior})} class:hidden={autoscroll} class="absolute bottom-24 bg-slate-700 hover:bg-slate-600 p-2 rounded-lg items-center justify-center text-center text-xs">
+		<button
+			on:click={() => div.scrollTo({ top: div.scrollHeight, left: 0, behavior })}
+			class:hidden={autoscroll}
+			class="absolute bottom-24 bg-slate-700 hover:bg-slate-600 p-2 rounded-lg items-center justify-center text-center text-xs"
+		>
 			Chat Paused - click to scroll
 		</button>
 	</span>
@@ -197,14 +197,41 @@
 				{/await}
 			</div>
 			<div class="relative">
-				<input bind:value={input} type="text" class="input w-full p-1 input-bordered focus:input-primary hover:input-primary" placeholder="Chat away...">
+				<input
+					bind:value={input}
+					type="text"
+					class="input w-full p-1 input-bordered focus:input-primary hover:input-primary"
+					placeholder="Chat away..."
+				/>
 				<!-- svelte-ignore a11y-click-events-have-key-events -->
-				<button type="submit" class="absolute inset-y-0 right-0 flex items-center pr-3 btn btn-ghost" style="{(hasInput) ? "" : "pointer-events: none;"}">
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" class="w-6 h-6 fill-none" class:stroke-primary={hasInput} class:stroke-slate-600={!hasInput}>
-						<path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+				<button
+					type="submit"
+					class="absolute inset-y-0 right-0 flex items-center pr-3 btn btn-ghost"
+					style={hasInput ? '' : 'pointer-events: none;'}
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						stroke-width="1.5"
+						class="w-6 h-6 fill-none"
+						class:stroke-primary={hasInput}
+						class:stroke-slate-600={!hasInput}
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
+						/>
 					</svg>
 				</button>
 			</div>
 		</div>
 	</form>
 </div>
+
+<style>
+	.neg-horiz-p-2 {
+		margin-left: -0.5rem;
+		margin-right: -0.5rem;
+	}
+</style>
