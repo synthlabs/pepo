@@ -1,4 +1,4 @@
-FROM denoland/deno:latest
+FROM index.docker.io/denoland/deno:latest
 
 # The port that your application listens to.
 EXPOSE 3000

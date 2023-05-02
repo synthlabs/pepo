@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { beforeUpdate, afterUpdate, onDestroy } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { StaticAuthProvider } from '@twurple/auth';
 	import { ChatClient } from '@twurple/chat';
 	import { ApiClient, HelixStream } from '@twurple/api';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
 
-	import { ClientID, AccessToken } from '$lib/config/config';
+	import { TwitchToken, isValid, token } from '$lib/store/token';
 	import Logger from '$lib/logger/log';
 	import Badges from '$lib/components/chat/+badges.svelte';
 	import * as types from '$lib/config/constants';
@@ -27,7 +28,9 @@
 	let behavior: ScrollBehavior = 'auto';
 	let input = '';
 
-	const authProvider = new StaticAuthProvider(ClientID, AccessToken);
+	const toke = $token ? $token : new TwitchToken();
+
+	const authProvider = new StaticAuthProvider(toke.client_id, toke.oauth_token);
 	const chatClient = new ChatClient({ authProvider, channels: [channel] });
 	const apiClient = new ApiClient({ authProvider });
 
@@ -51,7 +54,10 @@
 		return [h, m > 9 ? m : h ? '0' + m : m || '0', s > 9 ? s : '0' + s].filter(Boolean).join(':');
 	}
 
-	let streamInfo = getStream(channel);
+	let streamInfo: Promise<HelixStream | null> = new Promise((res) => res(null));
+	$: if (isValid(toke)) {
+		streamInfo = getStream(channel);
+	}
 
 	chatClient.connect().then(() => {
 		Logger.info('connected to chat');
@@ -117,15 +123,17 @@
 		}
 	});
 
-	apiClient.getTokenInfo().then(async (token) => {
-		let u: user = {
-			id: token.userId ?? uuidv4(),
-			name: token.userName ?? 'unknown',
-			color: GREY_NAME_COLOR
-		};
-		u.color = (await apiClient.chat.getColorForUser(u.id)) ?? u.color;
-		currentUser = u;
-	});
+	$: if (isValid(toke)) {
+		apiClient.getTokenInfo().then(async (token) => {
+			let u: user = {
+				id: token.userId ?? uuidv4(),
+				name: token.userName ?? 'unknown',
+				color: GREY_NAME_COLOR
+			};
+			u.color = (await apiClient.chat.getColorForUser(u.id)) ?? u.color;
+			currentUser = u;
+		});
+	}
 
 	$: hasInput = input.length > 0;
 
