@@ -11,7 +11,7 @@
 	}
 </script>
 
-<span>
+<span class="inline-flex whitespace-nowrap">
 	{#each [...badges] as badge}
 		<Badge {badge} />
 	{/each}
