@@ -5,6 +5,7 @@
 		stroke-width="1.5"
 		class="w-5 inline-block stroke-cyan-600 fill-cyan-950"
 	>
+		<title>Partner</title>
 		<path
 			stroke-linecap="round"
 			stroke-linejoin="round"

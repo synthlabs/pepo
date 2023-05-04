@@ -5,6 +5,7 @@
 		stroke-width="1.5"
 		class="h-5 stroke-purple-500 fill-purple-950 inline-block"
 	>
+		<title>Subscriber</title>
 		<path
 			stroke-linecap="round"
 			stroke-linejoin="round"

@@ -5,6 +5,7 @@
 		stroke-width="1.5"
 		class="h-5 stroke-pink-700 fill-pink-950 inline-block"
 	>
+		<title>VIP</title>
 		<path
 			stroke-linecap="round"
 			stroke-linejoin="round"

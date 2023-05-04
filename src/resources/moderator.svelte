@@ -5,6 +5,7 @@
 		stroke-width="1.5"
 		class="h-5 inline-block stroke-green-600 fill-green-950"
 	>
+		<title>Moderator</title>
 		<path
 			stroke-linecap="round"
 			stroke-linejoin="round"
