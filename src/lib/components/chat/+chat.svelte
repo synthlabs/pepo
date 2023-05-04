@@ -174,7 +174,9 @@
 
 	<div class="flex-grow overflow-y-auto neg-horiz-p-2 text-sm" bind:this={div}>
 		{#each messages as msg (msg.id)}
-			<div class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1">
+			<div
+				class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1 inline-block align-middle w-full"
+			>
 				<span class="text-xs text-gray-500 whitespace-nowrap">{msg.ts}</span>
 				<Badges message={msg.raw} />
 				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
