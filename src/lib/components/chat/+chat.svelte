@@ -188,6 +188,7 @@
 	</div>
 
 	<span class="flex items-center justify-center">
+		<!-- TODO: hide button first since there's a delay in the async scrollto -->
 		<button
 			on:click={() => div.scrollTo({ top: div.scrollHeight, left: 0, behavior })}
 			class:hidden={autoscroll}
