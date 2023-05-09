@@ -3,7 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { StaticAuthProvider } from '@twurple/auth';
 	import { ChatClient } from '@twurple/chat';
-	import { ApiClient, HelixStream } from '@twurple/api';
+	import { ApiClient, HelixEmote, HelixStream } from '@twurple/api';
+	import { parseChatMessage } from '@twurple/common';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
 
@@ -11,6 +12,10 @@
 	import Logger from '$lib/logger/log';
 	import Badges from '$lib/components/chat/+badges.svelte';
 	import * as types from '$lib/config/constants';
+	import type {
+		BasicParsedMessagePart,
+		ParsedMessageTextPart
+	} from '@twurple/common/lib/emotes/ParsedMessagePart';
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
@@ -27,6 +32,8 @@
 	let currentUser: user;
 	let behavior: ScrollBehavior = 'auto';
 	let input = '';
+	let streamInfo: Promise<HelixStream | null> = new Promise((res) => res(null));
+	let emoteCache = new Map<string, HelixEmote>();
 
 	const toke = $token ? $token : new TwitchToken();
 
@@ -43,6 +50,22 @@
 		return await user.getStream();
 	}
 
+	async function init() {
+		Logger.debug('init');
+
+		let stream = await streamInfo;
+		if (!stream) {
+			Logger.error('failed to get stream info');
+			return;
+		}
+
+		let globalEmotes = await apiClient.chat.getGlobalEmotes();
+		globalEmotes.map((e) => emoteCache.set(e.id, e));
+
+		let channelEmotes = await apiClient.chat.getChannelEmotes(stream.userId);
+		channelEmotes.map((e) => emoteCache.set(e.id, e));
+	}
+
 	function uptime(stream: HelixStream): number {
 		return (Date.now() - stream.startDate.getTime()) / 1000;
 	}
@@ -54,9 +77,9 @@
 		return [h, m > 9 ? m : h ? '0' + m : m || '0', s > 9 ? s : '0' + s].filter(Boolean).join(':');
 	}
 
-	let streamInfo: Promise<HelixStream | null> = new Promise((res) => res(null));
 	$: if (isValid(toke)) {
 		streamInfo = getStream(channel);
+		init();
 	}
 
 	chatClient.connect().then(() => {
@@ -70,36 +93,24 @@
 		id: string;
 		ts: string;
 		username: string;
-		message: string;
+		messageParts: BasicParsedMessagePart[];
 		color: string;
 		raw?: TwitchPrivateMessage;
 	}
 	let messages: message[] = [];
 
-	chatClient.onMessage((_channel, _user, _text, msg) => {
-		twitchMsgHandler(msg);
+	chatClient.onMessage((_channel, _user, text, msg) => {
+		twitchMsgHandler(text, msg);
 	});
 
-	function twitchMsgHandler(msg: TwitchPrivateMessage) {
+	function twitchMsgHandler(text: string, msg: TwitchPrivateMessage) {
 		let m: message;
-		let constructedText = '';
-		msg.parseEmotes().forEach((curr, _i, _full) => {
-			switch (curr.type) {
-				case types.TEXT_TOKEN:
-					constructedText += curr.text;
-					return;
-				case types.EMOTE_TOKEN:
-				case types.CHEER_TOKEN:
-					constructedText += `[${curr.name}]`;
-					return;
-			}
-		});
 
 		m = {
 			id: msg.id,
 			ts: msg.date.toLocaleTimeString('en', { timeStyle: 'short' }),
 			username: msg.userInfo.displayName,
-			message: constructedText,
+			messageParts: parseChatMessage(text, msg.emoteOffsets),
 			color: msg.userInfo.color ?? GREY_NAME_COLOR,
 			raw: msg
 		};
@@ -151,11 +162,17 @@
 					}
 				});
 
+			let part: ParsedMessageTextPart = {
+				type: 'text',
+				text: input,
+				position: 0,
+				length: input.length
+			};
 			msgHandler({
 				id: uuidv4(),
 				ts: new Date().toLocaleTimeString('en', { timeStyle: 'short' }),
 				username: currentUser.name,
-				message: input,
+				messageParts: [part],
 				color: currentUser.color
 			});
 		}
@@ -182,7 +199,15 @@
 				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
 					>{msg.username}</span
 				>:
-				{msg.message}
+				{#each msg.messageParts as m}
+					{#if m.type == types.TEXT_TOKEN}
+						{m.text}
+					{:else if m.type == types.EMOTE_TOKEN}
+						[{m.name}]
+					{:else if m.type == types.CHEER_TOKEN}
+						[[{m.name}]]
+					{/if}
+				{/each}
 			</div>
 		{/each}
 	</div>
