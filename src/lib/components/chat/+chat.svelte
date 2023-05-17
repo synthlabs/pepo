@@ -1,26 +1,20 @@
 <script lang="ts">
 	import { beforeUpdate, afterUpdate, onDestroy } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { StaticAuthProvider } from '@twurple/auth';
 	import { ChatClient } from '@twurple/chat';
-	import { ApiClient, HelixEmote, HelixStream } from '@twurple/api';
-	import { parseChatMessage } from '@twurple/common';
-	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
+	import { ApiClient, HelixStream } from '@twurple/api';
 	import { v4 as uuidv4 } from 'uuid';
-
 	import { TwitchToken, isValid, token } from '$lib/store/token';
+	import { GlobalEmoteCache } from '$lib/store/emotes';
+	import { ParseTwitchMsg } from '$lib/twitch/message';
+	import type { Message } from '$lib/twitch/message';
 	import Logger from '$lib/logger/log';
 	import Badges from '$lib/components/chat/+badges.svelte';
 	import * as types from '$lib/config/constants';
-	import type {
-		BasicParsedMessagePart,
-		ParsedMessageTextPart
-	} from '@twurple/common/lib/emotes/ParsedMessagePart';
+	import type { ParsedMessageTextPart } from '@twurple/common/lib/emotes/ParsedMessagePart';
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
-
-	const GREY_NAME_COLOR = '#6B7280';
 
 	interface user {
 		id: string;
@@ -85,42 +79,20 @@
 		chatClient.quit();
 	});
 
-	interface message {
-		id: string;
-		ts: string;
-		username: string;
-		messageParts: BasicParsedMessagePart[];
-		color: string;
-		raw?: TwitchPrivateMessage;
-	}
-	let messages: message[] = [];
+	let messages: Message[] = [];
 
 	chatClient.onMessage((_channel, _user, text, msg) => {
-		twitchMsgHandler(text, msg);
+		msgHandler(ParseTwitchMsg(text, msg));
 	});
 
-	function twitchMsgHandler(text: string, msg: TwitchPrivateMessage) {
-		let m: message;
-
-		m = {
-			id: msg.id,
-			ts: msg.date.toLocaleTimeString('en', { timeStyle: 'short' }),
-			username: msg.userInfo.displayName,
-			messageParts: parseChatMessage(text, msg.emoteOffsets),
-			color: msg.userInfo.color ?? GREY_NAME_COLOR,
-			raw: msg
-		};
-		msgHandler(m);
-	}
-
-	function msgHandler(msg: message) {
+	function msgHandler(msg: Message) {
 		messages = [...messages, msg];
 	}
 
 	beforeUpdate(() => {
 		// determine whether we should auto-scroll
 		// once the DOM is updated...
-		autoscroll = div && div.offsetHeight + div.scrollTop > div.scrollHeight - 20;
+		autoscroll = div && div.offsetHeight + div.scrollTop > div.scrollHeight - 40;
 	});
 
 	afterUpdate(() => {
@@ -135,7 +107,7 @@
 			let u: user = {
 				id: token.userId ?? uuidv4(),
 				name: token.userName ?? 'unknown',
-				color: GREY_NAME_COLOR
+				color: types.GREY_NAME_COLOR
 			};
 			u.color = (await apiClient.chat.getColorForUser(u.id)) ?? u.color;
 			currentUser = u;
