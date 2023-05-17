@@ -33,7 +33,6 @@
 	let behavior: ScrollBehavior = 'auto';
 	let input = '';
 	let streamInfo: Promise<HelixStream | null> = new Promise((res) => res(null));
-	let emoteCache = new Map<string, HelixEmote>();
 
 	const toke = $token ? $token : new TwitchToken();
 
@@ -59,11 +58,8 @@
 			return;
 		}
 
-		let globalEmotes = await apiClient.chat.getGlobalEmotes();
-		globalEmotes.map((e) => emoteCache.set(e.id, e));
-
-		let channelEmotes = await apiClient.chat.getChannelEmotes(stream.userId);
-		channelEmotes.map((e) => emoteCache.set(e.id, e));
+		GlobalEmoteCache.UseClient(apiClient);
+		GlobalEmoteCache.LoadChannel(stream.userId);
 	}
 
 	function uptime(stream: HelixStream): number {
@@ -203,7 +199,15 @@
 					{#if m.type == types.TEXT_TOKEN}
 						{m.text}
 					{:else if m.type == types.EMOTE_TOKEN}
-						[{m.name}]
+						{#if GlobalEmoteCache.Has(m.id)}
+							<img
+								class="inline max-w-none"
+								src={GlobalEmoteCache.passthroughGet(m.id)?.getStaticImageUrl('1.0', 'dark')}
+								alt={m.name}
+							/>
+						{:else}
+							[{m.name}]
+						{/if}
 					{:else if m.type == types.CHEER_TOKEN}
 						[[{m.name}]]
 					{/if}
