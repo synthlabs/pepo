@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { goto, beforeNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { onMount } from 'svelte';
 
 	import '../app.css';
 	import { user } from '$lib/store/user';
 	import { isValid, token } from '$lib/store/token';
 	import Logger from '$lib/logger/log';
-	import { onMount } from 'svelte';
+	import Nav from '$lib/components/+nav.svelte';
 
 	user.useLocalStorage();
 	token.useLocalStorage();
@@ -29,4 +30,7 @@
 	});
 </script>
 
-<slot />
+<div class="flex flex-col flex-nowrap w-full h-full">
+	<Nav />
+	<slot />
+</div>

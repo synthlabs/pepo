@@ -8,4 +8,6 @@
 	Logger.debug($page);
 </script>
 
-<Chat channel={$page.params.channel} />
+<div class="flex-grow overflow-hidden">
+	<Chat channel={$page.params.channel} />
+</div>

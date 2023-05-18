@@ -1,6 +1,10 @@
 <script lang="ts">
+	import { StaticAuthProvider } from '@twurple/auth';
+	import { ApiClient } from '@twurple/api';
+
 	import Logger from '$lib/logger/log';
 	import { TwitchToken, token } from '$lib/store/token';
+	import { NewUserFromHelix, user } from '$lib/store/user';
 	import ShowBadge from '$resources/show.svelte';
 	import HideBadge from '$resources/hide.svelte';
 
@@ -43,6 +47,17 @@
 				token.set(toke);
 				success = true;
 				error = false;
+
+				const authProvider = new StaticAuthProvider(toke.client_id, toke.oauth_token);
+				const apiClient = new ApiClient({ authProvider });
+
+				apiClient.users
+					.getUserById(toke.user_id)
+					.then((u) => {
+						Logger.debug('got user');
+						user.set(NewUserFromHelix(u));
+					})
+					.catch(setError);
 			})
 			.catch(setError);
 	};
@@ -105,11 +120,12 @@
 				class="stroke-success flex-shrink-0 h-6 w-6"
 				fill="none"
 				viewBox="0 0 24 24"
-				><path
+			>
+				<path
 					stroke-linecap="round"
 					stroke-linejoin="round"
 					stroke-width="2"
-					d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+					d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
 				/></svg
 			>
 			<span> Saved! </span>

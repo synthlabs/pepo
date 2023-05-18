@@ -7,7 +7,7 @@
 	import { parseChatMessage } from '@twurple/common';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
-
+	import { GlobalEmoteCache } from '$lib/store/emotes';
 	import { TwitchToken, isValid, token } from '$lib/store/token';
 	import Logger from '$lib/logger/log';
 	import Badges from '$lib/components/chat/+badges.svelte';
@@ -43,6 +43,7 @@
 	async function getStream(userName: string): Promise<HelixStream | null> {
 		const user = await apiClient.users.getUserByName(userName);
 		if (!user) {
+			Logger.debug('failed to get user');
 			return null;
 		}
 
@@ -54,7 +55,7 @@
 
 		let stream = await streamInfo;
 		if (!stream) {
-			Logger.error('failed to get stream info');
+			Logger.error('failed to get stream info', stream);
 			return;
 		}
 
@@ -74,6 +75,7 @@
 	}
 
 	$: if (isValid(toke)) {
+		Logger.debug('valid token');
 		streamInfo = getStream(channel);
 		init();
 	}
@@ -175,8 +177,8 @@
 	};
 </script>
 
-<div class="flex flex-col h-full p-2">
-	<div class="p-1 border-b border-b-base-300 flex">
+<div class="flex flex-col flex-nowrap w-full h-full p-2">
+	<div class="flex p-1 border-b border-b-base-300">
 		{#await streamInfo then stream}
 			<div class="flex items-center normal-case text-xl pl-1 pr-1">#{channel}</div>
 			{#if stream}
