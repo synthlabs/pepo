@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { beforeUpdate, afterUpdate, onDestroy } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { beforeUpdate, afterUpdate, onDestroy, onMount } from 'svelte';
 	import { StaticAuthProvider } from '@twurple/auth';
-	import { ChatClient } from '@twurple/chat';
-	import { ApiClient, HelixEmote, HelixStream } from '@twurple/api';
+	import { ChatClient } from '$lib/chat/client';
+	import { ApiClient, HelixStream } from '@twurple/api';
 	import { parseChatMessage } from '@twurple/common';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
@@ -16,6 +15,7 @@
 		BasicParsedMessagePart,
 		ParsedMessageTextPart
 	} from '@twurple/common/lib/emotes/ParsedMessagePart';
+	import { beforeNavigate, afterNavigate } from '$app/navigation';
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
@@ -28,6 +28,16 @@
 		color: string;
 	}
 
+	interface message {
+		id: string;
+		ts: string;
+		username: string;
+		messageParts: BasicParsedMessagePart[];
+		color: string;
+		raw?: TwitchPrivateMessage;
+	}
+	let messages: message[] = [];
+
 	export let channel: string;
 	let currentUser: user;
 	let behavior: ScrollBehavior = 'auto';
@@ -36,9 +46,45 @@
 
 	const toke = $token ? $token : new TwitchToken();
 
-	const authProvider = new StaticAuthProvider(toke.client_id, toke.oauth_token);
-	const chatClient = new ChatClient({ authProvider, channels: [channel] });
-	const apiClient = new ApiClient({ authProvider });
+	let authProvider: StaticAuthProvider;
+	let chat: ChatClient = new ChatClient();
+	let apiClient: ApiClient;
+	$: if (isValid(toke)) {
+		authProvider = new StaticAuthProvider(toke.client_id, toke.oauth_token);
+		apiClient = new ApiClient({ authProvider });
+
+		Logger.debug('valid token');
+		streamInfo = getStream(channel);
+		init();
+	}
+
+	onMount(() => {
+		Logger.debug('mounted');
+		chat.connect().then(() => {
+			Logger.info('connected to chat');
+		});
+
+		chat.onMessage((_channel, _user, text, msg) => {
+			twitchMsgHandler(text, msg);
+		});
+	});
+
+	beforeNavigate((_) => {
+		Logger.debug(`navigating - leaving ${channel}`);
+		chat.part(channel);
+		Logger.debug('clearing msg cache');
+		messages = [];
+	});
+
+	afterNavigate((_) => {
+		Logger.debug(`navigated - joining ${channel}`);
+		chat.join(channel);
+	});
+
+	onDestroy(() => {
+		Logger.debug('destroyed - quitting chat');
+		chat.quit();
+	});
 
 	async function getStream(userName: string): Promise<HelixStream | null> {
 		const user = await apiClient.users.getUserByName(userName);
@@ -73,33 +119,6 @@
 		const s = Math.round(seconds % 60);
 		return [h, m > 9 ? m : h ? '0' + m : m || '0', s > 9 ? s : '0' + s].filter(Boolean).join(':');
 	}
-
-	$: if (isValid(toke)) {
-		Logger.debug('valid token');
-		streamInfo = getStream(channel);
-		init();
-	}
-
-	chatClient.connect().then(() => {
-		Logger.info('connected to chat');
-	});
-	onDestroy(() => {
-		chatClient.quit();
-	});
-
-	interface message {
-		id: string;
-		ts: string;
-		username: string;
-		messageParts: BasicParsedMessagePart[];
-		color: string;
-		raw?: TwitchPrivateMessage;
-	}
-	let messages: message[] = [];
-
-	chatClient.onMessage((_channel, _user, text, msg) => {
-		twitchMsgHandler(text, msg);
-	});
 
 	function twitchMsgHandler(text: string, msg: TwitchPrivateMessage) {
 		let m: message;
@@ -150,7 +169,7 @@
 		let target = event.target as HTMLFormElement;
 
 		if (hasInput && currentUser) {
-			chatClient
+			chat
 				.say(channel, input)
 				.catch(Logger.error)
 				.finally(() => {
@@ -179,10 +198,14 @@
 
 <div class="flex flex-col flex-nowrap w-full h-full p-2">
 	<div class="flex p-1 border-b border-b-base-300">
-		{#await streamInfo then stream}
-			<div class="flex items-center normal-case text-xl pl-1 pr-1">#{channel}</div>
+		<div class="flex items-center normal-case text-xl pl-1 pr-1">#{channel}</div>
+		{#await streamInfo}
+			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm" />
+		{:then stream}
 			{#if stream}
 				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">{stream.title}</div>
+			{:else}
+				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Offline</div>
 			{/if}
 		{/await}
 	</div>

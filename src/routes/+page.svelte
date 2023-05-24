@@ -4,8 +4,7 @@
 
 	let inputStr = '';
 	function submitForm() {
-		Logger.debug(inputStr);
-		goto(`/${inputStr}`);
+		goto(`/chat/${inputStr}`);
 	}
 </script>
 

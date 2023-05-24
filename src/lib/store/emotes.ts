@@ -42,7 +42,6 @@ export class EmoteCache {
 	}
 
 	passthroughGet(id: string): HelixEmote | undefined {
-		Logger.debug(`passthrough get for ${id}`);
 		const mote = this.store.get(id);
 		if (!mote) return undefined;
 
