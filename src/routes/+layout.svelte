@@ -18,14 +18,14 @@
 	onMount(() => {
 		if (!$token || !isValid($token)) {
 			Logger.warn('no valid token');
-			goto('/login');
+			goto('/settings');
 		}
 	});
 
 	beforeNavigate(({ from, to, cancel }) => {
-		if (to?.route.id !== '/login' && !isValid($token)) {
+		if (to?.route.id !== '/settings' && !isValid($token)) {
 			Logger.warn('token is not valid anymore');
-			goto('/login');
+			goto('/settings');
 		}
 	});
 </script>
