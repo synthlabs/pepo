@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { beforeUpdate, afterUpdate, onDestroy, onMount } from 'svelte';
 	import { StaticAuthProvider } from '@twurple/auth';
-	import { ChatClient } from '$lib/chat/client';
 	import { ApiClient, HelixStream } from '@twurple/api';
 	import { parseChatMessage } from '@twurple/common';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
 	import { GlobalEmoteCache } from '$lib/store/emotes';
+	import { chatClient } from '$lib/store/chat';
 	import { TwitchToken, isValid, token } from '$lib/store/token';
 	import Logger from '$lib/logger/log';
 	import Badges from '$lib/components/chat/+badges.svelte';
@@ -47,7 +47,7 @@
 	const toke = $token ? $token : new TwitchToken();
 
 	let authProvider: StaticAuthProvider;
-	let chat: ChatClient = new ChatClient();
+	let chat = $chatClient;
 	let apiClient: ApiClient;
 	$: if (isValid(toke)) {
 		authProvider = new StaticAuthProvider(toke.client_id, toke.oauth_token);
