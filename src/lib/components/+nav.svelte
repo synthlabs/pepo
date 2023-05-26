@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { user } from '$lib/store/user';
+	import InputNav from '$lib/components/+inputnav.svelte';
 </script>
 
-<div class="flex w-full items-center h-15 bg-base-300 shadow">
-	<div class="flex-1 pl-1">
+<div class="my-nav h-14 bg-base-300 shadow">
+	<div class="pl-1 w-1/2 justify-start">
 		<a href="/" class="btn btn-ghost btn-circle">
 			<div class="w-7">
 				<img alt="Pepo logo" src="/pepo-flat.png" />
@@ -11,8 +12,10 @@
 		</a>
 	</div>
 
+	<div class="flex-shrink-0 w-1/2"><InputNav /></div>
+
 	{#if $user}
-		<div class="flex-none gap-2 pr-1">
+		<div class="gap-2 pr-1 w-1/2 justify-end items-end">
 			<div class="dropdown dropdown-end">
 				<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 				<label tabindex="0" class="btn btn-ghost btn-circle avatar">
@@ -30,3 +33,16 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	.my-nav {
+		display: flex;
+		align-items: center;
+		height: 3.5rem; /* 56px */
+		width: 100%;
+	}
+	:where(.my-nav > *) {
+		display: inline-flex;
+		align-items: center;
+	}
+</style>

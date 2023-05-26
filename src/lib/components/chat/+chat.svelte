@@ -79,6 +79,8 @@
 	afterNavigate((_) => {
 		Logger.debug(`navigated - joining ${channel}`);
 		chat.join(channel);
+		Logger.debug('clearing msg cache');
+		messages = [];
 	});
 
 	onDestroy(() => {

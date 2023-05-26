@@ -9,7 +9,7 @@
 	];
 </script>
 
-<div class="tabs bg-base-100 w-full gap-1">
+<div class="tabs bg-base-100 w-full gap-1 pl-1 pt-1 pr-1">
 	{#each channels as { name }}
 		<a class="tab" class:tab-active={name === $page.params.channel} href="/chat/{name}">{name}</a>
 	{/each}
