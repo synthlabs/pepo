@@ -64,8 +64,15 @@
 			Logger.info('connected to chat');
 		});
 
-		chat.onMessage((_channel, _user, text, msg) => {
-			twitchMsgHandler(text, msg);
+		chat.onMessage((msgChannel, _user, text, msg) => {
+			if (msgChannel === `#${channel}`) {
+				twitchMsgHandler(text, msg);
+			} else {
+				Logger.warn(
+					`expected messages for ${channel} but got one for ${msgChannel} - trying to part again`
+				);
+				chat.part(msgChannel);
+			}
 		});
 	});
 
