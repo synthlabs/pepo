@@ -74,6 +74,15 @@
 				chat.part(msgChannel);
 			}
 		});
+
+		chat.onJoin((channel, user) => {
+			Logger.debug(`joined ${channel} as ${user}`);
+		});
+		chat.onPart((channel, user) => {
+			Logger.debug(`parted ${channel} as ${user}`);
+		});
+
+		chat.join(channel);
 	});
 
 	beforeNavigate((_) => {
@@ -271,13 +280,13 @@
 				{/await}
 			</div>
 			<div class="relative">
+				<!-- TODO: properly pad input like the password field so text doesn't go behind button -->
 				<input
 					bind:value={input}
 					type="text"
 					class="input w-full p-1 input-bordered focus:input-primary hover:input-primary"
 					placeholder="Chat away..."
 				/>
-				<!-- svelte-ignore a11y-click-events-have-key-events -->
 				<button
 					type="submit"
 					class="absolute inset-y-0 right-0 flex items-center pr-3 btn btn-ghost"

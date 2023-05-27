@@ -26,14 +26,22 @@
 		if (!$token || !isValid($token)) {
 			Logger.warn('no valid token');
 			goto('/settings');
+			return;
 		}
 		const authProvider = new StaticAuthProvider($token.client_id, $token.oauth_token);
 		chatClient.set(new ChatClient({ authProvider }));
 	});
 
-	beforeNavigate(({ from, to, cancel }) => {
-		if (to?.route.id !== '/settings' && !isValid($token)) {
+	const freeRoutes = ['/', '/settings'];
+
+	beforeNavigate(({ type, to, cancel }) => {
+		Logger.debug(`nav type ${type}`);
+
+		const isLeaving = type === 'leave';
+		const isProtectedRoute = !freeRoutes.includes(to?.route.id ?? '');
+		if (!isLeaving && isProtectedRoute && !isValid($token)) {
 			Logger.warn('token is not valid anymore');
+			cancel();
 			goto('/settings');
 		}
 	});

@@ -3,7 +3,7 @@
 	import InputNav from '$lib/components/+inputnav.svelte';
 </script>
 
-<div class="my-nav h-14 bg-base-300 shadow">
+<div class="my-nav flex-shrink-0 h-14 bg-base-300 shadow">
 	<div class="pl-1 w-1/2 justify-start">
 		<a href="/" class="btn btn-ghost btn-circle">
 			<div class="w-7">
@@ -12,9 +12,9 @@
 		</a>
 	</div>
 
-	<div class="flex-shrink-0 w-1/2"><InputNav /></div>
-
 	{#if $user}
+		<div class="flex-shrink-0 w-1/2"><InputNav /></div>
+
 		<div class="gap-2 pr-1 w-1/2 justify-end items-end">
 			<div class="dropdown dropdown-end">
 				<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
