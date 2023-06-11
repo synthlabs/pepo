@@ -18,7 +18,6 @@
 
 	<div class="gap-2 pr-1 w-1/2 justify-end items-end">
 		<div class="dropdown dropdown-end">
-			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<label tabindex="0" class="btn btn-ghost btn-circle avatar">
 				<div class="w-9 rounded-full">
 					{#if $user}
