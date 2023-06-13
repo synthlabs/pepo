@@ -36,6 +36,5 @@ jobs:
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
         shell: bash
       - name: Sha check
-        id: short-sha
         run: echo "${{ steps.short-sha.outputs.SHORT_SHA }}"
         shell: bash
