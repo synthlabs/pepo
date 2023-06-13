@@ -41,4 +41,6 @@ jobs:
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $env:GITHUB_OUTPUT
         shell: pwsh
       - name: Sha check
+        id: short-sha
         run: echo "${{ steps.short-sha-nix.outputs.SHORT_SHA }}${{ steps.short-sha-windows.outputs.SHORT_SHA }}"
+        shell: bash
