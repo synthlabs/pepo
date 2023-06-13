@@ -36,6 +36,10 @@ jobs:
       - name: Set short SHA
         id: short-sha
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Set short SHA
+        if: matrix.platform == 'windows-latest'
+        id: short-sha
+        run: echo echo "::set-output name=sha_short::$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
       - name: Sha check
         run: echo ${{ steps.short-sha.outputs.SHORT_SHA }}
       - uses: tauri-apps/tauri-action@v0
