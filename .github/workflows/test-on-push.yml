@@ -32,11 +32,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
       - name: Set short SHA nix
+        if: matrix.platform != 'windows-latest'
         id: short-sha-nix
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
       - name: Set short SHA Windows
         if: matrix.platform == 'windows-latest'
         id: short-sha-windows
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $env:GITHUB_OUTPUT
+        shell: pwsh
       - name: Sha check
-        run: echo "${{ steps.short-sha-nix.outputs.SHORT_SHA }} ${{ steps.short-sha-windows.outputs.SHORT_SHA }}"
+        run: echo "${{ steps.short-sha-nix.outputs.SHORT_SHA }}${{ steps.short-sha-windows.outputs.SHORT_SHA }}"
