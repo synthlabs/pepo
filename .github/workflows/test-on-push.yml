@@ -31,9 +31,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
-      - name: Set short SHA
+      - name: Set short SHA nix
         id: short-sha
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Set short SHA Windows
+        if: matrix.platform == 'windows-latest'
+        id: short-sha
+        run: echo echo "::set-output name=sha_short::$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
       - name: Sha check
         run: echo ${{ steps.short-sha.outputs.SHORT_SHA }}
       - uses: tauri-apps/tauri-action@v0
