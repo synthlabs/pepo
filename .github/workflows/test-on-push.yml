@@ -37,6 +37,6 @@ jobs:
       - name: Set short SHA Windows
         if: matrix.platform == 'windows-latest'
         id: short-sha-windows
-        run: echo echo "::set-output name=sha_short::$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
       - name: Sha check
-        run: echo "${{ steps.short-sha-nix.outputs.SHORT_SHA }}\t${{ steps.short-sha-windows.outputs.SHORT_SHA }}
+        run: echo "${{ steps.short-sha-nix.outputs.SHORT_SHA }} ${{ steps.short-sha-windows.outputs.SHORT_SHA }}"
