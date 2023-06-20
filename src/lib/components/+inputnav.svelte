@@ -21,7 +21,7 @@
 			type="text"
 			bind:value={inputStr}
 			class="input input-bordered m-auto w-full input-sm"
-			placeholder="Where would you like to go?"
+			placeholder="Go to channel..."
 		/>
 	</form>
 </div>
