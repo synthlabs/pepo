@@ -7,7 +7,7 @@
 	<div class="pl-1 w-1/2 justify-start">
 		<a href="/" class="btn btn-ghost btn-circle">
 			<div class="w-7">
-				<img alt="Pepo logo" src="/pepo-flat.png" />
+				<img alt="Pepo logo" src="/pepo.png" />
 			</div>
 		</a>
 	</div>
