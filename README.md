@@ -6,6 +6,8 @@
 
 # A new way to chat
 
+test test test
+
 This is a playground of a new chatting client. It currently only supports twitch, but the goal is to expand support for other sites such as youtube, kick, etc. It is very very early in development.
 
 <p align="center">
