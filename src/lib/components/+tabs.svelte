@@ -8,7 +8,6 @@
 	let inputStr = '';
 	let modalOpen = false;
 	let channels = $channelCache ? $channelCache : [];
-	let channelInput: HTMLInputElement;
 	let modal: HTMLDialogElement;
 
 	// TODO: move this into a more central keybindings module
@@ -33,7 +32,6 @@
 
 	function openDialog() {
 		modal.showModal();
-		channelInput.focus();
 	}
 
 	function closeDialog() {
@@ -70,26 +68,17 @@
 </div>
 
 <dialog id="add-channel" class="modal" bind:this={modal}>
-	<form method="dialog" class="modal-box" on:submit|preventDefault={handleSave}>
-		<label
-			for="add-channel"
-			on:click={closeDialog}
-			class="btn btn-xs btn-circle absolute right-2 top-2">✕</label
-		>
-		<h3 class="font-bold text-md">Add a new favorite channel</h3>
-		<!-- TODO: make this submit by hitting enter -->
-		<!-- TODO: This should auto focus too -->
-		<input
-			type="text"
-			bind:this={channelInput}
-			bind:value={inputStr}
-			class="input input-bordered m-auto w-full input-sm mt-6"
-			placeholder="Channel name"
-		/>
-		<div class="modal-action">
-			<label for="add-channel" class="btn btn-sm" on:click={handleSave}>Save</label>
-		</div>
-	</form>
+	<div class="modal-box">
+		<form method="dialog" on:submit|preventDefault={handleSave}>
+			<input
+				type="text"
+				autofocus
+				bind:value={inputStr}
+				class="input input-bordered m-auto w-full input-sm"
+				placeholder="Add a new favorite channel"
+			/>
+		</form>
+	</div>
 </dialog>
 
 <style>

@@ -19,6 +19,7 @@
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
+	let chatInput: HTMLInputElement;
 
 	const GREY_NAME_COLOR = '#6B7280';
 
@@ -212,6 +213,30 @@
 			});
 		}
 	};
+
+	function keyRedirect(node: HTMLInputElement) {
+		function handleKeydown(e: KeyboardEvent) {
+			switch (e.key.toLowerCase()) {
+				case 'escape':
+					node.blur();
+					return;
+			}
+
+			if (node === document.activeElement || document.activeElement?.tagName === 'INPUT') {
+				return;
+			}
+
+			if (e.key.match(/^\w$/g)) {
+				node.focus();
+			}
+		}
+		window.addEventListener('keydown', handleKeydown);
+		return {
+			destroy() {
+				window.removeEventListener('keydown', handleKeydown);
+			}
+		};
+	}
 </script>
 
 <div class="flex flex-col flex-nowrap w-full h-full p-2">
@@ -281,11 +306,16 @@
 			</div>
 			<div class="relative">
 				<!-- TODO: properly pad input like the password field so text doesn't go behind button -->
+				<!-- TODO: use custom input and input bordered classes to get darker BW outline default, small primary when focused, full outline with text-->
 				<input
 					bind:value={input}
+					bind:this={chatInput}
+					use:keyRedirect
+					autofocus
 					type="text"
 					class="input w-full p-1 input-bordered focus:input-primary hover:input-primary"
 					placeholder="Chat away..."
+					tabindex="0"
 				/>
 				<button
 					type="submit"

@@ -1,22 +1,27 @@
 <script lang="ts">
+	import { beforeUpdate, afterUpdate } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { Sanitize } from '$lib/store/channels';
+	import { createEventDispatcher } from 'svelte';
+
+	let dispatch = createEventDispatcher();
 
 	let inputStr = '';
+
+	export const reset = () => {
+		inputStr = '';
+	};
+
 	function submitForm(event: SubmitEvent) {
 		let target = event.target as HTMLFormElement;
-
 		goto(`/chat/${Sanitize(inputStr)}`);
-		inputStr = '';
-		if (event.target) {
-			target.reset();
-		}
+		target.reset();
+		dispatch('inputNavSubmitted', inputStr);
 	}
 </script>
 
 <div class="flex flex-col flex-grow items-center justify-center">
-	<form class="w-full flex" on:submit|preventDefault={submitForm}>
-		<!-- TODO: escape should unfocus and clear this -->
+	<form class="w-full" method="dialog" on:submit|preventDefault={submitForm}>
 		<input
 			type="text"
 			bind:value={inputStr}
