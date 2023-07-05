@@ -10,6 +10,8 @@
 	let channels = $channelCache ? $channelCache : [];
 	let modal: HTMLDialogElement;
 
+	$: borders = generateBorders(channels, $page.params.channel);
+
 	// TODO: move this into a more central keybindings module
 	// 		 https://www.reddit.com/r/sveltejs/comments/tp7hul/comment/i29svqt/
 
@@ -38,13 +40,38 @@
 		inputStr = '';
 		modal.close();
 	}
+
+	function generateBorders(channels: string[], current: string): Boolean[] {
+		const borders: Boolean[] = new Array(channels.length);
+
+		for (var i = 0; i < channels.length; i++) {
+			if (channels[i] == current) {
+				borders[i] = false;
+			} else {
+				const next = i + 1;
+				const hasNext = next < channels.length;
+
+				if (hasNext && channels[next] == current) {
+					borders[i] = false;
+				} else {
+					borders[i] = true;
+				}
+			}
+		}
+		return borders;
+	}
 </script>
 
 <svelte:window on:keyup={handleEscape} />
 
-<div class="tabs flex-shrink-0 bg-base-100 w-full gap-1 pl-1 pt-1 pr-1">
-	{#each channels as name}
-		<a class="tab" class:tab-active={name === $page.params.channel} href="/chat/{name}">{name}</a>
+<div class="tabs flex-shrink-0 w-full h-full gap-1">
+	{#each channels as name, i}
+		<a
+			class="tab tab-large tab-lifted"
+			class:tab-active={name === $page.params.channel}
+			class:tab-border={borders[i]}
+			href="/chat/{name}">{name}</a
+		>
 	{/each}
 	<button
 		on:click={openDialog}
@@ -75,24 +102,32 @@
 				autofocus
 				bind:value={inputStr}
 				class="input input-bordered m-auto w-full input-sm"
-				placeholder="Add a new favorite channel"
+				placeholder="Go to channel..."
 			/>
 		</form>
 	</div>
 </dialog>
 
 <style>
-	.tab {
-		border-radius: 0.5rem /* 8px */;
-		--tw-bg-opacity: 1;
-		background-color: hsl(var(--b2, var(--b1)) / var(--tw-bg-opacity));
+	.tab-large {
+		height: 2.5rem /* 48px */;
+		font-size: 1rem /* 18px */;
+		line-height: 1.75rem /* 28px */;
+		line-height: 2;
+		--tab-padding: 1.25rem /* 20px */;
 	}
-	.tab-active {
-		--tw-bg-opacity: 1;
-		background-color: hsl(var(--p) / var(--tw-bg-opacity));
+
+	.tab-border:after {
+		content: '';
+		position: absolute;
+		right: 0px;
+		top: 25%;
+		height: 50%;
+		border-right: 1px solid;
 	}
+
 	.plus {
-		height: 2rem /* 32px */;
+		height: 2.5rem /* 32px */;
 		font-size: 0.875rem /* 14px */;
 		line-height: 1.25rem /* 20px */;
 		line-height: 2;

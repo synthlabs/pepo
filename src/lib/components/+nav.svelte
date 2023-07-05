@@ -1,22 +1,15 @@
 <script lang="ts">
 	import { user } from '$lib/store/user';
 	import InputNav from '$lib/components/+inputnav.svelte';
+	import Tabs from '$lib/components/+tabs.svelte';
 </script>
 
 <div class="my-nav flex-shrink-0 h-14 bg-base-300 shadow">
-	<div class="pl-1 w-1/2 justify-start">
-		<a href="/" class="btn btn-ghost btn-circle">
-			<div class="w-7">
-				<img alt="Pepo logo" src="/pepo.png" />
-			</div>
-		</a>
-	</div>
-
 	{#if $user}
-		<div class="flex-shrink-0 w-1/2"><InputNav /></div>
+		<div class="flex-grow h-full"><Tabs /></div>
 	{/if}
 
-	<div class="gap-2 pr-1 w-1/2 justify-end items-end">
+	<div class="gap-2 pr-1 justify-end items-end">
 		<div class="dropdown dropdown-end">
 			<label tabindex="0" class="btn btn-ghost btn-circle avatar">
 				<div class="w-9 rounded-full">
@@ -29,7 +22,6 @@
 							viewBox="0 0 24 24"
 							stroke-width="1.5"
 							stroke="currentColor"
-							class="w-9 h-9"
 						>
 							<path
 								stroke-linecap="round"
@@ -42,7 +34,7 @@
 			</label>
 			<ul
 				tabindex="0"
-				class="menu menu-compact dropdown-content mt-3 p-2 shadow bg-base-300 rounded-box w-52"
+				class="menu menu-compact dropdown-content mt-3 p-2 shadow bg-base-300 rounded-box w-52 z-50"
 			>
 				<li><a href="/settings">Settings</a></li>
 			</ul>

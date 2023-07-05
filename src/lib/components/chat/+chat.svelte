@@ -241,6 +241,7 @@
 
 <div class="flex flex-col flex-nowrap w-full h-full p-2">
 	<div class="flex p-1 border-b border-b-base-300">
+		<!-- TODO: now that I have real tabs, this should be something else -->
 		<div class="flex items-center normal-case text-xl pl-1 pr-1">#{channel}</div>
 		{#await streamInfo}
 			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm" />
