@@ -1,6 +1,6 @@
 {
 	"name": "pepo",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"private": true,
 	"scripts": {
 		"dev": "vite dev --host",
@@ -44,6 +44,7 @@
 		"@twurple/common": "^6.2.1",
 		"elizabot": "^0.0.3",
 		"http-status-codes": "^2.2.0",
+		"tauri-plugin-window-state-api": "github:tauri-apps/tauri-plugin-window-state#v1",
 		"theme-change": "^2.5.0",
 		"uuid": "^9.0.0"
 	}
