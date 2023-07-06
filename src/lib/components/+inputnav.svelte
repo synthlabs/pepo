@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { beforeUpdate, afterUpdate } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { Sanitize } from '$lib/store/channels';
 	import { createEventDispatcher } from 'svelte';
+	import { channels as channelCache, Sanitize } from '$lib/store/channels';
+	import Logger from '$lib/logger/log';
 
 	let dispatch = createEventDispatcher();
 
@@ -12,9 +13,19 @@
 		inputStr = '';
 	};
 
+	// TODO: clean this up 🤮
 	function submitForm(event: SubmitEvent) {
 		let target = event.target as HTMLFormElement;
-		goto(`/chat/${Sanitize(inputStr)}`);
+
+		const chan = Sanitize(inputStr);
+		Logger.debug($channelCache);
+
+		// TODO: this is where we dedupe
+		const channels = [...$channelCache, chan];
+		channelCache.set(channels);
+		Logger.debug(channels);
+
+		goto(`/chat/${chan}`);
 		target.reset();
 		dispatch('inputNavSubmitted', inputStr);
 	}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import Logger from '$lib/logger/log';
 	import { channels as channelCache, Sanitize } from '$lib/store/channels';
 
@@ -7,10 +8,9 @@
 
 	let inputStr = '';
 	let modalOpen = false;
-	let channels = $channelCache ? $channelCache : [];
 	let modal: HTMLDialogElement;
 
-	$: borders = generateBorders(channels, $page.params.channel);
+	$: borders = generateBorders($channelCache, $page.params.channel);
 
 	// TODO: move this into a more central keybindings module
 	// 		 https://www.reddit.com/r/sveltejs/comments/tp7hul/comment/i29svqt/
@@ -26,9 +26,10 @@
 		if (inputStr.length > 0) {
 			const chan = Sanitize(inputStr);
 			Logger.debug(chan);
-			channels = [...channels, chan];
+			const channels = [...$channelCache, chan];
 			channelCache.set(channels);
 			closeDialog();
+			goto(`/chat/${chan}`);
 		}
 	}
 
@@ -65,7 +66,7 @@
 <svelte:window on:keyup={handleEscape} />
 
 <div class="tabs flex-shrink-0 w-full h-full gap-1">
-	{#each channels as name, i}
+	{#each $channelCache as name, i}
 		<a
 			class="tab tab-large tab-lifted"
 			class:tab-active={name === $page.params.channel}
