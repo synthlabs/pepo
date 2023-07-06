@@ -6,8 +6,8 @@
     "distDir": "../build"
   },
   "package": {
-    "productName": "pepo",
-    "version": "0.3.0"
+    "productName": "Pepo",
+    "version": "0.4.0"
   },
   "tauri": {
     "allowlist": {
@@ -60,10 +60,10 @@
     "windows": [
       {
         "fullscreen": false,
-        "height": 800,
+        "height": 726,
+        "width": 968,
         "resizable": true,
-        "title": "pepo ™",
-        "width": 550
+        "title": "Pepo ™"
       }
     ]
   }
