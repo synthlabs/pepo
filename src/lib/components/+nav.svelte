@@ -4,12 +4,12 @@
 	import Tabs from '$lib/components/+tabs.svelte';
 </script>
 
-<div class="my-nav flex-shrink-0 h-14 bg-base-300 shadow">
+<div class="flex flex-row w-full items-center bg-base-300 shadow">
 	{#if $user}
-		<div class="flex-grow h-full"><Tabs /></div>
+		<Tabs />
 	{/if}
 
-	<div class="gap-2 pr-1 justify-end items-end">
+	<div class="flex gap-2 pr-1 justify-end items-end">
 		<div class="dropdown dropdown-end">
 			<label tabindex="0" class="btn btn-ghost btn-circle avatar">
 				<div class="w-9 rounded-full">
@@ -43,14 +43,4 @@
 </div>
 
 <style>
-	.my-nav {
-		display: flex;
-		align-items: center;
-		height: 3.5rem; /* 56px */
-		width: 100%;
-	}
-	:where(.my-nav > *) {
-		display: inline-flex;
-		align-items: center;
-	}
 </style>

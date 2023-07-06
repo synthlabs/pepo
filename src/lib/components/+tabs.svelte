@@ -65,7 +65,7 @@
 
 <svelte:window on:keyup={handleEscape} />
 
-<div class="tabs flex-shrink-0 w-full h-full gap-1">
+<div class="flex flex-grow flex-wrap items-end h-full gap-1">
 	{#each $channelCache as name, i}
 		<a
 			class="tab tab-large tab-lifted"
@@ -76,7 +76,7 @@
 	{/each}
 	<button
 		on:click={openDialog}
-		class="inline-flex flex-wrap items-center justify-center text-center plus cursor-pointer"
+		class="flex items-center justify-center text-center plus cursor-pointer"
 	>
 		<svg
 			xmlns="http://www.w3.org/2000/svg"
