@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { user } from '$lib/store/user';
-	import InputNav from '$lib/components/+inputnav.svelte';
 	import Tabs from '$lib/components/+tabs.svelte';
 </script>
 

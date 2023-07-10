@@ -4,13 +4,16 @@
 	import Logger from '$lib/logger/log';
 	import { channels as channelCache, Sanitize } from '$lib/store/channels';
 
-	channelCache.useLocalStorage();
-
 	let inputStr = '';
 	let modalOpen = false;
 	let modal: HTMLDialogElement;
+	let channels: string[] = [];
 
-	$: borders = generateBorders($channelCache, $page.params.channel);
+	$: borders = generateBorders(channels, $page.params.channel);
+
+	channelCache.subscribe((cache) => {
+		channels = Array.from(cache);
+	});
 
 	// TODO: move this into a more central keybindings module
 	// 		 https://www.reddit.com/r/sveltejs/comments/tp7hul/comment/i29svqt/
@@ -25,9 +28,7 @@
 	function handleSave() {
 		if (inputStr.length > 0) {
 			const chan = Sanitize(inputStr);
-			Logger.debug(chan);
-			const channels = [...$channelCache, chan];
-			channelCache.set(channels);
+
 			closeDialog();
 			goto(`/chat/${chan}`);
 		}
@@ -43,14 +44,15 @@
 	}
 
 	function generateBorders(channels: string[], current: string): Boolean[] {
-		const borders: Boolean[] = new Array(channels.length);
+		const size = channels.length;
+		const borders: Boolean[] = new Array(size);
 
-		for (var i = 0; i < channels.length; i++) {
+		for (var i = 0; i < size; i++) {
 			if (channels[i] == current) {
 				borders[i] = false;
 			} else {
 				const next = i + 1;
-				const hasNext = next < channels.length;
+				const hasNext = next < size;
 
 				if (hasNext && channels[next] == current) {
 					borders[i] = false;
@@ -66,7 +68,7 @@
 <svelte:window on:keyup={handleEscape} />
 
 <div class="flex flex-grow flex-wrap items-end h-full gap-1">
-	{#each $channelCache as name, i}
+	{#each channels as name, i}
 		<a
 			class="tab tab-large tab-lifted"
 			class:tab-active={name === $page.params.channel}

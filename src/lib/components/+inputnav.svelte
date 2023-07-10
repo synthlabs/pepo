@@ -18,14 +18,8 @@
 		let target = event.target as HTMLFormElement;
 
 		const chan = Sanitize(inputStr);
-		Logger.debug($channelCache);
-
-		// TODO: this is where we dedupe
-		const channels = [...$channelCache, chan];
-		channelCache.set(channels);
-		Logger.debug(channels);
-
 		goto(`/chat/${chan}`);
+
 		target.reset();
 		dispatch('inputNavSubmitted', inputStr);
 	}
