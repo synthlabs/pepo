@@ -16,6 +16,7 @@
 		ParsedMessageTextPart
 	} from '@twurple/common/lib/emotes/ParsedMessagePart';
 	import { beforeNavigate, afterNavigate } from '$app/navigation';
+	import { channels as channelCache } from '$lib/store/channels';
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
@@ -48,7 +49,7 @@
 	const toke = $token ? $token : new TwitchToken();
 
 	let authProvider: StaticAuthProvider;
-	let chat = $chatClient;
+
 	let apiClient: ApiClient;
 	$: if (isValid(toke)) {
 		authProvider = new StaticAuthProvider(toke.client_id, toke.oauth_token);
@@ -61,48 +62,39 @@
 
 	onMount(() => {
 		Logger.debug('mounted');
-		chat.connect().then(() => {
-			Logger.info('connected to chat');
-		});
-
-		chat.onMessage((msgChannel, _user, text, msg) => {
-			if (msgChannel === `#${channel}`) {
-				twitchMsgHandler(text, msg);
-			} else {
-				Logger.warn(
-					`expected messages for ${channel} but got one for ${msgChannel} - trying to part again`
-				);
-				chat.part(msgChannel);
-			}
-		});
-
-		chat.onJoin((channel, user) => {
-			Logger.debug(`joined ${channel} as ${user}`);
-		});
-		chat.onPart((channel, user) => {
-			Logger.debug(`parted ${channel} as ${user}`);
-		});
-
-		chat.join(channel);
 	});
 
 	beforeNavigate((_) => {
-		Logger.debug(`navigating - leaving ${channel}`);
-		chat.part(channel);
+		Logger.debug(`navigating - unsubscribing from ${channel}`);
+		$chatClient.unsub(channel);
 		Logger.debug('clearing msg cache');
 		messages = [];
 	});
 
+	function isIterable(input: any): boolean {
+		if (input === null || input === undefined) {
+			return false;
+		}
+
+		return typeof input[Symbol.iterator] === 'function';
+	}
+
 	afterNavigate((_) => {
-		Logger.debug(`navigated - joining ${channel}`);
-		chat.join(channel);
+		Logger.debug(`navigated - subscribing to ${channel}`);
+
+		if (!isIterable($channelCache)) {
+			channelCache.set(new Set([channel]));
+		} else {
+			$channelCache = $channelCache.add(channel);
+		}
+
+		$chatClient.sub(channel, twitchMsgHandler);
 		Logger.debug('clearing msg cache');
 		messages = [];
 	});
 
 	onDestroy(() => {
-		Logger.debug('destroyed - quitting chat');
-		chat.quit();
+		Logger.debug('destroyed');
 	});
 
 	async function getStream(userName: string): Promise<HelixStream | null> {
@@ -188,7 +180,7 @@
 		let target = event.target as HTMLFormElement;
 
 		if (hasInput && currentUser) {
-			chat
+			$chatClient
 				.say(channel, input)
 				.catch(Logger.error)
 				.finally(() => {

@@ -1,26 +1,25 @@
 <script lang="ts">
 	import { goto, beforeNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { ChatClient } from '@twurple/chat';
-	import { StaticAuthProvider } from '@twurple/auth';
 	import '../app.css';
 	import { user } from '$lib/store/user';
 	import { chatClient } from '$lib/store/chat';
 	import { isValid, token } from '$lib/store/token';
+	import { channels as channelCache } from '$lib/store/channels';
 	import Logger from '$lib/logger/log';
 	import Nav from '$lib/components/+nav.svelte';
 	import InputNav from '$lib/components/+inputnav.svelte';
 
 	user.useLocalStorage();
 	token.useLocalStorage();
+	channelCache.useLocalStorage();
 
 	let modal: HTMLDialogElement;
 	let inputNavInputReset: any;
 
 	$: if ($token) {
 		Logger.debug('token updated: ', $token);
-		const authProvider = new StaticAuthProvider($token.client_id, $token.oauth_token);
-		chatClient.set(new ChatClient({ authProvider }));
+		$chatClient.token = $token;
 	}
 
 	$: Logger.debug('user: ', $user);
@@ -31,8 +30,7 @@
 			goto('/settings');
 			return;
 		}
-		const authProvider = new StaticAuthProvider($token.client_id, $token.oauth_token);
-		chatClient.set(new ChatClient({ authProvider }));
+		$chatClient.token = $token;
 	});
 
 	const freeRoutes = ['/', '/settings'];

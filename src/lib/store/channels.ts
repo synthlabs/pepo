@@ -6,6 +6,6 @@ export function Sanitize(channel: string): string {
 	return chan;
 }
 
-export type ChannelCache = string[];
+export type ChannelCache = Set<string>;
 
-export const channels = createWritableStore('channels', [] as string[]);
+export const channels = createWritableStore<Set<string>>('channels', new Set<string>());
