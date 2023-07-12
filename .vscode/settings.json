@@ -28,5 +28,6 @@
 		"a11y-missing-content": "ignore",
 		"a11y-click-events-have-key-events": "ignore",
 		"a11y-no-noninteractive-tabindex": "ignore"
-	}
+	},
+	"css.customData": [".vscode/tailwind.json"]
 }
