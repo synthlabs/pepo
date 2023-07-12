@@ -306,13 +306,14 @@
 					use:keyRedirect
 					autofocus
 					type="text"
-					class="input w-full p-1 input-bordered focus:input-primary hover:input-primary"
+					class="w-full input input-bordered focus:input-primary hover:input-primary"
+					style="padding-right: 3rem;"
 					placeholder="Chat away..."
 					tabindex="0"
 				/>
 				<button
 					type="submit"
-					class="absolute inset-y-0 right-0 flex items-center pr-3 btn btn-ghost"
+					class="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer"
 					style={hasInput ? '' : 'pointer-events: none;'}
 				>
 					<svg
