@@ -67,14 +67,17 @@
 
 <svelte:window on:keyup={handleEscape} />
 
-<div class="flex flex-grow flex-wrap items-end h-full gap-1">
+<!-- tabs -->
+<div class="tabs h-full gap-1">
 	{#each channels as name, i}
-		<a
-			class="tab tab-large tab-lifted"
+		<!-- tab -->
+		<div
+			class="tab tab-lifted ellipsis"
 			class:tab-active={name === $page.params.channel}
 			class:tab-border={borders[i]}
-			href="/chat/{name}">{name}</a
 		>
+			<a class="" href="/chat/{name}">{name}</a>
+		</div>
 	{/each}
 	<button
 		on:click={openDialog}
@@ -111,13 +114,20 @@
 	</div>
 </dialog>
 
-<style>
-	.tab-large {
-		height: 2.5rem /* 48px */;
-		font-size: 1rem /* 18px */;
-		line-height: 1.75rem /* 28px */;
-		line-height: 2;
-		--tab-padding: 1.25rem /* 20px */;
+<style lang="postcss">
+	.tabs {
+		@apply flex flex-row flex-grow flex-wrap items-end;
+	}
+
+	.ellipsis {
+		flex: 1;
+		min-width: 3.125rem;
+		/* or some value */
+	}
+	.ellipsis a {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.tab-border:after {
@@ -142,5 +152,108 @@
 		color: var(--tab-color);
 		padding-left: var(--tab-padding, 1rem);
 		padding-right: var(--tab-padding, 1rem);
+	}
+
+	.tab {
+		@apply relative inline-flex cursor-pointer select-none flex-wrap items-center justify-center text-center;
+		@apply h-9 text-sm leading-loose;
+		--tab-padding: 1rem;
+
+		padding-left: var(--tab-padding, 1rem);
+		padding-right: var(--tab-padding, 1rem);
+
+		@apply text-opacity-50 [@media(hover:hover)]:hover:text-opacity-100;
+		--tab-color: hsl(var(--bc) / var(--tw-text-opacity, 1));
+		--tab-bg: hsl(var(--b1) / var(--tw-bg-opacity, 1));
+		--tab-border-color: hsl(var(--b3) / var(--tw-bg-opacity, 1));
+		color: var(--tab-color);
+		padding-left: var(--tab-padding, 1rem);
+		padding-right: var(--tab-padding, 1rem);
+		&.tab-active:not(.tab-disabled):not([disabled]) {
+			@apply border-base-content border-opacity-100 text-opacity-100;
+		}
+		&:focus {
+			@apply outline-none;
+		}
+		&:focus-visible {
+			outline: 2px solid currentColor;
+			outline-offset: -3px;
+			&.tab-lifted {
+				border-bottom-right-radius: var(--tab-radius, 0.5rem);
+				border-bottom-left-radius: var(--tab-radius, 0.5rem);
+			}
+		}
+		/* disabled */
+		&-disabled,
+		&[disabled] {
+			@apply text-base-content text-opacity-20 cursor-not-allowed;
+		}
+		@media (hover: hover) {
+			&[disabled],
+			&[disabled]:hover {
+				@apply text-base-content text-opacity-20 cursor-not-allowed;
+			}
+		}
+	}
+	.tab-lifted {
+		border: var(--tab-border, 1px) solid transparent;
+		border-width: 0 0 var(--tab-border, 1px) 0;
+		border-top-left-radius: var(--tab-radius, 0.5rem);
+		border-top-right-radius: var(--tab-radius, 0.5rem);
+		border-bottom-color: var(--tab-border-color);
+		padding-left: var(--tab-padding, 1rem);
+		padding-right: var(--tab-padding, 1rem);
+		padding-top: var(--tab-border, 1px);
+		&.tab-active:not(.tab-disabled):not([disabled]) {
+			background-color: var(--tab-bg);
+			border-width: var(--tab-border, 1px) var(--tab-border, 1px) 0 var(--tab-border, 1px);
+			border-left-color: var(--tab-border-color);
+			border-right-color: var(--tab-border-color);
+			border-top-color: var(--tab-border-color);
+			padding-left: calc(var(--tab-padding, 1rem) - var(--tab-border, 1px));
+			padding-right: calc(var(--tab-padding, 1rem) - var(--tab-border, 1px));
+			padding-bottom: var(--tab-border, 1px);
+			padding-top: 0;
+			&:before,
+			&:after {
+				z-index: 1;
+				content: '';
+				display: block;
+				position: absolute;
+				width: var(--tab-radius, 0.5rem);
+				height: var(--tab-radius, 0.5rem);
+				bottom: 0;
+				--tab-grad: calc(68% - var(--tab-border, 1px));
+				--tab-corner-bg: radial-gradient(
+					circle at var(--circle-pos),
+					transparent var(--tab-grad),
+					var(--tab-border-color) calc(var(--tab-grad) + 0.3px),
+					var(--tab-border-color) calc(var(--tab-grad) + var(--tab-border, 1px)),
+					var(--tab-bg) calc(var(--tab-grad) + var(--tab-border, 1px) + 0.3px)
+				);
+			}
+			&:before {
+				left: calc(var(--tab-radius, 0.5rem) * -1);
+				--circle-pos: top left;
+				background-image: var(--tab-corner-bg);
+			}
+			&:after {
+				right: calc(var(--tab-radius, 0.5rem) * -1);
+				--circle-pos: top right;
+				background-image: var(--tab-corner-bg);
+			}
+			&:first-child:before {
+				background: none;
+			}
+			&:last-child:after {
+				background: none;
+			}
+		}
+	}
+	.tab-lifted.tab-active:not(.tab-disabled):not([disabled])
+		+ .tab-lifted.tab-active:not(.tab-disabled):not([disabled]) {
+		&:before {
+			background: none;
+		}
 	}
 </style>
