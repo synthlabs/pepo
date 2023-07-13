@@ -3,7 +3,7 @@
 	import Tabs from '$lib/components/+tabs.svelte';
 </script>
 
-<div class="flex flex-row w-full items-center bg-base-300 shadow">
+<div class="flex flex-row w-full items-center bg-base-300">
 	{#if $user}
 		<Tabs />
 	{/if}

@@ -77,6 +77,7 @@
 			/>
 
 			<!-- svelte-ignore a11y-click-events-have-key-events -->
+			<!-- svelte-ignore a11y-no-static-element-interactions -->
 			<div
 				class="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer stroke-slate-400 hover:stroke-slate-200"
 				on:click={() => (show_password = !show_password)}

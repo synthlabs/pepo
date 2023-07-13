@@ -28,7 +28,7 @@ dependencies:
     version: 2.2.0
   tauri-plugin-window-state-api:
     specifier: github:tauri-apps/tauri-plugin-window-state#v1
-    version: github.com/tauri-apps/tauri-plugin-window-state/ec0bddd3774ca60896fd03f8cd93ef77db162047
+    version: github.com/tauri-apps/tauri-plugin-window-state/347c792535d2623fc21f66590d06f4c8dadd85ba
   theme-change:
     specifier: ^2.5.0
     version: 2.5.0
@@ -49,6 +49,9 @@ devDependencies:
   '@sveltejs/kit':
     specifier: ^1.22.0
     version: 1.22.0(svelte@4.0.4)(vite@4.3.9)
+  '@tailwindcss/nesting':
+    specifier: 0.0.0-insiders.565cd3e
+    version: 0.0.0-insiders.565cd3e(postcss@8.4.24)
   '@types/uuid':
     specifier: ^9.0.2
     version: 9.0.2
@@ -76,6 +79,9 @@ devDependencies:
   postcss:
     specifier: ^8.4.24
     version: 8.4.24
+  postcss-import:
+    specifier: ^15.1.0
+    version: 15.1.0(postcss@8.4.24)
   prettier:
     specifier: ^2.8.8
     version: 2.8.8
@@ -682,6 +688,15 @@ packages:
       vitefu: 0.2.4(vite@4.3.9)
     transitivePeerDependencies:
       - supports-color
+    dev: true
+
+  /@tailwindcss/nesting@0.0.0-insiders.565cd3e(postcss@8.4.24):
+    resolution: {integrity: sha512-WhHoFBx19TnH/c+xLwT/sxei6+4RpdfiyG3MYXfmLaMsADmVqBkF7B6lDalgZD9YdM459MF7DtxVbWkOrV7IaQ==}
+    peerDependencies:
+      postcss: ^8.2.15
+    dependencies:
+      postcss: 8.4.24
+      postcss-nested: 5.0.6(postcss@8.4.24)
     dev: true
 
   /@tauri-apps/api@1.4.0:
@@ -2485,6 +2500,16 @@ packages:
       yaml: 2.3.1
     dev: true
 
+  /postcss-nested@5.0.6(postcss@8.4.24):
+    resolution: {integrity: sha512-rKqm2Fk0KbA8Vt3AdGN0FB9OBOMDVajMG6ZCf/GoHgdxUJ4sBFp0A/uMIRm+MJUdo33YXEtjqIz8u7DAp8B7DA==}
+    engines: {node: '>=12.0'}
+    peerDependencies:
+      postcss: ^8.2.14
+    dependencies:
+      postcss: 8.4.24
+      postcss-selector-parser: 6.0.13
+    dev: true
+
   /postcss-nested@6.0.1(postcss@8.4.24):
     resolution: {integrity: sha512-mEp4xPMi5bSWiMbsgoPfcP74lsWLHkQbZc3sY+jWYd65CUwXrUaTp0fmNpa01ZcETKlIgUdFN/MpS2xZtqL9dQ==}
     engines: {node: '>=12.0'}
@@ -3213,8 +3238,8 @@ packages:
     engines: {node: '>=10'}
     dev: true
 
-  github.com/tauri-apps/tauri-plugin-window-state/ec0bddd3774ca60896fd03f8cd93ef77db162047:
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-window-state/tar.gz/ec0bddd3774ca60896fd03f8cd93ef77db162047}
+  github.com/tauri-apps/tauri-plugin-window-state/347c792535d2623fc21f66590d06f4c8dadd85ba:
+    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-window-state/tar.gz/347c792535d2623fc21f66590d06f4c8dadd85ba}
     name: tauri-plugin-window-state-api
     version: 0.0.0
     dependencies:

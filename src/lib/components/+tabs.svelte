@@ -43,6 +43,18 @@
 		modal.close();
 	}
 
+	function closeTab(name: string) {
+		$channelCache.delete(name);
+		channelCache.set($channelCache);
+		console.log(`closed ${name} tab - cache ${Array.from($channelCache)}`);
+
+		// TODO: if we're on the tab they just closed, we should go to the next tab
+	}
+
+	function clickTab(name: string) {
+		goto(`/chat/${name}`);
+	}
+
 	function generateBorders(channels: string[], current: string): Boolean[] {
 		const size = channels.length;
 		const borders: Boolean[] = new Array(size);
@@ -67,16 +79,37 @@
 
 <svelte:window on:keyup={handleEscape} />
 
+<!-- tabs placeholder for when they're hidden -->
+<div class="flex-row flex-grow items-end sm:hidden h-full gap-1" />
 <!-- tabs -->
-<div class="tabs h-full gap-1">
+<div class="flex-row flex-grow items-end xxs:tabs hidden h-full gap-1">
 	{#each channels as name, i}
 		<!-- tab -->
+		<!-- svelte-ignore a11y-no-static-element-interactions -->
 		<div
 			class="tab tab-lifted ellipsis"
 			class:tab-active={name === $page.params.channel}
 			class:tab-border={borders[i]}
+			on:click={() => clickTab(name)}
 		>
-			<a class="" href="/chat/{name}">{name}</a>
+			<a on:click|preventDefault|stopPropagation={() => clickTab(name)} href="/chat/{name}"
+				>{name}</a
+			>
+			<!-- svelte-ignore a11y-no-static-element-interactions -->
+			<div
+				on:click|stopPropagation={(e) => closeTab(name)}
+				class="absolute inset-y-0 right-0 flex items-center pr-2 cursor-pointer"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke-width="2"
+					class="w-4 h-4 stroke-slate-500 hover:stroke-slate-300"
+				>
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</div>
 		</div>
 	{/each}
 	<button
@@ -87,15 +120,10 @@
 			xmlns="http://www.w3.org/2000/svg"
 			fill="none"
 			viewBox="0 0 24 24"
-			stroke-width="1.5"
-			stroke="currentColor"
-			class="w-6 h-6"
+			stroke-width="2"
+			class="w-5 h-5 stroke-slate-400 hover:stroke-slate-300"
 		>
-			<path
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
-			/>
+			<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m6-6H6" />
 		</svg>
 	</button>
 </div>
@@ -115,13 +143,9 @@
 </dialog>
 
 <style lang="postcss">
-	.tabs {
-		@apply flex flex-row flex-grow flex-wrap items-end;
-	}
-
 	.ellipsis {
 		flex: 1;
-		min-width: 3.125rem;
+		min-width: 4rem;
 		/* or some value */
 	}
 	.ellipsis a {
@@ -140,7 +164,7 @@
 	}
 
 	.plus {
-		height: 2.5rem /* 32px */;
+		height: 2.25rem;
 		font-size: 0.875rem /* 14px */;
 		line-height: 1.25rem /* 20px */;
 		line-height: 2;
@@ -167,8 +191,6 @@
 		--tab-bg: hsl(var(--b1) / var(--tw-bg-opacity, 1));
 		--tab-border-color: hsl(var(--b3) / var(--tw-bg-opacity, 1));
 		color: var(--tab-color);
-		padding-left: var(--tab-padding, 1rem);
-		padding-right: var(--tab-padding, 1rem);
 		&.tab-active:not(.tab-disabled):not([disabled]) {
 			@apply border-base-content border-opacity-100 text-opacity-100;
 		}
@@ -201,8 +223,8 @@
 		border-top-left-radius: var(--tab-radius, 0.5rem);
 		border-top-right-radius: var(--tab-radius, 0.5rem);
 		border-bottom-color: var(--tab-border-color);
-		padding-left: var(--tab-padding, 1rem);
-		padding-right: var(--tab-padding, 1rem);
+		padding-left: 1rem;
+		padding-right: 2.05rem;
 		padding-top: var(--tab-border, 1px);
 		&.tab-active:not(.tab-disabled):not([disabled]) {
 			background-color: var(--tab-bg);
@@ -210,8 +232,8 @@
 			border-left-color: var(--tab-border-color);
 			border-right-color: var(--tab-border-color);
 			border-top-color: var(--tab-border-color);
-			padding-left: calc(var(--tab-padding, 1rem) - var(--tab-border, 1px));
-			padding-right: calc(var(--tab-padding, 1rem) - var(--tab-border, 1px));
+			padding-left: calc(1rem - var(--tab-border, 1px));
+			padding-right: calc(2.05rem - var(--tab-border, 1px));
 			padding-bottom: var(--tab-border, 1px);
 			padding-top: 0;
 			&:before,
