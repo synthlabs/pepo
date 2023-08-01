@@ -19,15 +19,11 @@ export class Client {
 		this._handlerFns = new Map<string, MessageHandlerFn>();
 		this._joinedChans = new Set<string>();
 		this._subbedChans = new Set<string>();
+
+		this.listeners();
 	}
 
-	set token(token: TwitchToken) {
-		Logger.debug('token updated');
-
-		this._token = token;
-		const authProvider = new StaticAuthProvider(this._token.client_id, this._token.oauth_token);
-		this._twurpleClient = new ChatClient({ authProvider });
-
+	private listeners = () => {
 		this._twurpleClient.connect().then(() => {
 			Logger.info('connected to chat');
 		});
@@ -40,6 +36,16 @@ export class Client {
 		this._twurpleClient.onPart((channel, user) => {
 			Logger.debug(`parted ${channel} as ${user}`);
 		});
+	}
+
+	set token(token: TwitchToken) {
+		Logger.debug('token updated');
+
+		this._token = token;
+		const authProvider = new StaticAuthProvider(this._token.client_id, this._token.oauth_token);
+		this._twurpleClient = new ChatClient({ authProvider });
+
+		this.listeners();
 	}
 
 	private handler = (channel: string, user: string, text: string, msg: TwitchPrivateMessage) => {

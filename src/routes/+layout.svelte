@@ -19,32 +19,19 @@
 
 	$: if ($token) {
 		Logger.debug('token updated: ', $token);
-		$chatClient.token = $token;
+		if (isValid($token)) {
+			$chatClient.token = $token;
+		}
 	}
 
 	$: Logger.debug('user: ', $user);
 
 	onMount(() => {
-		if (!$token || !isValid($token)) {
+		if (!isValid($token)) {
 			Logger.warn('no valid token');
-			goto('/settings');
 			return;
 		}
 		$chatClient.token = $token;
-	});
-
-	const freeRoutes = ['/', '/settings'];
-
-	beforeNavigate(({ type, to, cancel }) => {
-		Logger.debug(`nav type ${type}`);
-
-		const isLeaving = type === 'leave';
-		const isProtectedRoute = !freeRoutes.includes(to?.route.id ?? '');
-		if (!isLeaving && isProtectedRoute && !isValid($token)) {
-			Logger.warn('token is not valid anymore');
-			cancel();
-			goto('/settings');
-		}
 	});
 
 	function crossPlatformActionModifier(e: KeyboardEvent): Boolean {

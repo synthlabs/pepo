@@ -7,7 +7,8 @@
 	import { v4 as uuidv4 } from 'uuid';
 	import { GlobalEmoteCache } from '$lib/store/emotes';
 	import { chatClient } from '$lib/store/chat';
-	import { TwitchToken, isValid, token } from '$lib/store/token';
+	import { IsAnonUser, user } from '$lib/store/user';
+	import { isValid, token } from '$lib/store/token';
 	import Logger from '$lib/logger/log';
 	import Badges from '$lib/components/chat/+badges.svelte';
 	import * as types from '$lib/config/constants';
@@ -18,17 +19,12 @@
 	import { beforeNavigate, afterNavigate } from '$app/navigation';
 	import { channels as channelCache } from '$lib/store/channels';
 
+	const GREY_NAME_COLOR = '#6B7280';
+
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
 	let chatInput: HTMLInputElement;
-
-	const GREY_NAME_COLOR = '#6B7280';
-
-	interface user {
-		id: string;
-		name: string;
-		color: string;
-	}
+	let chatNameColor: string = GREY_NAME_COLOR;
 
 	interface message {
 		id: string;
@@ -41,23 +37,24 @@
 	let messages: message[] = [];
 
 	export let channel: string;
-	let currentUser: user;
 	let behavior: ScrollBehavior = 'auto';
 	let input = '';
 	let streamInfo: Promise<HelixStream | null> = new Promise((res) => res(null));
 
-	const toke = $token ? $token : new TwitchToken();
-
 	let authProvider: StaticAuthProvider;
 
 	let apiClient: ApiClient;
-	$: if (isValid(toke)) {
-		authProvider = new StaticAuthProvider(toke.client_id, toke.oauth_token);
+	$: if (isValid($token)) {
+		authProvider = new StaticAuthProvider($token.client_id, $token.oauth_token);
 		apiClient = new ApiClient({ authProvider });
 
 		Logger.debug('valid token');
 		streamInfo = getStream(channel);
 		init();
+
+		(async () => {
+			chatNameColor = (await apiClient.chat.getColorForUser($user.id)) ?? GREY_NAME_COLOR;
+		})();
 	}
 
 	onMount(() => {
@@ -162,24 +159,12 @@
 		}
 	});
 
-	$: if (isValid(toke)) {
-		apiClient.getTokenInfo().then(async (token) => {
-			let u: user = {
-				id: token.userId ?? uuidv4(),
-				name: token.userName ?? 'unknown',
-				color: GREY_NAME_COLOR
-			};
-			u.color = (await apiClient.chat.getColorForUser(u.id)) ?? u.color;
-			currentUser = u;
-		});
-	}
-
 	$: hasInput = input.length > 0;
 
 	const submitForm = (event: SubmitEvent) => {
 		let target = event.target as HTMLFormElement;
 
-		if (hasInput && currentUser) {
+		if (hasInput) {
 			$chatClient
 				.say(channel, input)
 				.catch(Logger.error)
@@ -199,9 +184,9 @@
 			msgHandler({
 				id: uuidv4(),
 				ts: new Date().toLocaleTimeString('en', { timeStyle: 'short' }),
-				username: currentUser.name,
+				username: $user.name,
 				messageParts: [part],
-				color: currentUser.color
+				color: chatNameColor
 			});
 		}
 	};
@@ -240,6 +225,8 @@
 		{:then stream}
 			{#if stream}
 				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">{stream.title}</div>
+			{:else if IsAnonUser($user)}
+				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Unknown</div>
 			{:else}
 				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Offline</div>
 			{/if}
@@ -303,6 +290,7 @@
 				<input
 					bind:value={input}
 					bind:this={chatInput}
+					disabled={IsAnonUser($user)}
 					use:keyRedirect
 					autofocus
 					type="text"

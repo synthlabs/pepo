@@ -87,7 +87,7 @@
 		<!-- tab -->
 		<!-- svelte-ignore a11y-no-static-element-interactions -->
 		<div
-			class="tab tab-lifted ellipsis"
+			class="tab tab-lifted ellipsis max-w-xs"
 			class:tab-active={name === $page.params.channel}
 			class:tab-border={borders[i]}
 			on:click={() => clickTab(name)}

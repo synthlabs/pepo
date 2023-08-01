@@ -28,4 +28,20 @@ export function NewUserFromHelix(u: HelixUser | null): User {
 	};
 }
 
-export const user = createWritableStore('user', {} as User);
+export function IsAnonUser(u: User): boolean {
+	return u.type === "anon"
+}
+
+const anonUser: User = {
+	id: "0000000",
+	name: "anonymous",
+	displayName: "Anonymous",
+	description: "Not logged in",
+	color: "",
+	profilePictureUrl: "",
+	type: "anon",
+	broadcasterType: "none",
+	creationDate: new Date()
+}
+
+export const user = createWritableStore('user', anonUser);
