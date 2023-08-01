@@ -44,11 +44,19 @@
 	}
 
 	function closeTab(name: string) {
+		// TODO: if we're on the tab they just closed, we should go to the next tab
+		let index = channels.indexOf(name) ?? 0;
+
 		$channelCache.delete(name);
 		channelCache.set($channelCache);
-		console.log(`closed ${name} tab - cache ${Array.from($channelCache)}`);
 
-		// TODO: if we're on the tab they just closed, we should go to the next tab
+		const redirect = channels[Math.min(index, channels.length - 1)];
+		console.log(`closed ${name} tab - cache ${Array.from($channelCache)} - redirect ${redirect}`);
+		if (redirect) {
+			goto(`/chat/${redirect}`);
+		} else {
+			goto('/');
+		}
 	}
 
 	function clickTab(name: string) {
