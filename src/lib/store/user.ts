@@ -1,3 +1,4 @@
+import type { TwitchToken } from './token';
 import { createWritableStore } from './writeable';
 import type { HelixUser } from '@twurple/api';
 
@@ -28,20 +29,20 @@ export function NewUserFromHelix(u: HelixUser | null): User {
 	};
 }
 
-export function IsAnonUser(u: User): boolean {
-	return u.type === "anon"
+export function IsAnonUser(u: User, t: TwitchToken): boolean {
+	return u.type === 'anon' || !t.isValid;
 }
 
 const anonUser: User = {
-	id: "0000000",
-	name: "anonymous",
-	displayName: "Anonymous",
-	description: "Not logged in",
-	color: "",
-	profilePictureUrl: "",
-	type: "anon",
-	broadcasterType: "none",
+	id: '0000000',
+	name: 'anonymous',
+	displayName: 'Anonymous',
+	description: 'Not logged in',
+	color: '',
+	profilePictureUrl: '',
+	type: 'anon',
+	broadcasterType: 'none',
 	creationDate: new Date()
-}
+};
 
 export const user = createWritableStore('user', anonUser);

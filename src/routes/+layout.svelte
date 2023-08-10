@@ -4,7 +4,7 @@
 	import '../app.css';
 	import { user } from '$lib/store/user';
 	import { chatClient } from '$lib/store/chat';
-	import { isValid, token } from '$lib/store/token';
+	import { isValid, token, validate as validateToken } from '$lib/store/token';
 	import { channels as channelCache } from '$lib/store/channels';
 	import Logger from '$lib/logger/log';
 	import Nav from '$lib/components/+nav.svelte';
@@ -18,20 +18,30 @@
 	let inputNavInputReset: any;
 
 	$: if ($token) {
-		Logger.debug('token updated: ', $token);
-		if (isValid($token)) {
-			$chatClient.token = $token;
-		}
+		Logger.debug('token updated');
+		validateToken($token)
+			.then((t) => {
+				if (!isValid(t) && $token.isValid) {
+					$token.isValid = false;
+					Logger.warn('no valid token');
+					return;
+				}
+
+				if (isValid(t)) {
+					$chatClient.token = $token;
+				}
+			})
+			.catch(Logger.error);
 	}
 
 	$: Logger.debug('user: ', $user);
 
 	onMount(() => {
-		if (!isValid($token)) {
-			Logger.warn('no valid token');
-			return;
-		}
-		$chatClient.token = $token;
+		validateToken($token)
+			.then((t) => {
+				$token = t;
+			})
+			.catch(Logger.error);
 	});
 
 	function crossPlatformActionModifier(e: KeyboardEvent): Boolean {

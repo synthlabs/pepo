@@ -225,7 +225,7 @@
 		{:then stream}
 			{#if stream}
 				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">{stream.title}</div>
-			{:else if IsAnonUser($user)}
+			{:else if IsAnonUser($user, $token)}
 				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Unknown</div>
 			{:else}
 				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Offline</div>
@@ -290,7 +290,7 @@
 				<input
 					bind:value={input}
 					bind:this={chatInput}
-					disabled={IsAnonUser($user)}
+					disabled={IsAnonUser($user, $token)}
 					use:keyRedirect
 					autofocus
 					type="text"

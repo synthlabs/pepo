@@ -50,21 +50,22 @@ export class TwitchToken {
 		this.oauth_token = '';
 		this.raw = '';
 	}
-
-	public validate() {
-		return fetch('https://id.twitch.tv/oauth2/validate', {
-			method: 'GET',
-			headers: { Authorization: `OAuth ${this.oauth_token}` }
-		}).then((response) => {
-			this.isValid = response.status === StatusCodes.OK;
-			if (!this.isValid) {
-				return Promise.reject('invalid token');
-			}
-		});
-	}
 }
 
 export const token = createWritableStore('token', new TwitchToken());
+
+export async function validate(token: TwitchToken) {
+	try {
+		const response = await fetch('https://id.twitch.tv/oauth2/validate', {
+			method: 'GET',
+			headers: { Authorization: `OAuth ${token.oauth_token}` }
+		});
+		token.isValid = response.status === StatusCodes.OK;
+	} catch (e) {
+		token.isValid = false;
+	}
+	return token;
+}
 
 export function isValid(token: TwitchToken): boolean {
 	if (!token) return false;
