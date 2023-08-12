@@ -3,7 +3,7 @@
 	import { ApiClient } from '@twurple/api';
 
 	import Logger from '$lib/logger/log';
-	import { TwitchToken, token } from '$lib/store/token';
+	import { TwitchToken, token, validate as validateToken } from '$lib/store/token';
 	import { NewUserFromHelix, user } from '$lib/store/user';
 	import ShowBadge from '$resources/show.svelte';
 	import HideBadge from '$resources/hide.svelte';
@@ -40,19 +40,18 @@
 
 		let toke = new TwitchToken(inputStr);
 
-		toke
-			.validate()
-			.then(() => {
+		validateToken(toke)
+			.then((t) => {
 				Logger.debug('token validated');
-				token.set(toke);
+				token.set(t);
 				success = true;
 				error = false;
 
-				const authProvider = new StaticAuthProvider(toke.client_id, toke.oauth_token);
+				const authProvider = new StaticAuthProvider(t.client_id, t.oauth_token);
 				const apiClient = new ApiClient({ authProvider });
 
 				apiClient.users
-					.getUserById(toke.user_id)
+					.getUserById(t.user_id)
 					.then((u) => {
 						Logger.debug('got user');
 						user.set(NewUserFromHelix(u));
