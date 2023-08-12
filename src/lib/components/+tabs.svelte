@@ -88,9 +88,9 @@
 <svelte:window on:keyup={handleEscape} />
 
 <!-- tabs placeholder for when they're hidden -->
-<div class="flex-row flex-grow items-end sm:hidden h-full gap-1" />
+<div class="flex-row flex-grow items-end xs:hidden h-full gap-1" />
 <!-- tabs -->
-<div class="flex-row flex-grow items-end xxs:tabs hidden h-full gap-1">
+<div class="flex-row flex-grow items-end xs:tabs hidden h-full gap-1">
 	{#each channels as name, i}
 		<!-- tab -->
 		<!-- svelte-ignore a11y-no-static-element-interactions -->
