@@ -292,7 +292,6 @@
 					bind:this={chatInput}
 					disabled={IsAnonUser($user, $token)}
 					use:keyRedirect
-					autofocus
 					type="text"
 					class="w-full input input-bordered focus:input-primary hover:input-primary"
 					style="padding-right: 3rem;"
