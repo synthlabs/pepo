@@ -187,7 +187,7 @@
 	}
 
 	.tab {
-		@apply relative inline-flex cursor-pointer select-none flex-wrap items-center justify-center text-center;
+		@apply relative inline-flex cursor-pointer select-none flex-wrap items-center justify-start text-start;
 		@apply h-9 text-sm leading-loose;
 		--tab-padding: 1rem;
 
@@ -211,17 +211,6 @@
 			&.tab-lifted {
 				border-bottom-right-radius: var(--tab-radius, 0.5rem);
 				border-bottom-left-radius: var(--tab-radius, 0.5rem);
-			}
-		}
-		/* disabled */
-		&-disabled,
-		&[disabled] {
-			@apply text-base-content text-opacity-20 cursor-not-allowed;
-		}
-		@media (hover: hover) {
-			&[disabled],
-			&[disabled]:hover {
-				@apply text-base-content text-opacity-20 cursor-not-allowed;
 			}
 		}
 	}

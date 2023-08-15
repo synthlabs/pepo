@@ -68,22 +68,10 @@
 		messages = [];
 	});
 
-	function isIterable(input: any): boolean {
-		if (input === null || input === undefined) {
-			return false;
-		}
-
-		return typeof input[Symbol.iterator] === 'function';
-	}
-
 	afterNavigate((_) => {
 		Logger.debug(`navigated - subscribing to ${channel}`);
 
-		if (!isIterable($channelCache)) {
-			channelCache.set(new Set([channel]));
-		} else {
-			$channelCache = $channelCache.add(channel);
-		}
+		$channelCache = $channelCache.add(channel);
 
 		$chatClient.sub(channel, twitchMsgHandler);
 		Logger.debug('clearing msg cache');

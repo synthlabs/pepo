@@ -5,14 +5,18 @@
 	import { user } from '$lib/store/user';
 	import { chatClient } from '$lib/store/chat';
 	import { isValid, token, validate as validateToken } from '$lib/store/token';
-	import { channels as channelCache } from '$lib/store/channels';
+	import {
+		channels as channelCache,
+		Decode as ccDecode,
+		Encode as ccEncode
+	} from '$lib/store/channels';
 	import Logger from '$lib/logger/log';
 	import Nav from '$lib/components/+nav.svelte';
 	import InputNav from '$lib/components/+inputnav.svelte';
 
 	user.useLocalStorage();
 	token.useLocalStorage();
-	channelCache.useLocalStorage();
+	channelCache.useLocalStorage(ccDecode, ccEncode);
 
 	let modal: HTMLDialogElement;
 	let inputNavInputReset: any;
