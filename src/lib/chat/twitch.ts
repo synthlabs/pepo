@@ -36,7 +36,7 @@ export class Client {
 		this._twurpleClient.onPart((channel, user) => {
 			Logger.debug(`parted ${channel} as ${user}`);
 		});
-	}
+	};
 
 	set token(token: TwitchToken) {
 		Logger.debug('token updated');

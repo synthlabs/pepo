@@ -25,6 +25,7 @@
 	let autoscroll: boolean;
 	let chatInput: HTMLInputElement;
 	let chatNameColor: string = GREY_NAME_COLOR;
+	let messageLimit = 1000;
 
 	interface message {
 		id: string;
@@ -131,7 +132,11 @@
 	}
 
 	function msgHandler(msg: message) {
-		messages = [...messages, msg];
+		let newMsgs = [...messages, msg];
+
+		if (newMsgs.length > messageLimit) newMsgs.shift();
+
+		messages = newMsgs;
 	}
 
 	beforeUpdate(() => {
