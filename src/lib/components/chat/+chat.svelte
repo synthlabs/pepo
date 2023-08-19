@@ -6,6 +6,7 @@
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
 	import { GlobalEmoteCache } from '$lib/store/emotes';
+	import { GlobalBadgeCache } from '$lib/store/badges';
 	import { chatClient } from '$lib/store/chat';
 	import { IsAnonUser, user } from '$lib/store/user';
 	import { isValid, token } from '$lib/store/token';
@@ -97,8 +98,7 @@
 			Logger.error('failed to get stream info', stream);
 			return;
 		}
-
-		GlobalEmoteCache.UseClient(apiClient);
+		GlobalBadgeCache.LoadChannel(stream.userId);
 		GlobalEmoteCache.LoadChannel(stream.userId);
 	}
 
@@ -224,8 +224,8 @@
 					{:else if m.type == types.EMOTE_TOKEN}
 						{#if GlobalEmoteCache.Has(m.id)}
 							<img
-								class="inline max-w-none"
-								src={GlobalEmoteCache.passthroughGet(m.id)?.getStaticImageUrl('1.0', 'dark')}
+								class="inline max-w-none h-6"
+								src={GlobalEmoteCache.passthroughGet(m.id)?.getStaticImageUrl('3.0', 'dark')}
 								alt={m.name}
 							/>
 						{:else}

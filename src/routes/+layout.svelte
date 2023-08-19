@@ -13,6 +13,10 @@
 	import Logger from '$lib/logger/log';
 	import Nav from '$lib/components/+nav.svelte';
 	import InputNav from '$lib/components/+inputnav.svelte';
+	import { StaticAuthProvider } from '@twurple/auth';
+	import { ApiClient } from '@twurple/api';
+	import { GlobalBadgeCache } from '$lib/store/badges';
+	import { GlobalEmoteCache } from '$lib/store/emotes';
 
 	user.useLocalStorage();
 	token.useLocalStorage();
@@ -33,6 +37,11 @@
 
 				if (isValid(t)) {
 					$chatClient.token = $token;
+					const authProvider = new StaticAuthProvider($token.client_id, $token.oauth_token);
+					const apiClient = new ApiClient({ authProvider });
+
+					GlobalBadgeCache.UseClient(apiClient);
+					GlobalEmoteCache.UseClient(apiClient);
 				}
 			})
 			.catch(Logger.error);

@@ -34,6 +34,8 @@ export class EmoteCache {
 		return this.store.has(id);
 	}
 
+	// TODO: HasChannel - to guard excess LoadChannel's
+
 	Get(id: string): Emote {
 		let emote = this.store.get(id);
 		if (!emote) emote = { id: 'invalid', name: id };
