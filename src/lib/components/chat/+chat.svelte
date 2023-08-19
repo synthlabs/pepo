@@ -24,7 +24,6 @@
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
 	let chatInput: HTMLInputElement;
-	let chatNameColor: string = GREY_NAME_COLOR;
 	let messageLimit = 1000;
 
 	interface message {
@@ -52,10 +51,6 @@
 		Logger.debug('valid token');
 		streamInfo = getStream(channel);
 		init();
-
-		(async () => {
-			chatNameColor = (await apiClient.chat.getColorForUser($user.id)) ?? GREY_NAME_COLOR;
-		})();
 	}
 
 	onMount(() => {
@@ -167,20 +162,6 @@
 						target.reset();
 					}
 				});
-
-			let part: ParsedMessageTextPart = {
-				type: 'text',
-				text: input,
-				position: 0,
-				length: input.length
-			};
-			msgHandler({
-				id: uuidv4(),
-				ts: new Date().toLocaleTimeString('en', { timeStyle: 'short' }),
-				username: $user.name,
-				messageParts: [part],
-				color: chatNameColor
-			});
 		}
 	};
 
