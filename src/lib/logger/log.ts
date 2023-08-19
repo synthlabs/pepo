@@ -1,6 +1,7 @@
-import { PUBLIC_DEBUG_LOGS } from '$env/static/public';
+import { PUBLIC_DEBUG_LOGS, PUBLIC_TRACE_LOGS } from '$env/static/public';
 
 const debugLogs: boolean = JSON.parse(PUBLIC_DEBUG_LOGS);
+const traceLogs: boolean = JSON.parse(PUBLIC_TRACE_LOGS);
 
 export class Logger {
 	info(...args: unknown[]) {
@@ -18,6 +19,11 @@ export class Logger {
 	debug(...args: unknown[]) {
 		if (!debugLogs) return;
 		const message = [...generatePrefix('DEBUG', '#D926A9'), ...args];
+		console.log(...message);
+	}
+	trace(...args: unknown[]) {
+		if (!traceLogs) return;
+		const message = [...generatePrefix('TRACE', '#d95c26'), ...args];
 		console.log(...message);
 	}
 }

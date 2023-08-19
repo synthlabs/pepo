@@ -13,7 +13,7 @@ export class EmoteCache {
 	store = new Map<string, Emote>();
 
 	async UseClient(client: ApiClient) {
-		Logger.debug('setting api client');
+		Logger.debug('[EmoteCache] setting api client');
 		this.client = client;
 
 		const globalEmotes = await this.client.chat.getGlobalEmotes();
@@ -21,7 +21,7 @@ export class EmoteCache {
 	}
 
 	async LoadChannel(id: string) {
-		Logger.debug(`loading channel: ${id}`);
+		Logger.debug(`[EmoteCache] loading channel: ${id}`);
 		const channelEmotes = await this.client.chat.getChannelEmotes(id);
 		channelEmotes.map((e) => this.store.set(e.id, e));
 	}

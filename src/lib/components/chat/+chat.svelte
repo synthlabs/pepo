@@ -43,6 +43,7 @@
 
 	let authProvider: StaticAuthProvider;
 
+	// TODO: move this into a global client like the chat client
 	let apiClient: ApiClient;
 	$: if (isValid($token)) {
 		authProvider = new StaticAuthProvider($token.client_id, $token.oauth_token);

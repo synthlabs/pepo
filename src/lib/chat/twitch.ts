@@ -52,7 +52,7 @@ export class Client {
 		const chan = Sanitize(channel);
 
 		if (!this._subbedChans.has(chan)) {
-			Logger.debug(`[UNSUBBED] skipping msg for ${chan}`);
+			Logger.trace(`[UNSUBBED] skipping msg for ${chan}`);
 			return;
 		}
 
