@@ -19,6 +19,7 @@
 	} from '@twurple/common/lib/emotes/ParsedMessagePart';
 	import { beforeNavigate, afterNavigate } from '$app/navigation';
 	import { channels as channelCache } from '$lib/store/channels';
+	import { getTwitchEmoteURL } from '$lib/util/twitch';
 
 	const GREY_NAME_COLOR = '#6B7280';
 
@@ -222,15 +223,21 @@
 					{#if m.type == types.TEXT_TOKEN}
 						{m.text}
 					{:else if m.type == types.EMOTE_TOKEN}
-						{#if GlobalEmoteCache.Has(m.id)}
-							<img
-								class="inline max-w-none h-6"
-								src={GlobalEmoteCache.passthroughGet(m.id)?.getStaticImageUrl('3.0', 'dark')}
-								alt={m.name}
-							/>
-						{:else}
-							[{m.name}]
-						{/if}
+						<div class="tooltip" data-tip={m.name}>
+							{#if GlobalEmoteCache.Has(m.id)}
+								<img
+									class="inline max-w-none h-6"
+									src={GlobalEmoteCache.passthroughGet(m.id)?.getStaticImageUrl('3.0', 'dark')}
+									alt={m.name}
+								/>
+							{:else}
+								<img
+									class="inline max-w-none h-6"
+									src={getTwitchEmoteURL(m.id, 3.0)}
+									alt={m.name}
+								/>
+							{/if}
+						</div>
 					{:else if m.type == types.CHEER_TOKEN}
 						[[{m.name}]]
 					{/if}
