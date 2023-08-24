@@ -23,8 +23,8 @@ This is just a fun passion project for me so this isn't a guarantee but moreso h
 - [x] Basic badge support for subs, mods, and vips
 - [x] Username color support
 - [x] Ability to send messages
-- [ ] Support real badges
-- [ ] Core Twitch emotes
+- [x] Support real badges
+- [x] Core Twitch emotes
 - [ ] Real login flow
 - [ ] 3rd party emotes
 

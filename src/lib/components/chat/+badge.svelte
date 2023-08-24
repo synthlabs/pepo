@@ -10,13 +10,19 @@
 
 	export let id: string;
 	export let version: string;
+	export let channel: string;
 
-	Logger.trace(`id ${id} version ${version}`);
+	Logger.trace(`channel ${channel} id ${id} version ${version}`);
 
 	let badge: HelixChatBadgeVersion | undefined;
 
-	if (GlobalBadgeCache.Has(id)) {
-		badge = GlobalBadgeCache.Get(id)?.GetVersion(version) ?? undefined;
+	if (GlobalBadgeCache.ScopedHas(channel, id)) {
+		Logger.trace('scoped badge');
+		// we have a scoped version of this badge
+		badge = GlobalBadgeCache.ScopedGet(channel, id)?.GetVersion(version);
+	} else {
+		// otherwise get the global badge
+		badge = GlobalBadgeCache.Get(id)?.GetVersion(version);
 	}
 
 	Logger.trace(badge);

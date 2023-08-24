@@ -4,6 +4,8 @@
 	import Logger from '$lib/logger/log';
 
 	export let message: TwitchPrivateMessage | null = null;
+	export let channel: string;
+
 	let badges: Map<string, string> = new Map<string, string>();
 
 	$: if (badges) {
@@ -19,6 +21,6 @@
 
 <span class="inline-flex whitespace-nowrap items-center align-middle gap-1">
 	{#each [...badges] as [id, version]}
-		<Badge {id} {version} />
+		<Badge {channel} {id} {version} />
 	{/each}
 </span>

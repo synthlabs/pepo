@@ -23,10 +23,13 @@ export class Badge {
 	};
 }
 
+declare type Store = Map<string, Badge>;
+
 // TODO: make this cache pattern generic
 export class BadgeCache {
 	client!: ApiClient;
-	store = new Map<string, Badge>();
+	globalStore: Store = new Map<string, Badge>();
+	scopedStore = new Map<string, Store>();
 
 	async UseClient(client: ApiClient) {
 		Logger.debug('[BadgeCache] setting api client');
@@ -38,28 +41,57 @@ export class BadgeCache {
 		});
 	}
 
-	async LoadChannel(id: string) {
-		Logger.debug(`[BadgeCache] loading channel: ${id}`);
+	async LoadChannel(channel: string, id: string) {
+		Logger.debug(`[BadgeCache] loading channel: ${channel}/${id}`);
 
 		const badges = await this.client.chat.getChannelBadges(id);
 
 		badges.map(this.parseBadgeSet).map((b) => {
-			this.Set(b.id, b);
+			Logger.trace(b.id);
+			this.ScopedSet(channel, b.id, b);
 		});
 	}
 
 	Set(id: string, badge: Badge) {
-		this.store.set(id, badge);
+		this.globalStore.set(id, badge);
 	}
 
 	Has(id: string): boolean {
-		return this.store.has(id);
+		return this.globalStore.has(id);
 	}
 
-	// TODO: HasChannel - to guard excess LoadChannel's
-
 	Get(id: string): Badge | undefined {
-		return this.store.get(id);
+		return this.globalStore.get(id);
+	}
+
+	ScopedSet(channel: string, id: string, badge: Badge) {
+		if (!this.scopedStore.has(channel)) {
+			Logger.trace('setting store');
+			this.scopedStore.set(channel, new Map<string, Badge>());
+		}
+		// we guarentee the scope exists above
+		this.scopedStore.get(channel)?.set(id, badge);
+	}
+
+	ScopedHas(channel: string, id: string): boolean {
+		return this.scopedStore.get(channel)?.has(id) ?? false;
+	}
+
+	ScopedGet(channel: string, id: string): Badge | undefined {
+		// if we don't even have this scope, see if the global cache has it
+		if (!this.scopedStore.has(channel)) return this.Get(id);
+
+		// we have it in our scoped store
+		if (this.scopedStore.get(channel)?.has(id)) {
+			return this.scopedStore.get(channel)?.get(id) ?? undefined;
+		}
+
+		// we didn't find it scoped so see if the global scope has it
+		return this.Get(id);
+	}
+
+	HasScope(channel: string): boolean {
+		return this.scopedStore.has(channel);
 	}
 
 	private parseBadgeSet(badgeSet: HelixChatBadgeSet): Badge {

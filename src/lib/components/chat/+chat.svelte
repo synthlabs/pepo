@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { beforeUpdate, afterUpdate, onDestroy, onMount } from 'svelte';
 	import { StaticAuthProvider } from '@twurple/auth';
-	import { ApiClient, HelixStream } from '@twurple/api';
+	import { ApiClient, HelixStream, HelixUser } from '@twurple/api';
 	import { parseChatMessage } from '@twurple/common';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
@@ -20,11 +20,13 @@
 	import { beforeNavigate, afterNavigate } from '$app/navigation';
 	import { channels as channelCache } from '$lib/store/channels';
 	import { getTwitchEmoteURL } from '$lib/util/twitch';
+	import { BrowserCache } from '$lib/chat/cache';
 
 	const GREY_NAME_COLOR = '#6B7280';
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
+	let navigationDebounce: boolean;
 	let chatInput: HTMLInputElement;
 	let messageLimit = 1000;
 
@@ -44,6 +46,7 @@
 	let streamInfo: Promise<HelixStream | null> = new Promise((res) => res(null));
 
 	let authProvider: StaticAuthProvider;
+	let messageCache: BrowserCache<message>;
 
 	// TODO: move this into a global client like the chat client
 	let apiClient: ApiClient;
@@ -57,29 +60,49 @@
 	}
 
 	onMount(() => {
+		messageCache = new BrowserCache();
 		Logger.debug('mounted');
 	});
 
 	beforeNavigate((_) => {
 		Logger.debug(`navigating - unsubscribing from ${channel}`);
 		$chatClient.unsub(channel);
-		Logger.debug('clearing msg cache');
+
+		Logger.debug(`navigating - persisting msg cache for ${channel}`);
+		messageCache.set(channel, [...messages]);
 		messages = [];
 	});
 
 	afterNavigate((_) => {
-		Logger.debug(`navigated - subscribing to ${channel}`);
-
+		Logger.debug(`navigated - ${channel}`);
 		$channelCache = $channelCache.add(channel);
 
+		Logger.debug(`navigated - loading msg cache for ${channel}`);
+		messages = messageCache.get(channel);
+
+		Logger.debug(`navigated - subscribing to ${channel}`);
 		$chatClient.sub(channel, twitchMsgHandler);
-		Logger.debug('clearing msg cache');
-		messages = [];
+
+		navigationDebounce = true;
+		Logger.trace('navigation debounce START');
+		setTimeout(() => {
+			Logger.trace('navigation debounce FINISH');
+			navigationDebounce = false;
+		}, 2000);
 	});
 
 	onDestroy(() => {
 		Logger.debug('destroyed');
 	});
+
+	async function getUserByName(userName: string): Promise<HelixUser | null> {
+		const user = await apiClient.users.getUserByName(userName);
+		if (!user) {
+			Logger.debug('failed to get user');
+			return null;
+		}
+		return user;
+	}
 
 	async function getStream(userName: string): Promise<HelixStream | null> {
 		const user = await apiClient.users.getUserByName(userName);
@@ -87,20 +110,20 @@
 			Logger.debug('failed to get user');
 			return null;
 		}
-
 		return await user.getStream();
 	}
 
 	async function init() {
 		Logger.debug('init');
 
-		let stream = await streamInfo;
-		if (!stream) {
-			Logger.error('failed to get stream info', stream);
+		let user = await getUserByName(channel);
+		if (!user) {
+			Logger.error('failed to get user info', channel);
 			return;
 		}
-		GlobalBadgeCache.LoadChannel(stream.userId);
-		GlobalEmoteCache.LoadChannel(stream.userId);
+
+		GlobalBadgeCache.LoadChannel(channel, user.id);
+		GlobalEmoteCache.LoadChannel(user.id);
 	}
 
 	function uptime(stream: HelixStream): number {
@@ -137,6 +160,10 @@
 	}
 
 	beforeUpdate(() => {
+		if (navigationDebounce) {
+			autoscroll = true;
+			return;
+		}
 		// determine whether we should auto-scroll
 		// once the DOM is updated...
 		autoscroll = div && div.offsetHeight + div.scrollTop > div.scrollHeight - 20;
@@ -215,7 +242,7 @@
 				class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1 inline-block align-middle w-full"
 			>
 				<span class="text-xs text-gray-500 whitespace-nowrap">{msg.ts}</span>
-				<Badges message={msg.raw} />
+				<Badges message={msg.raw} {channel} />
 				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
 					>{msg.username}</span
 				>:
