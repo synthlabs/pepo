@@ -24,11 +24,20 @@
 
 	const GREY_NAME_COLOR = '#6B7280';
 
+	export let channel: string;
+
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
 	let autoscrollDebounce: boolean;
 	let chatInput: HTMLInputElement;
+	let authProvider: StaticAuthProvider;
+	let messageCache: BrowserCache<message>;
+
 	let messageLimit = 1000;
+	let behavior: ScrollBehavior = 'auto';
+	let input = '';
+	let streamInfo: Promise<HelixStream | null> = new Promise((res) => res(null));
+	let index = 0;
 
 	interface message {
 		id: string;
@@ -36,17 +45,10 @@
 		username: string;
 		messageParts: BasicParsedMessagePart[];
 		color: string;
+		index: number;
 		raw?: TwitchPrivateMessage;
 	}
 	let messages: message[] = [];
-
-	export let channel: string;
-	let behavior: ScrollBehavior = 'auto';
-	let input = '';
-	let streamInfo: Promise<HelixStream | null> = new Promise((res) => res(null));
-
-	let authProvider: StaticAuthProvider;
-	let messageCache: BrowserCache<message>;
 
 	// TODO: move this into a global client like the chat client
 	let apiClient: ApiClient;
@@ -59,9 +61,15 @@
 		init();
 	}
 
+	$: hasInput = input.length > 0;
+
 	onMount(() => {
 		messageCache = new BrowserCache();
 		Logger.debug('mounted');
+	});
+
+	onDestroy(() => {
+		Logger.debug('destroyed');
 	});
 
 	beforeNavigate((_) => {
@@ -86,74 +94,6 @@
 		autoscrollDebounceFn();
 	});
 
-	onDestroy(() => {
-		Logger.debug('destroyed');
-	});
-
-	async function getUserByName(userName: string): Promise<HelixUser | null> {
-		const user = await apiClient.users.getUserByName(userName);
-		if (!user) {
-			Logger.debug('failed to get user');
-			return null;
-		}
-		return user;
-	}
-
-	async function getStream(userName: string): Promise<HelixStream | null> {
-		const user = await apiClient.users.getUserByName(userName);
-		if (!user) {
-			Logger.debug('failed to get user');
-			return null;
-		}
-		return await user.getStream();
-	}
-
-	async function init() {
-		Logger.debug('init');
-
-		let user = await getUserByName(channel);
-		if (!user) {
-			Logger.error('failed to get user info', channel);
-			return;
-		}
-
-		GlobalBadgeCache.LoadChannel(channel, user.id);
-		GlobalEmoteCache.LoadChannel(user.id);
-	}
-
-	function uptime(stream: HelixStream): number {
-		return (Date.now() - stream.startDate.getTime()) / 1000;
-	}
-
-	function formatTime(seconds: number) {
-		const h = Math.floor(seconds / 3600);
-		const m = Math.floor((seconds % 3600) / 60);
-		const s = Math.round(seconds % 60);
-		return [h, m > 9 ? m : h ? '0' + m : m || '0', s > 9 ? s : '0' + s].filter(Boolean).join(':');
-	}
-
-	function twitchMsgHandler(text: string, msg: TwitchPrivateMessage) {
-		let m: message;
-
-		m = {
-			id: msg.id,
-			ts: msg.date.toLocaleTimeString('en', { timeStyle: 'short' }),
-			username: msg.userInfo.displayName,
-			messageParts: parseChatMessage(text, msg.emoteOffsets),
-			color: msg.userInfo.color ?? GREY_NAME_COLOR,
-			raw: msg
-		};
-		msgHandler(m);
-	}
-
-	function msgHandler(msg: message) {
-		let newMsgs = [...messages, msg];
-
-		if (newMsgs.length > messageLimit) newMsgs.shift();
-
-		messages = newMsgs;
-	}
-
 	beforeUpdate(() => {
 		if (autoscrollDebounce) {
 			autoscroll = true;
@@ -171,7 +111,70 @@
 		}
 	});
 
-	$: hasInput = input.length > 0;
+	const init = async () => {
+		Logger.debug('init');
+
+		let user = await getUserByName(channel);
+		if (!user) {
+			Logger.error('failed to get user info', channel);
+			return;
+		}
+
+		GlobalBadgeCache.LoadChannel(channel, user.id);
+		GlobalEmoteCache.LoadChannel(user.id);
+	};
+
+	const getUserByName = async (userName: string): Promise<HelixUser | null> => {
+		const user = await apiClient.users.getUserByName(userName);
+		if (!user) {
+			Logger.debug('failed to get user');
+			return null;
+		}
+		return user;
+	};
+
+	const getStream = async (userName: string): Promise<HelixStream | null> => {
+		const user = await apiClient.users.getUserByName(userName);
+		if (!user) {
+			Logger.debug('failed to get user');
+			return null;
+		}
+		return await user.getStream();
+	};
+
+	const uptime = (stream: HelixStream): number => {
+		return (Date.now() - stream.startDate.getTime()) / 1000;
+	};
+
+	const formatTime = (seconds: number) => {
+		const h = Math.floor(seconds / 3600);
+		const m = Math.floor((seconds % 3600) / 60);
+		const s = Math.round(seconds % 60);
+		return [h, m > 9 ? m : h ? '0' + m : m || '0', s > 9 ? s : '0' + s].filter(Boolean).join(':');
+	};
+
+	const twitchMsgHandler = (text: string, msg: TwitchPrivateMessage) => {
+		let m: message;
+
+		m = {
+			id: msg.id,
+			ts: msg.date.toLocaleTimeString('en', { timeStyle: 'short' }),
+			username: msg.userInfo.displayName,
+			messageParts: parseChatMessage(text, msg.emoteOffsets),
+			color: msg.userInfo.color ?? GREY_NAME_COLOR,
+			index: nextIndex(),
+			raw: msg
+		};
+		msgHandler(m);
+	};
+
+	const msgHandler = (msg: message) => {
+		let newMsgs = [...messages, msg];
+
+		if (newMsgs.length > messageLimit) newMsgs.shift();
+
+		messages = newMsgs;
+	};
 
 	const submitForm = (event: SubmitEvent) => {
 		let target = event.target as HTMLFormElement;
@@ -189,7 +192,7 @@
 		}
 	};
 
-	function keyRedirect(node: HTMLInputElement) {
+	const keyRedirect = (node: HTMLInputElement) => {
 		function handleKeydown(e: KeyboardEvent) {
 			switch (e.key.toLowerCase()) {
 				case 'escape':
@@ -211,7 +214,7 @@
 				window.removeEventListener('keydown', handleKeydown);
 			}
 		};
-	}
+	};
 
 	const autoscrollDebounceFn = () => {
 		autoscrollDebounce = true;
@@ -225,6 +228,20 @@
 	const pausedChatBtnAction = () => {
 		autoscrollDebounceFn();
 		div.scrollTo({ top: div.scrollHeight, left: 0, behavior });
+	};
+
+	const nextIndex = (): number => {
+		index = index + 1;
+		return index;
+	};
+
+	const evenOddClass = (x: number): string => {
+		//even:bg-base-100 odd:bg-base-200
+		//background-color: hsl(var(--b1) / var(--tw-bg-opacity))
+		if (x % 2 === 0) {
+			return 'background-color: hsl(212 18% 14%)';
+		}
+		return 'background-color: hsl(213 18% 12%)';
 	};
 </script>
 
@@ -248,7 +265,8 @@
 	<div class="flex-grow overflow-y-auto neg-horiz-p-2 text-sm" bind:this={div}>
 		{#each messages as msg (msg.id)}
 			<div
-				class="even:bg-base-100 odd:bg-base-200 pl-2 pr-2 pt-1 pb-1 inline-block align-middle w-full"
+				class="pl-2 pr-2 pt-1 pb-1 inline-block align-middle w-full"
+				style={evenOddClass(msg.index)}
 			>
 				<span class="text-xs text-gray-500 whitespace-nowrap">{msg.ts}</span>
 				<Badges message={msg.raw} {channel} />
