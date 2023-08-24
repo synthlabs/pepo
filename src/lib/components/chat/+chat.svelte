@@ -26,7 +26,7 @@
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean;
-	let navigationDebounce: boolean;
+	let autoscrollDebounce: boolean;
 	let chatInput: HTMLInputElement;
 	let messageLimit = 1000;
 
@@ -83,12 +83,7 @@
 		Logger.debug(`navigated - subscribing to ${channel}`);
 		$chatClient.sub(channel, twitchMsgHandler);
 
-		navigationDebounce = true;
-		Logger.trace('navigation debounce START');
-		setTimeout(() => {
-			Logger.trace('navigation debounce FINISH');
-			navigationDebounce = false;
-		}, 2000);
+		autoscrollDebounceFn();
 	});
 
 	onDestroy(() => {
@@ -160,7 +155,7 @@
 	}
 
 	beforeUpdate(() => {
-		if (navigationDebounce) {
+		if (autoscrollDebounce) {
 			autoscroll = true;
 			return;
 		}
@@ -217,6 +212,20 @@
 			}
 		};
 	}
+
+	const autoscrollDebounceFn = () => {
+		autoscrollDebounce = true;
+		Logger.trace('autoscroll debounce START');
+		setTimeout(() => {
+			Logger.trace('autoscroll debounce FINISH');
+			autoscrollDebounce = false;
+		}, 2000);
+	};
+
+	const pausedChatBtnAction = () => {
+		autoscrollDebounceFn();
+		div.scrollTo({ top: div.scrollHeight, left: 0, behavior });
+	};
 </script>
 
 <div class="flex flex-col flex-nowrap w-full h-full p-2">
@@ -276,7 +285,7 @@
 	<span class="flex items-center justify-center">
 		<!-- TODO: hide button first since there's a delay in the async scrollto -->
 		<button
-			on:click={() => div.scrollTo({ top: div.scrollHeight, left: 0, behavior })}
+			on:click={pausedChatBtnAction}
 			class:hidden={autoscroll}
 			class="absolute bottom-24 bg-slate-700 hover:bg-slate-600 p-2 rounded-lg items-center justify-center text-center text-xs"
 		>
