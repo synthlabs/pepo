@@ -37,8 +37,9 @@
 	let messageLimit = 1000;
 	let behavior: ScrollBehavior = 'auto';
 	let input = '';
-	let streamInfo: Promise<HelixStream | null> = new Promise((res) => res(null));
+	let streamInfo: HelixStream | null;
 	let index = 0;
+	let streamRefreshInterval: NodeJS.Timeout;
 
 	interface message {
 		id: string;
@@ -58,7 +59,10 @@
 		apiClient = new ApiClient({ authProvider });
 
 		Logger.debug('valid token');
-		streamInfo = getStream(channel);
+
+		getStream(channel).then((info) => {
+			streamInfo = info;
+		});
 		init();
 	}
 
@@ -80,11 +84,20 @@
 		Logger.debug(`navigating - persisting msg cache for ${channel}`);
 		messageCache.set(channel, [...messages]);
 		messages = [];
+
+		Logger.debug(`navigating - clearing stream refresh interval`);
+		clearInterval(streamRefreshInterval);
 	});
 
 	afterNavigate((_) => {
 		Logger.debug(`navigated - ${channel}`);
 		$channelCache = $channelCache.add(channel);
+
+		clearInterval(streamRefreshInterval);
+		streamRefreshInterval = setInterval(async () => {
+			Logger.debug('get stream tick');
+			streamInfo = await getStream(channel);
+		}, 60000);
 
 		Logger.debug(`navigated - loading msg cache for ${channel}`);
 		messages = messageCache.get(channel);
@@ -253,17 +266,14 @@
 	<div class="flex p-1 border-b border-b-base-300">
 		<!-- TODO: now that I have real tabs, this should be something else -->
 		<div class="flex items-center normal-case text-xl pl-1 pr-1">#{channel}</div>
-		{#await streamInfo}
-			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm" />
-		{:then stream}
-			{#if stream}
-				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">{stream.title}</div>
-			{:else if IsAnonUser($user, $token)}
-				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Unknown</div>
-			{:else}
-				<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Offline</div>
-			{/if}
-		{/await}
+
+		{#if streamInfo}
+			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">{streamInfo.title}</div>
+		{:else if IsAnonUser($user, $token)}
+			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Unknown</div>
+		{:else}
+			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Offline</div>
+		{/if}
 	</div>
 
 	<div class="flex-grow overflow-y-auto neg-horiz-p-2 text-sm" bind:this={div}>
@@ -318,11 +328,9 @@
 	<form on:submit|preventDefault={submitForm}>
 		<div class="form-control p-1 border-t border-t-base-300">
 			<div class="p-1 text-sm">
-				{#await streamInfo then stream}
-					{#if stream}
-						{stream.viewers} viewers, {formatTime(uptime(stream))} uptime
-					{/if}
-				{/await}
+				{#if streamInfo}
+					{streamInfo.viewers} viewers, {formatTime(uptime(streamInfo))} uptime
+				{/if}
 			</div>
 			<div class="relative">
 				<!-- TODO: properly pad input like the password field so text doesn't go behind button -->

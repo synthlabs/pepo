@@ -1,5 +1,3 @@
-import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
-
 export type BrowserCacheOptions = {
 	/**
 	 * Cache limit
