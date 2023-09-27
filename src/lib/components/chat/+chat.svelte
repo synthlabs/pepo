@@ -23,6 +23,7 @@
 	import { BrowserCache } from '$lib/chat/cache';
 
 	const GREY_NAME_COLOR = '#6B7280';
+	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
 
 	export let channel: string;
 
@@ -99,9 +100,12 @@
 			autoscroll = true;
 			return;
 		}
+
+		const scrollAmount = div.offsetHeight + div.scrollTop;
 		// determine whether we should auto-scroll
 		// once the DOM is updated...
-		autoscroll = div && div.offsetHeight + div.scrollTop > div.scrollHeight - 20;
+		// if the scroll amount matches the tail minus a buffer amount then autoscroll
+		autoscroll = div && scrollAmount > div.scrollHeight - AUTOSCROLL_BUFFER;
 	});
 
 	afterUpdate(() => {
