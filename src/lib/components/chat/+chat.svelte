@@ -114,7 +114,7 @@
 			return;
 		}
 
-		const scrollAmount = div.offsetHeight + div.scrollTop;
+		const scrollAmount = div ? div.offsetHeight + div.scrollTop : 0;
 		// determine whether we should auto-scroll
 		// once the DOM is updated...
 		// if the scroll amount matches the tail minus a buffer amount then autoscroll
