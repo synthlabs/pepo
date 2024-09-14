@@ -10,14 +10,9 @@ echo "Vergo src ${VERGO_SRC}"
 
 set -ex
 
-# if [[ ! -f VERGO_BIN ]]; then
-#     echo "vergo binary missing, building it..."
-    pushd $VERGO_SRC
-
-    go build -o $VERGO_BIN ./main.go
-
-    popd
-# fi
+pushd $VERGO_SRC
+go build -o $VERGO_BIN ./main.go
+popd
 
 EXTRA_ARGS="-project-root ${ROOT} -debug"
 
