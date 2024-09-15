@@ -134,6 +134,62 @@ func processPackageJson() {
 	}
 }
 
+func processTauriConfigJson() {
+	tauriConfJsonPath := fmt.Sprintf("%s/src-tauri/tauri.conf.json", projectRoot)
+	log.Debug("processing tauri.conf.json", "file", tauriConfJsonPath)
+
+	tauriConfJsonBytes, err := os.ReadFile(tauriConfJsonPath)
+	if err != nil {
+		log.Fatal("failed to read file", "file", tauriConfJsonPath)
+	}
+
+	taurConfJson := map[string]any{}
+	if err := json.Unmarshal(tauriConfJsonBytes, &taurConfJson); err != nil {
+		log.Fatal("failed to parse tauri.conf.json", "err", err)
+	}
+
+	pkg, pkgOK := taurConfJson["package"].(map[string]any)
+	if !pkgOK {
+		log.Fatal("unexpected key", "package", taurConfJson["package"])
+	}
+	log.Debug("parsing tauri.conf.json version", "version", pkg["version"])
+
+	strVersion, versionOK := pkg["version"].(string)
+	if !versionOK {
+		log.Fatal("unexpected value type", "version", pkg["version"])
+	}
+
+	origVersion, err := NewVersion(strVersion)
+	if err != nil {
+		log.Fatal("invalid tauri.conf.json version format", "version", strVersion, "err", err)
+	}
+
+	log.Debug("parsed tauri.conf.json version", "version", origVersion)
+
+	version := origVersion.Bump(majorBump, minorBump, patchBump)
+
+	log.Debug("tauri.conf.json version bumped", "version", version)
+
+	log.Info("tauri.conf.json version updated", "before", origVersion.ToString(), "after", version.ToString())
+
+	if !update {
+		log.Info("update not enabled, exiting")
+		return
+	}
+
+	pkg["version"] = version.ToString()
+	taurConfJson["package"] = pkg
+
+	outData, err := json.MarshalIndent(taurConfJson, "", "  ")
+	if err != nil {
+		log.Fatal("failed to marshal", "err", err)
+	}
+
+	if err := os.WriteFile(tauriConfJsonPath, outData, 0o664); err != nil {
+		log.Fatal("failed to write file", "file", tauriConfJsonPath, "err", err)
+	}
+}
+
 func main() {
 	if debugLog {
 		log.SetLevel(log.DebugLevel)
@@ -148,4 +204,5 @@ func main() {
 	)
 
 	processPackageJson()
+	processTauriConfigJson()
 }

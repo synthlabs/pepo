@@ -51,19 +51,19 @@
     },
     "updater": {
       "active": true,
+      "dialog": true,
       "endpoints": [
         "https://github.com/synthlabs/pepo/releases/latest/download/latest.json"
       ],
-      "dialog": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIxM0EyNDBGNTM2M0Y2QTYKUldTbTltTlREeVE2SVRhZGhDamlXeHNHc2lzTjNLWFZWNXlJVVZFUytURmtHb2pXYm5CT0syRDcK"
     },
     "windows": [
       {
         "fullscreen": false,
         "height": 726,
-        "width": 968,
         "resizable": true,
-        "title": "Pepo ™"
+        "title": "Pepo ™",
+        "width": 968
       }
     ]
   }
