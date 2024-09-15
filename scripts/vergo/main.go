@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/charmbracelet/log"
 )
 
@@ -190,6 +191,57 @@ func processTauriConfigJson() {
 	}
 }
 
+func processCargoToml() {
+	cargoTomlPath := fmt.Sprintf("%s/src-tauri/Cargo.toml", projectRoot)
+	log.Debug("processing Cargo.toml", "file", cargoTomlPath)
+
+	cargoToml := map[string]any{}
+	if _, err := toml.DecodeFile(cargoTomlPath, &cargoToml); err != nil {
+		log.Fatal("failed to decode file", "file", cargoTomlPath, "err", err)
+	}
+
+	pkg, pkgOK := cargoToml["package"].(map[string]any)
+	if !pkgOK {
+		log.Fatal("unexpected key", "package", cargoToml["package"])
+	}
+	log.Debug("parsing Cargo.toml version", "version", pkg["version"])
+
+	strVersion, versionOK := pkg["version"].(string)
+	if !versionOK {
+		log.Fatal("unexpected value type", "version", pkg["version"])
+	}
+
+	origVersion, err := NewVersion(strVersion)
+	if err != nil {
+		log.Fatal("invalid Cargo.toml version format", "version", strVersion, "err", err)
+	}
+
+	log.Debug("parsed Cargo.toml version", "version", origVersion)
+
+	version := origVersion.Bump(majorBump, minorBump, patchBump)
+
+	log.Debug("Cargo.toml version bumped", "version", version)
+
+	log.Info("Cargo.toml version updated", "before", origVersion.ToString(), "after", version.ToString())
+
+	if !update {
+		log.Info("update not enabled, exiting")
+		return
+	}
+
+	pkg["version"] = version.ToString()
+	cargoToml["package"] = pkg
+
+	outData, err := toml.Marshal(&cargoToml)
+	if err != nil {
+		log.Fatal("failed to marshal", "err", err)
+	}
+
+	if err := os.WriteFile(cargoTomlPath, outData, 0o664); err != nil {
+		log.Fatal("failed to write file", "file", cargoTomlPath, "err", err)
+	}
+}
+
 func main() {
 	if debugLog {
 		log.SetLevel(log.DebugLevel)
@@ -203,6 +255,8 @@ func main() {
 		"patch-bump", patchBump,
 	)
 
+	// TODO: refactor this haha
 	processPackageJson()
 	processTauriConfigJson()
+	processCargoToml()
 }
