@@ -1,6 +1,6 @@
 import Logger from '$lib/logger/log';
 import { Sanitize } from '$lib/store/channels';
-import type { TwitchToken } from '$lib/store/token';
+import type { TwitchToken } from '$lib/store/runes/token.svelte';
 import { StaticAuthProvider } from '@twurple/auth';
 import { ChatClient, type ChatSayMessageAttributes } from '@twurple/chat';
 import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
@@ -42,7 +42,7 @@ export class Client {
 		Logger.debug('chat client token updated');
 
 		this._token = token;
-		const authProvider = new StaticAuthProvider(this._token.client_id, this._token.oauth_token);
+		const authProvider = new StaticAuthProvider(this._token.client_id, this._token.token);
 		this._twurpleClient = new ChatClient({ authProvider });
 
 		this.listeners();

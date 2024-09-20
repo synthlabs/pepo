@@ -126,6 +126,8 @@
 		}
 
 		if (validToken) {
+			$chatClient.token = client.token;
+
 			getStream(channel).then((info) => {
 				streamInfo = info;
 			});
