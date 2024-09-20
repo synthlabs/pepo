@@ -49,5 +49,6 @@
 		"tauri-plugin-window-state-api": "github:tauri-apps/tauri-plugin-window-state#v1",
 		"theme-change": "^2.5.0",
 		"uuid": "^9.0.1"
-	}
+	},
+	"packageManager": "pnpm@9.10.0"
 }
