@@ -55,15 +55,12 @@ export class TwitchToken {
 export const token = createWritableStore('token', new TwitchToken());
 
 export async function validate(token: TwitchToken) {
-	try {
-		const response = await fetch('https://id.twitch.tv/oauth2/validate', {
-			method: 'GET',
-			headers: { Authorization: `OAuth ${token.oauth_token}` }
-		});
-		token.isValid = response.status === StatusCodes.OK;
-	} catch (e) {
-		token.isValid = false;
-	}
+	const response = await fetch('https://id.twitch.tv/oauth2/validate', {
+		method: 'GET',
+		headers: { Authorization: `OAuth ${token.oauth_token}` }
+	});
+	token.isValid = response.status === StatusCodes.OK;
+
 	return token;
 }
 

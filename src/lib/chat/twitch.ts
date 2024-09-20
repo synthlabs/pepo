@@ -39,7 +39,7 @@ export class Client {
 	};
 
 	set token(token: TwitchToken) {
-		Logger.debug('token updated');
+		Logger.debug('chat client token updated');
 
 		this._token = token;
 		const authProvider = new StaticAuthProvider(this._token.client_id, this._token.oauth_token);

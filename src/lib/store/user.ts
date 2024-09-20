@@ -29,8 +29,8 @@ export function NewUserFromHelix(u: HelixUser | null): User {
 	};
 }
 
-export function IsAnonUser(u: User, t: TwitchToken): boolean {
-	return u.type === 'anon' || !t.isValid;
+export function IsAnonUser(u: User): boolean {
+	return u.type === 'anon';
 }
 
 const anonUser: User = {
