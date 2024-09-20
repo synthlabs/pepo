@@ -56,12 +56,18 @@ func (v Version) ToString() string {
 func (v Version) Bump(major, minor, patch bool) Version {
 	if major {
 		v.Major++
+		v.Minor = 0
+		v.Patch = 0
+		return v
 	}
 	if minor {
 		v.Minor++
+		v.Patch = 0
+		return v
 	}
 	if patch {
 		v.Patch++
+		return v
 	}
 
 	return v
