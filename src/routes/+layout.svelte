@@ -1,61 +1,33 @@
 <script lang="ts">
-	import { goto, beforeNavigate } from '$app/navigation';
-	import { onMount } from 'svelte';
 	import '../app.css';
 	import { user } from '$lib/store/user';
-	import { chatClient } from '$lib/store/chat';
-	import { isValid, token, validate as validateToken } from '$lib/store/token';
+	import { TwitchToken } from '$lib/store/runes/token.svelte';
+	import { client } from '$lib/store/runes/apiclient.svelte';
 	import {
 		channels as channelCache,
 		Decode as ccDecode,
 		Encode as ccEncode
 	} from '$lib/store/channels';
-	import Logger from '$lib/logger/log';
 	import Nav from '$lib/components/+nav.svelte';
 	import InputNav from '$lib/components/+inputnav.svelte';
-	import { StaticAuthProvider } from '@twurple/auth';
-	import { ApiClient } from '@twurple/api';
 	import { GlobalBadgeCache } from '$lib/store/badges';
 	import { GlobalEmoteCache } from '$lib/store/emotes';
 
 	user.useLocalStorage();
-	token.useLocalStorage();
 	channelCache.useLocalStorage(ccDecode, ccEncode);
+
+	let newTwitchToken = new TwitchToken();
+	client.token = newTwitchToken;
+
+	newTwitchToken.validate().then((valid) => {
+		if (valid) {
+			GlobalBadgeCache.UseClient(client.api);
+			GlobalEmoteCache.UseClient(client.api);
+		}
+	});
 
 	let modal: HTMLDialogElement;
 	let inputNavInputReset: any;
-
-	$: if ($token) {
-		Logger.debug('token updated');
-		validateToken($token)
-			.then((t) => {
-				if (!isValid(t) && $token.isValid) {
-					$token.isValid = false;
-					Logger.warn('no valid token');
-					return;
-				}
-
-				if (isValid(t)) {
-					$chatClient.token = $token;
-					const authProvider = new StaticAuthProvider($token.client_id, $token.oauth_token);
-					const apiClient = new ApiClient({ authProvider });
-
-					GlobalBadgeCache.UseClient(apiClient);
-					GlobalEmoteCache.UseClient(apiClient);
-				}
-			})
-			.catch(Logger.error);
-	}
-
-	$: Logger.debug('user: ', $user);
-
-	onMount(() => {
-		validateToken($token)
-			.then((t) => {
-				$token = t;
-			})
-			.catch(Logger.error);
-	});
 
 	function crossPlatformActionModifier(e: KeyboardEvent): Boolean {
 		const isMac = navigator.userAgent.includes('Mac');

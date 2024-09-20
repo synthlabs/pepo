@@ -1,14 +1,16 @@
 <script lang="ts">
-	import { StaticAuthProvider } from '@twurple/auth';
-	import { ApiClient } from '@twurple/api';
-
 	import Logger from '$lib/logger/log';
-	import { TwitchToken, token, validate as validateToken } from '$lib/store/token';
+	import { client } from '$lib/store/runes/apiclient.svelte';
+	import { TwitchToken } from '$lib/store/runes/token.svelte';
 	import { NewUserFromHelix, user } from '$lib/store/user';
 	import ShowBadge from '$resources/show.svelte';
 	import HideBadge from '$resources/hide.svelte';
+	import { GlobalBadgeCache } from '$lib/store/badges';
+	import { GlobalEmoteCache } from '$lib/store/emotes';
 
-	let inputStr = $token?.raw ?? '';
+	let token = new TwitchToken();
+
+	let inputStr = '';
 
 	let show_password = false;
 	$: type = show_password ? 'text' : 'password';
@@ -28,7 +30,7 @@
 		Logger.error(errorReason);
 	}
 
-	const submitForm = (event: SubmitEvent) => {
+	const submitForm = async (event: SubmitEvent) => {
 		let target = event.target as HTMLFormElement;
 
 		if (!inputStr) {
@@ -36,29 +38,45 @@
 			return;
 		}
 
-		Logger.debug(inputStr, $token);
+		const { username, user_id, client_id, oauth_token } = Object.fromEntries(
+			inputStr
+				.replace(/;\s*$/, '')
+				.split(';')
+				.map((pair) => {
+					const [k, v] = pair.split('=');
+					if (!v) {
+						return ['_unknown', pair];
+					}
+					return [k, v];
+				})
+		);
 
-		let toke = new TwitchToken(inputStr);
+		Logger.debug(username, user_id, client_id, oauth_token);
+		token.client_id = client_id;
+		token.token = oauth_token;
 
-		validateToken(toke)
-			.then((t) => {
-				Logger.debug('token validated');
-				token.set(t);
-				success = true;
-				error = false;
+		let valid = await token.validate();
 
-				const authProvider = new StaticAuthProvider(t.client_id, t.oauth_token);
-				const apiClient = new ApiClient({ authProvider });
+		if (valid) {
+			success = true;
+			error = false;
 
-				apiClient.users
-					.getUserById(t.user_id)
-					.then((u) => {
-						Logger.debug('got user');
-						user.set(NewUserFromHelix(u));
-					})
-					.catch(setError);
-			})
-			.catch(setError);
+			Logger.debug('token validated');
+			client.token = token;
+
+			GlobalBadgeCache.UseClient(client.api);
+			GlobalEmoteCache.UseClient(client.api);
+
+			let u = await client.api.users.getUserById(user_id);
+			if (u) {
+				Logger.debug('got user');
+				user.set(NewUserFromHelix(u));
+			} else {
+				setError('an error occured while getting your twitch user');
+			}
+		} else {
+			setError('invalid token');
+		}
 	};
 </script>
 

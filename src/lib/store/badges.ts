@@ -1,5 +1,6 @@
 import type { ApiClient, HelixChatBadgeSet, HelixChatBadgeVersion } from '@twurple/api';
 import Logger from '$lib/logger/log';
+import { client } from '$lib/store/runes/apiclient.svelte';
 
 export class Badge {
 	id: string;
@@ -27,7 +28,7 @@ declare type Store = Map<string, Badge>;
 
 // TODO: make this cache pattern generic
 export class BadgeCache {
-	client!: ApiClient;
+	client: ApiClient = client.api;
 	globalStore: Store = new Map<string, Badge>();
 	scopedStore = new Map<string, Store>();
 

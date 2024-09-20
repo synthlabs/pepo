@@ -1,4 +1,4 @@
-name: "test-on-push"
+name: 'test-on-push'
 on:
   push:
     branches-ignore:
@@ -17,12 +17,12 @@ jobs:
       - name: setup node
         uses: actions/setup-node@v3
         with:
-          node-version: 16
+          node-version: 18
       - uses: pnpm/action-setup@v2
         name: Install pnpm
         id: pnpm-install
         with:
-          version: 8
+          version: 9
           run_install: true
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable

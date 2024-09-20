@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { beforeUpdate, afterUpdate, onDestroy, onMount } from 'svelte';
-	import { StaticAuthProvider } from '@twurple/auth';
-	import { ApiClient, HelixStream, HelixUser } from '@twurple/api';
+	import { HelixStream, HelixUser } from '@twurple/api';
 	import { parseChatMessage } from '@twurple/common';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
@@ -9,7 +8,6 @@
 	import { GlobalBadgeCache } from '$lib/store/badges';
 	import { chatClient } from '$lib/store/chat';
 	import { IsAnonUser, user } from '$lib/store/user';
-	import { isValid, token } from '$lib/store/token';
 	import Logger from '$lib/logger/log';
 	import Badges from '$lib/components/chat/+badges.svelte';
 	import * as types from '$lib/config/constants';
@@ -21,6 +19,7 @@
 	import { channels as channelCache } from '$lib/store/channels';
 	import { getTwitchEmoteURL } from '$lib/util/twitch';
 	import { BrowserCache } from '$lib/chat/cache';
+	import { client } from '$lib/store/runes/apiclient.svelte';
 
 	const GREY_NAME_COLOR = '#6B7280';
 	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
@@ -31,7 +30,6 @@
 	let autoscroll: boolean;
 	let autoscrollDebounce: boolean;
 	let chatInput: HTMLInputElement;
-	let authProvider: StaticAuthProvider;
 	let messageCache: BrowserCache<message>;
 
 	let messageLimit = 1000;
@@ -52,25 +50,13 @@
 	}
 	let messages: message[] = [];
 
-	// TODO: move this into a global client like the chat client
-	let apiClient: ApiClient;
-	$: if (isValid($token)) {
-		authProvider = new StaticAuthProvider($token.client_id, $token.oauth_token);
-		apiClient = new ApiClient({ authProvider });
-
-		Logger.debug('valid token');
-
-		getStream(channel).then((info) => {
-			streamInfo = info;
-		});
-		init();
-	}
-
 	$: hasInput = input.length > 0;
 
 	onMount(() => {
 		messageCache = new BrowserCache();
 		Logger.debug('mounted');
+
+		init();
 	});
 
 	onDestroy(() => {
@@ -131,18 +117,28 @@
 	const init = async () => {
 		Logger.debug('init');
 
+		const validToken = await client.token.validate();
+
 		let user = await getUserByName(channel);
 		if (!user) {
 			Logger.error('failed to get user info', channel);
 			return;
 		}
 
-		GlobalBadgeCache.LoadChannel(channel, user.id);
-		GlobalEmoteCache.LoadChannel(user.id);
+		if (validToken) {
+			$chatClient.token = client.token;
+
+			getStream(channel).then((info) => {
+				streamInfo = info;
+			});
+
+			GlobalBadgeCache.LoadChannel(channel, user.id);
+			GlobalEmoteCache.LoadChannel(user.id);
+		}
 	};
 
 	const getUserByName = async (userName: string): Promise<HelixUser | null> => {
-		const user = await apiClient.users.getUserByName(userName);
+		const user = await client.api.users.getUserByName(userName);
 		if (!user) {
 			Logger.debug('failed to get user');
 			return null;
@@ -151,7 +147,7 @@
 	};
 
 	const getStream = async (userName: string): Promise<HelixStream | null> => {
-		const user = await apiClient.users.getUserByName(userName);
+		const user = await client.api.users.getUserByName(userName);
 		if (!user) {
 			Logger.debug('failed to get user');
 			return null;
@@ -269,7 +265,7 @@
 
 		{#if streamInfo}
 			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">{streamInfo.title}</div>
-		{:else if IsAnonUser($user, $token)}
+		{:else if IsAnonUser($user)}
 			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Unknown</div>
 		{:else}
 			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Offline</div>
@@ -338,7 +334,7 @@
 				<input
 					bind:value={input}
 					bind:this={chatInput}
-					disabled={IsAnonUser($user, $token)}
+					disabled={IsAnonUser($user)}
 					use:keyRedirect
 					type="text"
 					class="w-full input input-bordered focus:input-primary hover:input-primary"
@@ -346,6 +342,7 @@
 					placeholder="Chat away..."
 					tabindex="0"
 				/>
+				<!-- svelte-ignore a11y_consider_explicit_label -->
 				<button
 					type="submit"
 					class="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer"

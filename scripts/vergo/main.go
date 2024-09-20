@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -56,12 +57,18 @@ func (v Version) ToString() string {
 func (v Version) Bump(major, minor, patch bool) Version {
 	if major {
 		v.Major++
+		v.Minor = 0
+		v.Patch = 0
+		return v
 	}
 	if minor {
 		v.Minor++
+		v.Patch = 0
+		return v
 	}
 	if patch {
 		v.Patch++
+		return v
 	}
 
 	return v
@@ -125,12 +132,16 @@ func processPackageJson() {
 
 	pkgJson.Version = version.ToString()
 
-	outData, err := json.MarshalIndent(pkgJson, "", "\t")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "\t")
+
+	if err := enc.Encode(pkgJson); err != nil {
 		log.Fatal("failed to marshal package.json", "err", err)
 	}
 
-	if err := os.WriteFile(pkgJsonPath, outData, 0o664); err != nil {
+	if err := os.WriteFile(pkgJsonPath, buf.Bytes(), 0o664); err != nil {
 		log.Fatal("failed to write file", "file", pkgJsonPath, "err", err)
 	}
 }
