@@ -18,12 +18,12 @@ export class TwitchApiClient {
 		this.#client = new ApiClient({ authProvider });
 	}
 
-	get api() {
-		return this.#client;
-	}
-
 	get token() {
 		return this.#token;
+	}
+
+	get api() {
+		return this.#client;
 	}
 }
 

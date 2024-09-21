@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { beforeUpdate, afterUpdate, onDestroy, onMount } from 'svelte';
 	import { HelixStream, HelixUser } from '@twurple/api';
-	import { parseChatMessage } from '@twurple/common';
+	import { ChatEmote, parseChatMessage } from '@twurple/common';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
 	import { v4 as uuidv4 } from 'uuid';
-	import { GlobalEmoteCache } from '$lib/store/emotes';
+	import { GlobalEmoteCache, loadGlobalEmotes } from '$lib/store/emotes';
 	import { GlobalBadgeCache } from '$lib/store/badges';
 	import { chatClient } from '$lib/store/chat';
 	import { IsAnonUser, user } from '$lib/store/user';
@@ -13,13 +13,16 @@
 	import * as types from '$lib/config/constants';
 	import type {
 		BasicParsedMessagePart,
-		ParsedMessageTextPart
+		ParsedMessageTextPart,
+		ParsedMessageEmotePart
 	} from '@twurple/common/lib/emotes/ParsedMessagePart';
 	import { beforeNavigate, afterNavigate } from '$app/navigation';
 	import { channels as channelCache } from '$lib/store/channels';
 	import { getTwitchEmoteURL } from '$lib/util/twitch';
 	import { BrowserCache } from '$lib/chat/cache';
 	import { client } from '$lib/store/runes/apiclient.svelte';
+	import { token } from '$lib/store/token';
+	import Page from '../../../routes/+page.svelte';
 
 	const GREY_NAME_COLOR = '#6B7280';
 	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
@@ -137,8 +140,8 @@
 				streamInfo = info;
 			});
 
+			loadGlobalEmotes(client.api, GlobalEmoteCache);
 			GlobalBadgeCache.LoadChannel(channel, user.id);
-			GlobalEmoteCache.LoadChannel(user.id);
 		}
 	};
 
@@ -171,14 +174,76 @@
 		return [h, m > 9 ? m : h ? '0' + m : m || '0', s > 9 ? s : '0' + s].filter(Boolean).join(':');
 	};
 
+	const parseThirdPartyEmotes = (element: ParsedMessageTextPart): BasicParsedMessagePart[] => {
+		const TOK_SEP = ' ';
+
+		let newElements = [];
+
+		const tokens = element.text.split(TOK_SEP);
+		let newTokens: string[] = [];
+		for (let j = 0; j < tokens.length; j++) {
+			if (GlobalEmoteCache.HasName(tokens[j])) {
+				// all of the new tokens we have so far become element's text
+				element.text = newTokens.join(TOK_SEP);
+				// we update the new length of element
+				element.length = element.text.length;
+				// push element to newmessageparts
+				newElements.push(element);
+				// we create an emote part
+				const ce = GlobalEmoteCache.GetByName(tokens[j]);
+				Logger.trace('global emote', ce);
+				let emote: ParsedMessageEmotePart = {
+					type: 'emote',
+					position: element.position + element.length,
+					length: ce.name.length,
+					id: ce.id,
+					name: ce.name,
+					displayInfo: new ChatEmote({ code: ce.name, id: ce.id })
+				};
+				// push emote part to new message parts
+				newElements.push(emote);
+				// create a new text element
+				element = {
+					type: 'text',
+					position: emote.position + emote.length,
+					length: 0,
+					text: ''
+				};
+				// continue;
+			} else {
+				newTokens.push(tokens[j]);
+			}
+		}
+		element.text = newTokens.join(TOK_SEP);
+		element.length = element.text.length;
+
+		newElements.push(element);
+
+		return newElements;
+	};
+
 	const twitchMsgHandler = (text: string, msg: TwitchPrivateMessage) => {
 		let m: message;
+
+		// TODO: eventually move to our own parser so we can do a single pass
+		let messageParts = parseChatMessage(text, msg.emoteOffsets);
+
+		let newMessageParts: BasicParsedMessagePart[] = [];
+		messageParts.forEach((element, i) => {
+			if (element.type === types.TEXT_TOKEN) {
+				Logger.debug(messageParts.length, i, element);
+				const newElements = parseThirdPartyEmotes(element);
+				newMessageParts.push(...newElements);
+			} else {
+				newMessageParts.push(element);
+			}
+		});
 
 		m = {
 			id: msg.id,
 			ts: msg.date.toLocaleTimeString('en', { timeStyle: 'short' }),
 			username: msg.userInfo.displayName,
-			messageParts: parseChatMessage(text, msg.emoteOffsets),
+			messageParts: newMessageParts,
 			color: msg.userInfo.color ?? GREY_NAME_COLOR,
 			index: nextIndex(),
 			raw: msg
@@ -294,7 +359,7 @@
 							{#if GlobalEmoteCache.Has(m.id)}
 								<img
 									class="inline max-w-none h-6"
-									src={GlobalEmoteCache.passthroughGet(m.id)?.getStaticImageUrl('3.0', 'dark')}
+									src={GlobalEmoteCache.Get(m.id).url}
 									alt={m.name}
 								/>
 							{:else}

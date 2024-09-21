@@ -4,16 +4,16 @@ import { browser } from '$app/environment';
 export class TwitchToken {
 	token = $state('');
 	client_id = $state('');
-	_key = 'twitch_token';
+	#_key = 'twitch_token';
 
 	constructor() {
 		if (browser) {
-			const item = localStorage.getItem(this._key);
+			const item = localStorage.getItem(this.#_key);
 			if (item) this.parse(item);
 		}
 
 		$effect(() => {
-			localStorage.setItem(this._key, this.serialize());
+			localStorage.setItem(this.#_key, this.serialize());
 		});
 	}
 
