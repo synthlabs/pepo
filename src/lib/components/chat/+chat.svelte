@@ -73,11 +73,16 @@
 
 		Logger.debug(`navigating - clearing stream refresh interval`);
 		clearInterval(streamRefreshInterval);
+		streamInfo = null;
 	});
 
 	afterNavigate((_) => {
 		Logger.debug(`navigated - ${channel}`);
 		$channelCache = $channelCache.add(channel);
+
+		getStream(channel).then((info) => {
+			streamInfo = info;
+		});
 
 		clearInterval(streamRefreshInterval);
 		streamRefreshInterval = setInterval(async () => {
@@ -259,7 +264,7 @@
 </script>
 
 <div class="flex flex-col flex-nowrap w-full h-full p-2">
-	<div class="flex p-1 border-b border-b-base-300">
+	<div class="flex p-1 pb-2 border-b border-b-base-300">
 		<!-- TODO: now that I have real tabs, this should be something else -->
 		<div class="flex items-center normal-case text-xl pl-1 pr-1">#{channel}</div>
 
@@ -267,8 +272,6 @@
 			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">{streamInfo.title}</div>
 		{:else if IsAnonUser($user)}
 			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Unknown</div>
-		{:else}
-			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Offline</div>
 		{/if}
 	</div>
 
