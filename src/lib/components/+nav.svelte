@@ -10,9 +10,11 @@
 
 	<div class="flex gap-2 pr-1 justify-end items-end">
 		<div class="dropdown dropdown-end">
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+			<!-- svelte-ignore a11y_label_has_associated_control -->
 			<label tabindex="0" class="btn btn-ghost btn-circle avatar">
 				<div class="w-9 rounded-full">
-					{#if $user}
+					{#if $user.displayName != 'Anonymous'}
 						<img src={$user?.profilePictureUrl} alt={$user?.displayName} />
 					{:else}
 						<svg
@@ -31,6 +33,7 @@
 					{/if}
 				</div>
 			</label>
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 			<ul
 				tabindex="0"
 				class="menu menu-compact dropdown-content mt-3 p-2 shadow bg-base-300 rounded-box w-52 z-50"
