@@ -42,6 +42,7 @@ type NPMPackage struct {
 	DevDependancies map[string]string `json:"devDependencies"`
 	Type            string            `json:"type"`
 	Dependancies    map[string]string `json:"dependencies"`
+	PackageManager  string            `json:"packageManager"`
 }
 
 type Version struct {
