@@ -1,7 +1,7 @@
 import { ApiClient } from '@twurple/api';
 import Logger from '$lib/logger/log';
-import { Emote, InvalidEmote } from '$lib/store/emotes/emote';
-import { BTTV_FLAVOR, BTTVEmote, newEmoteFromBTTV } from '$lib/store/emotes/bttv';
+import { type Emote, InvalidEmote } from '$lib/store/emotes/emote';
+import { BTTV_FLAVOR, type BTTVEmote, newEmoteFromBTTV } from '$lib/store/emotes/bttv';
 import { FFZ_FLAVOR } from '$lib/store/emotes/ffz';
 import { newEmoteFromHelix } from '$lib/store/emotes/helix';
 

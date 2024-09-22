@@ -1,7 +1,7 @@
 import Logger from '$lib/logger/log';
 import { HelixEmote } from '@twurple/api';
-import { FFZEmote } from '$lib/store/emotes/ffz';
-import { BTTVEmote } from '$lib/store/emotes/bttv';
+import type { FFZEmote } from '$lib/store/emotes/ffz';
+import type { BTTVEmote } from '$lib/store/emotes/bttv';
 
 export interface IInvalidEmote {
 	id: string;

@@ -1,11 +1,11 @@
-import { Emote } from '$lib/store/emotes/emote';
+import type { Emote } from '$lib/store/emotes/emote';
 
 export const BTTV_FLAVOR = 'bttv';
 
-export class BTTVEmote {
-	id!: string;
-	code!: string;
-	imageType!: string;
+export interface BTTVEmote {
+	id: string;
+	code: string;
+	imageType: string;
 	animated?: boolean;
 	modifier?: boolean;
 	height?: number;

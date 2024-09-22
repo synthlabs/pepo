@@ -27,4 +27,4 @@
   name = "app"
   repository = ""
   rust-version = "1.60"
-  version = "0.12.3"
+  version = "0.12.4"

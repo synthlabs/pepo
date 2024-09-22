@@ -1,5 +1,5 @@
 import { HelixChannelEmote, HelixEmote } from '@twurple/api';
-import { Emote } from '$lib/store/emotes/emote';
+import type { Emote } from '$lib/store/emotes/emote';
 
 export const HELIX_FLAVOR = 'helix';
 

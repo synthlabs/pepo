@@ -1,4 +1,4 @@
-import { Emote } from '$lib/store/emotes/emote';
+import type { Emote } from '$lib/store/emotes/emote';
 
 export interface FFZEmoteSetResp {
 	default_sets: number[];
