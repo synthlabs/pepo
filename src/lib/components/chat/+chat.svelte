@@ -3,7 +3,6 @@
 	import { HelixStream, HelixUser } from '@twurple/api';
 	import { ChatEmote, parseChatMessage } from '@twurple/common';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
-	import { v4 as uuidv4 } from 'uuid';
 	import { GlobalEmoteCache, loadGlobalEmotes } from '$lib/store/emotes';
 	import { GlobalBadgeCache } from '$lib/store/badges';
 	import { chatClient } from '$lib/store/chat';
@@ -21,8 +20,6 @@
 	import { getTwitchEmoteURL } from '$lib/util/twitch';
 	import { BrowserCache } from '$lib/chat/cache';
 	import { client } from '$lib/store/runes/apiclient.svelte';
-	import { token } from '$lib/store/token';
-	import Page from '../../../routes/+page.svelte';
 
 	const GREY_NAME_COLOR = '#6B7280';
 	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
@@ -231,7 +228,7 @@
 		let newMessageParts: BasicParsedMessagePart[] = [];
 		messageParts.forEach((element, i) => {
 			if (element.type === types.TEXT_TOKEN) {
-				Logger.debug(messageParts.length, i, element);
+				Logger.trace(messageParts.length, i, element);
 				const newElements = parseThirdPartyEmotes(element);
 				newMessageParts.push(...newElements);
 			} else {

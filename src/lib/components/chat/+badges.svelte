@@ -10,7 +10,7 @@
 
 	$: if (badges) {
 		badges.forEach((k, v) => {
-			Logger.trace(k, v);
+			// Logger.trace(k, v);
 		});
 	}
 

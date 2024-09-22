@@ -6,7 +6,6 @@
 	import ShowBadge from '$resources/show.svelte';
 	import HideBadge from '$resources/hide.svelte';
 	import { GlobalBadgeCache } from '$lib/store/badges';
-	import { GlobalEmoteCache } from '$lib/store/emotes';
 
 	let token = new TwitchToken();
 
@@ -65,7 +64,6 @@
 			client.token = token;
 
 			GlobalBadgeCache.UseClient(client.api);
-			GlobalEmoteCache.UseClient(client.api);
 
 			let u = await client.api.users.getUserById(user_id);
 			if (u) {

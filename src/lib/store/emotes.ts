@@ -14,6 +14,7 @@ export class EmoteCache {
 		Logger.trace(`[EmoteCache] setting reverse index ${emote.name}=${id}`);
 
 		this.#store.set(id, emote);
+		this.#reverseIndex.set(emote.name, id);
 	}
 
 	Has(id: string): boolean {

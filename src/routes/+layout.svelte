@@ -11,7 +11,7 @@
 	import Nav from '$lib/components/+nav.svelte';
 	import InputNav from '$lib/components/+inputnav.svelte';
 	import { GlobalBadgeCache } from '$lib/store/badges';
-	import { GlobalEmoteCache } from '$lib/store/emotes';
+	import { GlobalEmoteCache, loadGlobalEmotes } from '$lib/store/emotes';
 
 	user.useLocalStorage();
 	channelCache.useLocalStorage(ccDecode, ccEncode);
@@ -22,7 +22,6 @@
 	newTwitchToken.validate().then((valid) => {
 		if (valid) {
 			GlobalBadgeCache.UseClient(client.api);
-			GlobalEmoteCache.UseClient(client.api);
 		}
 	});
 
