@@ -3,8 +3,8 @@
 	import { HelixStream, HelixUser } from '@twurple/api';
 	import { ChatEmote, parseChatMessage } from '@twurple/common';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
-	import { GlobalEmoteCache, loadGlobalEmotes } from '$lib/store/emotes';
-	import { GlobalBadgeCache } from '$lib/store/badges';
+	import { GlobalEmoteCache, loadChannelEmotes, loadGlobalEmotes } from '$lib/store/emotes';
+	import { GlobalBadgeCache, loadChannelBadges } from '$lib/store/badges';
 	import { chatClient } from '$lib/store/chat';
 	import Logger from '$lib/logger/log';
 	import Badges from '$lib/components/chat/+badges.svelte';
@@ -78,13 +78,12 @@
 		streamInfo = null;
 	});
 
-	afterNavigate((_) => {
+	afterNavigate(async (_) => {
 		Logger.debug(`navigated - ${channel}`);
 		$channelCache = $channelCache.add(channel);
 
-		getStream(channel).then((info) => {
-			streamInfo = info;
-		});
+		const info = await getStream(channel);
+		streamInfo = info;
 
 		clearInterval(streamRefreshInterval);
 		streamRefreshInterval = setInterval(async () => {
@@ -97,6 +96,14 @@
 
 		Logger.debug(`navigated - subscribing to ${channel}`);
 		$chatClient.sub(channel, twitchMsgHandler);
+
+		if (streamInfo) {
+			Logger.debug(`navigated - loading badges for ${channel}`);
+			loadChannelBadges(streamInfo.userId, channel, client.api, GlobalBadgeCache);
+		}
+
+		Logger.debug(`navigated - loading emotes for ${channel}`);
+		loadChannelEmotes(channel, client.api, GlobalEmoteCache);
 
 		autoscrollDebounceFn();
 	});
@@ -140,7 +147,6 @@
 			});
 
 			loadGlobalEmotes(client.api, GlobalEmoteCache);
-			GlobalBadgeCache.LoadChannel(channel, user.id);
 		}
 	};
 

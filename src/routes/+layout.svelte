@@ -10,8 +10,7 @@
 	} from '$lib/store/channels';
 	import Nav from '$lib/components/+nav.svelte';
 	import InputNav from '$lib/components/+inputnav.svelte';
-	import { GlobalBadgeCache } from '$lib/store/badges';
-	import { GlobalEmoteCache, loadGlobalEmotes } from '$lib/store/emotes';
+	import { GlobalBadgeCache, loadGlobalBadges } from '$lib/store/badges';
 
 	currentUser.useLocalStorage();
 	currentToken.useLocalStorage();
@@ -21,7 +20,7 @@
 
 	currentToken.validate().then((valid) => {
 		if (valid) {
-			GlobalBadgeCache.UseClient(client.api);
+			loadGlobalBadges(client.api, GlobalBadgeCache);
 		}
 	});
 

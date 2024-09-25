@@ -48,8 +48,8 @@ export const GlobalEmoteCache = new EmoteCache();
 
 export async function loadChannelEmotes(id: string, client: ApiClient, cache: EmoteCache) {
 	Logger.debug(`[EmoteCache] loading channel: ${id}`);
-	const channelEmotes = await client.chat.getChannelEmotes(id);
-	channelEmotes.map((e) => cache.Set(e.id, newEmoteFromHelix(e)));
+	// const channelEmotes = await client.chat.getChannelEmotes(id);
+	// channelEmotes.map((e) => cache.Set(e.id, newEmoteFromHelix(e)));
 }
 
 export async function loadGlobalEmotes(client: ApiClient, cache: EmoteCache) {

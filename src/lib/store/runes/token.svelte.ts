@@ -6,7 +6,7 @@ export class TwitchToken {
 	client_id = $state('');
 	#_key = 'twitch_token';
 
-	constructor() {
+	useLocalStorage() {
 		if (browser) {
 			const item = localStorage.getItem(this.#_key);
 			if (item) this.parse(item);
@@ -39,3 +39,5 @@ export class TwitchToken {
 		}
 	}
 }
+
+export const currentToken = new TwitchToken();
