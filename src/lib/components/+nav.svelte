@@ -1,12 +1,10 @@
 <script lang="ts">
-	import { user } from '$lib/store/user';
+	import { currentUser } from '$lib/store/runes/user.svelte';
 	import Tabs from '$lib/components/+tabs.svelte';
 </script>
 
 <div class="flex flex-row w-full items-center bg-base-300">
-	{#if $user}
-		<Tabs />
-	{/if}
+	<Tabs />
 
 	<div class="flex gap-2 pr-1 justify-end items-end">
 		<div class="dropdown dropdown-end">
@@ -14,8 +12,8 @@
 			<!-- svelte-ignore a11y_label_has_associated_control -->
 			<label tabindex="0" class="btn btn-ghost btn-circle avatar">
 				<div class="w-9 rounded-full">
-					{#if $user.displayName != 'Anonymous'}
-						<img src={$user?.profilePictureUrl} alt={$user?.displayName} />
+					{#if !currentUser.isAnon}
+						<img src={currentUser.profilePictureUrl} alt={currentUser.displayName} />
 					{:else}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '../app.css';
-	import { user } from '$lib/store/user';
-	import { TwitchToken } from '$lib/store/runes/token.svelte';
+	import { currentUser } from '$lib/store/runes/user.svelte';
+	import { currentToken } from '$lib/store/runes/token.svelte';
 	import { client } from '$lib/store/runes/apiclient.svelte';
 	import {
 		channels as channelCache,
@@ -13,13 +13,13 @@
 	import { GlobalBadgeCache } from '$lib/store/badges';
 	import { GlobalEmoteCache, loadGlobalEmotes } from '$lib/store/emotes';
 
-	user.useLocalStorage();
+	currentUser.useLocalStorage();
+	currentToken.useLocalStorage();
 	channelCache.useLocalStorage(ccDecode, ccEncode);
 
-	let newTwitchToken = new TwitchToken();
-	client.token = newTwitchToken;
+	client.token = currentToken;
 
-	newTwitchToken.validate().then((valid) => {
+	currentToken.validate().then((valid) => {
 		if (valid) {
 			GlobalBadgeCache.UseClient(client.api);
 		}

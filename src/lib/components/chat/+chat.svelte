@@ -6,7 +6,6 @@
 	import { GlobalEmoteCache, loadGlobalEmotes } from '$lib/store/emotes';
 	import { GlobalBadgeCache } from '$lib/store/badges';
 	import { chatClient } from '$lib/store/chat';
-	import { IsAnonUser, user } from '$lib/store/user';
 	import Logger from '$lib/logger/log';
 	import Badges from '$lib/components/chat/+badges.svelte';
 	import * as types from '$lib/config/constants';
@@ -19,6 +18,7 @@
 	import { channels as channelCache } from '$lib/store/channels';
 	import { getTwitchEmoteURL } from '$lib/util/twitch';
 	import { BrowserCache } from '$lib/chat/cache';
+	import { currentUser } from '$lib/store/runes/user.svelte';
 	import { client } from '$lib/store/runes/apiclient.svelte';
 
 	const GREY_NAME_COLOR = '#6B7280';
@@ -63,6 +63,8 @@
 		Logger.debug('destroyed');
 	});
 
+	// TODO: change this so that navigating to a new tab mounts a new component
+	//		 then all this can move into onMount and onDestroy
 	beforeNavigate((_) => {
 		Logger.debug(`navigating - unsubscribing from ${channel}`);
 		$chatClient.unsub(channel);
@@ -171,6 +173,7 @@
 		return [h, m > 9 ? m : h ? '0' + m : m || '0', s > 9 ? s : '0' + s].filter(Boolean).join(':');
 	};
 
+	// TODO: write a test for this
 	const parseThirdPartyEmotes = (element: ParsedMessageTextPart): BasicParsedMessagePart[] => {
 		const TOK_SEP = ' ';
 
@@ -332,7 +335,7 @@
 
 		{#if streamInfo}
 			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">{streamInfo.title}</div>
-		{:else if IsAnonUser($user)}
+		{:else if currentUser.isAnon}
 			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Unknown</div>
 		{/if}
 	</div>
@@ -399,7 +402,7 @@
 				<input
 					bind:value={input}
 					bind:this={chatInput}
-					disabled={IsAnonUser($user)}
+					disabled={currentUser.isAnon}
 					use:keyRedirect
 					type="text"
 					class="w-full input input-bordered focus:input-primary hover:input-primary"

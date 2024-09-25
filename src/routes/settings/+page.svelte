@@ -2,7 +2,7 @@
 	import Logger from '$lib/logger/log';
 	import { client } from '$lib/store/runes/apiclient.svelte';
 	import { TwitchToken } from '$lib/store/runes/token.svelte';
-	import { NewUserFromHelix, user } from '$lib/store/user';
+	import { currentUser } from '$lib/store/runes/user.svelte';
 	import ShowBadge from '$resources/show.svelte';
 	import HideBadge from '$resources/hide.svelte';
 	import { GlobalBadgeCache } from '$lib/store/badges';
@@ -68,7 +68,7 @@
 			let u = await client.api.users.getUserById(user_id);
 			if (u) {
 				Logger.debug('got user');
-				user.set(NewUserFromHelix(u));
+				currentUser.fromHelix(u);
 			} else {
 				setError('an error occured while getting your twitch user');
 			}
