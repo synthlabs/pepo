@@ -100,10 +100,10 @@
 		if (streamInfo) {
 			Logger.debug(`navigated - loading badges for ${channel}`);
 			loadChannelBadges(streamInfo.userId, channel, client.api, GlobalBadgeCache);
-		}
 
-		Logger.debug(`navigated - loading emotes for ${channel}`);
-		loadChannelEmotes(channel, client.api, GlobalEmoteCache);
+			Logger.debug(`navigated - loading emotes for ${channel}`);
+			loadChannelEmotes(streamInfo.userId, channel, client.api, GlobalEmoteCache);
+		}
 
 		autoscrollDebounceFn();
 	});
@@ -346,7 +346,7 @@
 		{/if}
 	</div>
 
-	<div class="flex-grow overflow-y-auto neg-horiz-p-2 text-sm" bind:this={div}>
+	<div class="flex-grow overflow-y-auto overflow-x-hidden neg-horiz-p-2 text-sm" bind:this={div}>
 		{#each messages as msg (msg.id)}
 			<div
 				class="pl-2 pr-2 pt-1 pb-1 inline-block align-middle w-full"

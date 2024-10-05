@@ -1,9 +1,15 @@
 import { ApiClient } from '@twurple/api';
 import Logger from '$lib/logger/log';
 import { type Emote, InvalidEmote } from '$lib/store/emotes/emote';
-import { BTTV_FLAVOR, type BTTVEmote, newEmoteFromBTTV } from '$lib/store/emotes/bttv';
-import { FFZ_FLAVOR } from '$lib/store/emotes/ffz';
+import {
+	BTTV_FLAVOR,
+	type BTTVEmote,
+	type BTTVEmoteAPIResp,
+	newEmoteFromBTTV
+} from '$lib/store/emotes/bttv';
+import { FFZ_FLAVOR, newEmoteFromFFZ, type FFZRoomResp } from '$lib/store/emotes/ffz';
 import { newEmoteFromHelix } from '$lib/store/emotes/helix';
+import log from '$lib/logger/log';
 
 export class EmoteCache {
 	#store = new Map<string, Emote>();
@@ -46,10 +52,33 @@ export class EmoteCache {
 
 export const GlobalEmoteCache = new EmoteCache();
 
-export async function loadChannelEmotes(id: string, client: ApiClient, cache: EmoteCache) {
-	Logger.debug(`[EmoteCache] loading channel: ${id}`);
+export async function loadChannelEmotes(
+	id: string,
+	name: string,
+	client: ApiClient,
+	cache: EmoteCache
+) {
+	Logger.debug(`[EmoteCache] loading channel: ${name}`);
 	// const channelEmotes = await client.chat.getChannelEmotes(id);
 	// channelEmotes.map((e) => cache.Set(e.id, newEmoteFromHelix(e)));
+
+	Logger.debug(`[EmoteCache] loading bttv channel emotes: ${id}`);
+	const bttvResp = await fetch(`https://api.betterttv.net/3/cached/users/twitch/${id}`, {
+		method: 'GET'
+	});
+	const parsedBttvResp: BTTVEmoteAPIResp = await bttvResp.json();
+	parsedBttvResp.channelEmotes.map((e) => cache.Set(e.id, newEmoteFromBTTV(e)));
+	parsedBttvResp.sharedEmotes.map((e) => cache.Set(e.id, newEmoteFromBTTV(e)));
+
+	Logger.debug(`[EmoteCache] loading ffz channel emotes: ${id}`);
+	//https://api.frankerfacez.com/v1/room/sirstendec
+	const ffzResp = await fetch(`https://api.frankerfacez.com/v1/room/${name}`, {
+		method: 'GET'
+	});
+	const parsedFfzResp: FFZRoomResp = await ffzResp.json();
+	parsedFfzResp.sets[parsedFfzResp.room.set].emoticons.map((e) =>
+		cache.Set(e.id, newEmoteFromFFZ(e))
+	);
 }
 
 export async function loadGlobalEmotes(client: ApiClient, cache: EmoteCache) {
