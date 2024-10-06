@@ -1,4 +1,4 @@
-import { ApiClient } from '@twurple/api';
+import { ApiClient, HelixUser } from '@twurple/api';
 import Logger from '$lib/logger/log';
 import { type Emote, InvalidEmote } from '$lib/store/emotes/emote';
 import { type BTTVEmote, type BTTVEmoteAPIResp, newEmoteFromBTTV } from '$lib/store/emotes/bttv';
@@ -47,27 +47,22 @@ export class EmoteCache {
 export const GlobalEmoteCache = new EmoteCache();
 
 // TODO: replace this with generic emote providers
-export async function loadChannelEmotes(
-	id: string,
-	name: string,
-	client: ApiClient,
-	cache: EmoteCache
-) {
-	Logger.debug(`[EmoteCache] loading channel: ${name}`);
+export async function loadChannelEmotes(channel: HelixUser, client: ApiClient, cache: EmoteCache) {
+	Logger.debug(`[EmoteCache] loading channel: ${channel.displayName}`);
 	// const channelEmotes = await client.chat.getChannelEmotes(id);
 	// channelEmotes.map((e) => cache.Set(e.id, newEmoteFromHelix(e)));
 
-	Logger.debug(`[EmoteCache] loading bttv channel emotes: ${id}`);
-	const bttvResp = await fetch(`https://api.betterttv.net/3/cached/users/twitch/${id}`, {
+	Logger.debug(`[EmoteCache] loading bttv channel emotes: ${channel.id}`);
+	const bttvResp = await fetch(`https://api.betterttv.net/3/cached/users/twitch/${channel.id}`, {
 		method: 'GET'
 	});
 	const parsedBttvResp: BTTVEmoteAPIResp = await bttvResp.json();
 	parsedBttvResp.channelEmotes.map((e) => cache.Set(e.id, newEmoteFromBTTV(e)));
 	parsedBttvResp.sharedEmotes.map((e) => cache.Set(e.id, newEmoteFromBTTV(e)));
 
-	Logger.debug(`[EmoteCache] loading ffz channel emotes: ${id}`);
+	Logger.debug(`[EmoteCache] loading ffz channel emotes: ${channel.id}`);
 	//https://api.frankerfacez.com/v1/room/sirstendec
-	const ffzResp = await fetch(`https://api.frankerfacez.com/v1/room/${name}`, {
+	const ffzResp = await fetch(`https://api.frankerfacez.com/v1/room/${channel.name}`, {
 		method: 'GET'
 	});
 	const parsedFfzResp: FFZRoomResp = await ffzResp.json();

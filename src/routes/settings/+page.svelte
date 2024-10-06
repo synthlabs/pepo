@@ -5,7 +5,6 @@
 	import { currentUser } from '$lib/store/runes/user.svelte';
 	import ShowBadge from '$resources/show.svelte';
 	import HideBadge from '$resources/hide.svelte';
-	import { GlobalBadgeCache } from '$lib/store/badges';
 
 	let token = new TwitchToken();
 
@@ -62,8 +61,6 @@
 
 			Logger.debug('token validated');
 			client.token = token;
-
-			GlobalBadgeCache.UseClient(client.api);
 
 			let u = await client.api.users.getUserById(user_id);
 			if (u) {

@@ -1,4 +1,4 @@
-import type { ApiClient, HelixChatBadgeSet, HelixChatBadgeVersion } from '@twurple/api';
+import type { ApiClient, HelixChatBadgeSet, HelixChatBadgeVersion, HelixUser } from '@twurple/api';
 import Logger from '$lib/logger/log';
 
 export class Badge {
@@ -83,16 +83,11 @@ export function newBadgeFromHelix(badgeSet: HelixChatBadgeSet): Badge {
 	return new Badge(badgeSet.id, badgeSet.versions);
 }
 
-export async function loadChannelBadges(
-	id: string,
-	channel: string,
-	client: ApiClient,
-	cache: BadgeCache
-) {
-	Logger.debug(`[BadgeCache] loading channel: ${id}`);
+export async function loadChannelBadges(channel: HelixUser, client: ApiClient, cache: BadgeCache) {
+	Logger.debug(`[BadgeCache] loading channel: ${channel.displayName}`);
 
-	const badges = await client.chat.getChannelBadges(id);
-	badges.map((b) => cache.ScopedSet(channel, b.id, newBadgeFromHelix(b)));
+	const badges = await client.chat.getChannelBadges(channel);
+	badges.map((b) => cache.ScopedSet(channel.name, b.id, newBadgeFromHelix(b)));
 }
 
 export async function loadGlobalBadges(client: ApiClient, cache: BadgeCache) {

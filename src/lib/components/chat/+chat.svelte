@@ -36,6 +36,7 @@
 	let behavior: ScrollBehavior = 'auto';
 	let input = '';
 	let streamInfo: HelixStream | null;
+	let channelUser: HelixUser;
 	let index = 0;
 	let streamRefreshInterval: NodeJS.Timeout;
 
@@ -56,7 +57,7 @@
 		messageCache = new BrowserCache();
 		Logger.debug('mounted');
 
-		init();
+		// init();
 	});
 
 	onDestroy(() => {
@@ -97,13 +98,13 @@
 		Logger.debug(`navigated - subscribing to ${channel}`);
 		$chatClient.sub(channel, twitchMsgHandler);
 
-		if (streamInfo) {
-			Logger.debug(`navigated - loading badges for ${channel}`);
-			loadChannelBadges(streamInfo.userId, channel, client.api, GlobalBadgeCache);
+		await init();
 
-			Logger.debug(`navigated - loading emotes for ${channel}`);
-			loadChannelEmotes(streamInfo.userId, channel, client.api, GlobalEmoteCache);
-		}
+		Logger.debug(`navigated - loading badges for ${channel}`);
+		loadChannelBadges(channelUser, client.api, GlobalBadgeCache);
+
+		Logger.debug(`navigated - loading emotes for ${channel}`);
+		loadChannelEmotes(channelUser, client.api, GlobalEmoteCache);
 
 		autoscrollDebounceFn();
 	});
@@ -138,6 +139,7 @@
 			Logger.error('failed to get user info', channel);
 			return;
 		}
+		channelUser = user;
 
 		if (validToken) {
 			$chatClient.token = client.token;
