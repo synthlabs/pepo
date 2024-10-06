@@ -53,34 +53,13 @@
 
 	$: hasInput = input.length > 0;
 
-	onMount(() => {
+	onMount(async () => {
 		messageCache = new BrowserCache();
 		Logger.debug('mounted');
 
-		// init();
-	});
+		await init();
 
-	onDestroy(() => {
-		Logger.debug('destroyed');
-	});
-
-	// TODO: change this so that navigating to a new tab mounts a new component
-	//		 then all this can move into onMount and onDestroy
-	beforeNavigate((_) => {
-		Logger.debug(`navigating - unsubscribing from ${channel}`);
-		$chatClient.unsub(channel);
-
-		Logger.debug(`navigating - persisting msg cache for ${channel}`);
-		messageCache.set(channel, [...messages]);
-		messages = [];
-
-		Logger.debug(`navigating - clearing stream refresh interval`);
-		clearInterval(streamRefreshInterval);
-		streamInfo = null;
-	});
-
-	afterNavigate(async (_) => {
-		Logger.debug(`navigated - ${channel}`);
+		Logger.debug(`onMount - ${channel}`);
 		$channelCache = $channelCache.add(channel);
 
 		const info = await getStream(channel);
@@ -92,21 +71,34 @@
 			streamInfo = await getStream(channel);
 		}, 60000);
 
-		Logger.debug(`navigated - loading msg cache for ${channel}`);
+		Logger.debug(`onMount - loading msg cache for ${channel}`);
 		messages = messageCache.get(channel);
 
-		Logger.debug(`navigated - subscribing to ${channel}`);
+		Logger.debug(`onMount - subscribing to ${channel}`);
 		$chatClient.sub(channel, twitchMsgHandler);
 
-		await init();
-
-		Logger.debug(`navigated - loading badges for ${channel}`);
+		Logger.debug(`onMount - loading badges for ${channel}`);
 		loadChannelBadges(channelUser, client.api, GlobalBadgeCache);
 
-		Logger.debug(`navigated - loading emotes for ${channel}`);
+		Logger.debug(`onMount - loading emotes for ${channel}`);
 		loadChannelEmotes(channelUser, client.api, GlobalEmoteCache);
 
 		autoscrollDebounceFn();
+	});
+
+	onDestroy(() => {
+		Logger.debug('destroyed');
+
+		Logger.debug(`onDestroy - unsubscribing from ${channel}`);
+		$chatClient.unsub(channel);
+
+		Logger.debug(`onDestroy - persisting msg cache for ${channel}`);
+		messageCache.set(channel, [...messages]);
+		messages = [];
+
+		Logger.debug(`onDestroy - clearing stream refresh interval`);
+		clearInterval(streamRefreshInterval);
+		streamInfo = null;
 	});
 
 	beforeUpdate(() => {
@@ -143,12 +135,6 @@
 
 		if (validToken) {
 			$chatClient.token = client.token;
-
-			getStream(channel).then((info) => {
-				streamInfo = info;
-			});
-
-			loadGlobalEmotes(client.api, GlobalEmoteCache);
 		}
 	};
 
@@ -192,7 +178,7 @@
 		for (let j = 0; j < tokens.length; j++) {
 			if (GlobalEmoteCache.HasName(tokens[j])) {
 				// all of the new tokens we have so far become element's text
-				element.text = newTokens.join(TOK_SEP);
+				element.text = newTokens.join(TOK_SEP) + ' ';
 				// reset our new set of tokens
 				newTokens = [];
 				// we update the new length of element
@@ -224,7 +210,7 @@
 				newTokens.push(tokens[j]);
 			}
 		}
-		element.text = newTokens.join(TOK_SEP);
+		element.text = ' ' + newTokens.join(TOK_SEP);
 		element.length = element.text.length;
 
 		newElements.push(element);
@@ -341,12 +327,12 @@
 <div class="flex flex-col flex-nowrap w-full h-full p-2">
 	<div class="flex p-1 pb-2 border-b border-b-base-300">
 		<!-- TODO: now that I have real tabs, this should be something else -->
-		<div class="flex items-center normal-case text-xl pl-1 pr-1">#{channel}</div>
+		<div class="flex items-center normal-case text-xl pl-1 pr-2 border-r-2">#{channel}</div>
 
 		{#if streamInfo}
-			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">{streamInfo.title}</div>
+			<div class="flex items-center pl-1 ml-2 text-sm">{streamInfo.title}</div>
 		{:else if currentUser.isAnon}
-			<div class="flex items-center pl-3 border-l-2 ml-2 text-sm">Unknown</div>
+			<div class="flex items-center pl-1 ml-2 text-sm">Unknown</div>
 		{/if}
 	</div>
 

@@ -11,6 +11,7 @@
 	import Nav from '$lib/components/+nav.svelte';
 	import InputNav from '$lib/components/+inputnav.svelte';
 	import { GlobalBadgeCache, loadGlobalBadges } from '$lib/store/badges';
+	import { GlobalEmoteCache, loadGlobalEmotes } from '$lib/store/emotes';
 
 	currentUser.useLocalStorage();
 	currentToken.useLocalStorage();
@@ -21,6 +22,7 @@
 	currentToken.validate().then((valid) => {
 		if (valid) {
 			loadGlobalBadges(client.api, GlobalBadgeCache);
+			loadGlobalEmotes(client.api, GlobalEmoteCache);
 		}
 	});
 

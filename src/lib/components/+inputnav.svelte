@@ -1,9 +1,7 @@
 <script lang="ts">
-	import { beforeUpdate, afterUpdate } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { createEventDispatcher } from 'svelte';
-	import { channels as channelCache, Sanitize } from '$lib/store/channels';
-	import Logger from '$lib/logger/log';
+	import { Sanitize } from '$lib/store/channels';
 
 	let dispatch = createEventDispatcher();
 

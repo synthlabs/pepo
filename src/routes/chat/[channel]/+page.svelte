@@ -8,4 +8,6 @@
 	Logger.debug($page);
 </script>
 
-<Chat channel={$page.params.channel} />
+{#key $page.params.channel}
+	<Chat channel={$page.params.channel} />
+{/key}
