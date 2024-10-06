@@ -193,6 +193,8 @@
 			if (GlobalEmoteCache.HasName(tokens[j])) {
 				// all of the new tokens we have so far become element's text
 				element.text = newTokens.join(TOK_SEP);
+				// reset our new set of tokens
+				newTokens = [];
 				// we update the new length of element
 				element.length = element.text.length;
 				// push element to newmessageparts
