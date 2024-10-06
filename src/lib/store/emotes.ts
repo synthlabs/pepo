@@ -1,15 +1,9 @@
 import { ApiClient } from '@twurple/api';
 import Logger from '$lib/logger/log';
 import { type Emote, InvalidEmote } from '$lib/store/emotes/emote';
-import {
-	BTTV_FLAVOR,
-	type BTTVEmote,
-	type BTTVEmoteAPIResp,
-	newEmoteFromBTTV
-} from '$lib/store/emotes/bttv';
-import { FFZ_FLAVOR, newEmoteFromFFZ, type FFZRoomResp } from '$lib/store/emotes/ffz';
+import { type BTTVEmote, type BTTVEmoteAPIResp, newEmoteFromBTTV } from '$lib/store/emotes/bttv';
+import { newEmoteFromFFZ, type FFZRoomResp } from '$lib/store/emotes/ffz';
 import { newEmoteFromHelix } from '$lib/store/emotes/helix';
-import log from '$lib/logger/log';
 
 export class EmoteCache {
 	#store = new Map<string, Emote>();
@@ -52,6 +46,7 @@ export class EmoteCache {
 
 export const GlobalEmoteCache = new EmoteCache();
 
+// TODO: replace this with generic emote providers
 export async function loadChannelEmotes(
 	id: string,
 	name: string,
