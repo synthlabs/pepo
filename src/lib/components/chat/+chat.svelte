@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { beforeUpdate, afterUpdate, onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { HelixStream, HelixUser } from '@twurple/api';
 	import { ChatEmote, parseChatMessage } from '@twurple/common';
 	import type { TwitchPrivateMessage } from '@twurple/chat/lib/commands/TwitchPrivateMessage';
@@ -14,7 +14,6 @@
 		ParsedMessageTextPart,
 		ParsedMessageEmotePart
 	} from '@twurple/common/lib/emotes/ParsedMessagePart';
-	import { beforeNavigate, afterNavigate } from '$app/navigation';
 	import { channels as channelCache } from '$lib/store/channels';
 	import { getTwitchEmoteURL } from '$lib/util/twitch';
 	import { BrowserCache } from '$lib/chat/cache';
@@ -24,18 +23,19 @@
 	const GREY_NAME_COLOR = '#6B7280';
 	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
 
-	export let channel: string;
+	interface Props {
+		channel: string;
+	}
+	const { channel }: Props = $props();
 
 	let div: HTMLDivElement;
-	let autoscroll: boolean;
-	let autoscrollDebounce: boolean;
+	let autoscroll: boolean = $state(true);
+	let autoscrollDebounce: boolean = $state(true);
 	let chatInput: HTMLInputElement;
-	let messageCache: BrowserCache<message>;
 
-	let messageLimit = 1000;
 	let behavior: ScrollBehavior = 'auto';
-	let input = '';
-	let streamInfo: HelixStream | null;
+	let input = $state('');
+	let streamInfo: HelixStream | null = $state(null);
 	let channelUser: HelixUser;
 	let index = 0;
 	let streamRefreshInterval: NodeJS.Timeout;
@@ -49,12 +49,12 @@
 		index: number;
 		raw?: TwitchPrivateMessage;
 	}
-	let messages: message[] = [];
+	let messageLimit = 1000;
+	let messages: message[] = $state([]);
 
-	$: hasInput = input.length > 0;
+	let hasInput = $derived(input.length > 0);
 
 	onMount(async () => {
-		messageCache = new BrowserCache();
 		Logger.debug('mounted');
 
 		await init();
@@ -71,8 +71,8 @@
 			streamInfo = await getStream(channel);
 		}, 60000);
 
-		Logger.debug(`onMount - loading msg cache for ${channel}`);
-		messages = messageCache.get(channel);
+		// Logger.debug(`onMount - loading msg cache for ${channel}`);
+		// messages = messageCache.get(channel);
 
 		Logger.debug(`onMount - subscribing to ${channel}`);
 		$chatClient.sub(channel, twitchMsgHandler);
@@ -92,33 +92,13 @@
 		Logger.debug(`onDestroy - unsubscribing from ${channel}`);
 		$chatClient.unsub(channel);
 
-		Logger.debug(`onDestroy - persisting msg cache for ${channel}`);
-		messageCache.set(channel, [...messages]);
+		// Logger.debug(`onDestroy - persisting msg cache for ${channel}`);
+		// messageCache.set(channel, [...messages]);
 		messages = [];
 
 		Logger.debug(`onDestroy - clearing stream refresh interval`);
 		clearInterval(streamRefreshInterval);
 		streamInfo = null;
-	});
-
-	beforeUpdate(() => {
-		if (autoscrollDebounce) {
-			autoscroll = true;
-			return;
-		}
-
-		const scrollAmount = div ? div.offsetHeight + div.scrollTop : 0;
-		// determine whether we should auto-scroll
-		// once the DOM is updated...
-		// if the scroll amount matches the tail minus a buffer amount then autoscroll
-		autoscroll = div && scrollAmount > div.scrollHeight - AUTOSCROLL_BUFFER;
-	});
-
-	afterUpdate(() => {
-		// ...the DOM is now in sync with the data
-		if (autoscroll) {
-			div.scrollTo({ top: div.scrollHeight, left: 0, behavior });
-		}
 	});
 
 	const init = async () => {
@@ -218,11 +198,11 @@
 		return newElements;
 	};
 
-	const twitchMsgHandler = (text: string, msg: TwitchPrivateMessage) => {
+	const twitchMsgHandler = (text: string, msg?: TwitchPrivateMessage) => {
 		let m: message;
 
 		// TODO: eventually move to our own parser so we can do a single pass
-		let messageParts = parseChatMessage(text, msg.emoteOffsets);
+		let messageParts = parseChatMessage(text, msg?.emoteOffsets ?? new Map<string, string[]>());
 
 		let newMessageParts: BasicParsedMessagePart[] = [];
 		messageParts.forEach((element, i) => {
@@ -235,24 +215,44 @@
 			}
 		});
 
+		// TODO: fix support for your own messages being sent being properly rendered
 		m = {
-			id: msg.id,
-			ts: msg.date.toLocaleTimeString('en', { timeStyle: 'short' }),
-			username: msg.userInfo.displayName,
+			id: msg?.id ?? (Math.random() + 1).toString(36).substring(7),
+			ts: (msg?.date ?? new Date()).toLocaleTimeString('en', { timeStyle: 'short' }),
+			username: msg?.userInfo.displayName ?? currentUser.displayName,
 			messageParts: newMessageParts,
-			color: msg.userInfo.color ?? GREY_NAME_COLOR,
+			color: msg?.userInfo.color ?? GREY_NAME_COLOR,
 			index: nextIndex(),
 			raw: msg
 		};
 		msgHandler(m);
 	};
 
-	const msgHandler = (msg: message) => {
-		let newMsgs = [...messages, msg];
+	const shouldScroll = (): boolean => {
+		if (autoscrollDebounce) {
+			autoscroll = true;
+		} else {
+			const scrollAmount = div ? div.offsetHeight + div.scrollTop : 0;
+			// determine whether we should auto-scroll
+			// once the DOM is updated...
+			// if the scroll amount matches the tail minus a buffer amount then autoscroll
+			autoscroll = div && scrollAmount > div.scrollHeight - AUTOSCROLL_BUFFER;
+		}
+		return autoscroll;
+	};
 
-		if (newMsgs.length > messageLimit) newMsgs.shift();
+	const processAutoscroll = async () => {
+		await tick();
 
-		messages = newMsgs;
+		if (shouldScroll()) {
+			div.scrollTo({ top: div.scrollHeight, left: 0, behavior });
+		}
+	};
+
+	const msgHandler = async (msg: message) => {
+		messages.push(msg);
+		if (messages.length > messageLimit) messages.shift();
+		await processAutoscroll();
 	};
 
 	const submitForm = (event: SubmitEvent) => {
@@ -261,6 +261,7 @@
 		if (hasInput) {
 			$chatClient
 				.say(channel, input)
+				.then(() => twitchMsgHandler(input))
 				.catch(Logger.error)
 				.finally(() => {
 					input = '';
@@ -306,7 +307,7 @@
 
 	const pausedChatBtnAction = () => {
 		autoscrollDebounceFn();
-		div.scrollTo({ top: div.scrollHeight, left: 0, behavior });
+		processAutoscroll();
 	};
 
 	const nextIndex = (): number => {
