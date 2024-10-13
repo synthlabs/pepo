@@ -3,6 +3,12 @@ import Logger from '$lib/logger/log';
 import { type Emote, InvalidEmote } from '$lib/store/emotes/emote';
 import { type BTTVEmote, type BTTVEmoteAPIResp, newEmoteFromBTTV } from '$lib/store/emotes/bttv';
 import { newEmoteFromFFZ, type FFZRoomResp } from '$lib/store/emotes/ffz';
+import {
+	newEmoteFromSeventv,
+	type SeventvEmote,
+	type SeventvEmoteSet,
+	type SeventvChannelResp
+} from '$lib/store/emotes/seventv';
 import { newEmoteFromHelix } from '$lib/store/emotes/helix';
 
 export class EmoteCache {
@@ -69,6 +75,16 @@ export async function loadChannelEmotes(channel: HelixUser, client: ApiClient, c
 	parsedFfzResp.sets[parsedFfzResp.room.set].emoticons.map((e) =>
 		cache.Set(e.id, newEmoteFromFFZ(e))
 	);
+
+	Logger.debug(`[EmoteCache] loading 7tv channel emotes: ${channel.id}`);
+	// https://7tv.io/v3/users/twitch/%1
+	const seventvResp = await fetch(`https://7tv.io/v3/users/twitch/${channel.id}`, {
+		method: 'GET'
+	});
+	const parsedSeventvResp: SeventvChannelResp = await seventvResp.json();
+	parsedSeventvResp.emote_set.emotes.map((e: SeventvEmote) =>
+		cache.Set(e.id, newEmoteFromSeventv(e))
+	);
 }
 
 export async function loadGlobalEmotes(client: ApiClient, cache: EmoteCache) {
@@ -78,9 +94,19 @@ export async function loadGlobalEmotes(client: ApiClient, cache: EmoteCache) {
 	globalEmotes.map((e) => cache.Set(e.id, newEmoteFromHelix(e)));
 
 	Logger.debug('[EmoteCache] loading bttv global emotes');
-	const resp = await fetch('https://api.betterttv.net/3/cached/emotes/global', {
+	const bttvResp = await fetch('https://api.betterttv.net/3/cached/emotes/global', {
 		method: 'GET'
 	});
-	const bttvEmotes: BTTVEmote[] = await resp.json();
+	const bttvEmotes: BTTVEmote[] = await bttvResp.json();
 	bttvEmotes.map((e: BTTVEmote) => cache.Set(e.id, newEmoteFromBTTV(e)));
+
+	Logger.debug('[EmoteCache] loading 7tv global emotes');
+	const seventvResp = await fetch('https://7tv.io/v3/emote-sets/global', {
+		method: 'GET'
+	});
+	const parsedSeventvEmoteSetResp: SeventvEmoteSet = await seventvResp.json();
+	Logger.debug('seventv', parsedSeventvEmoteSetResp);
+	parsedSeventvEmoteSetResp.emotes.map((e: SeventvEmote) =>
+		cache.Set(e.id, newEmoteFromSeventv(e))
+	);
 }

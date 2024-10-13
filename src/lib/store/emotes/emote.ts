@@ -1,7 +1,7 @@
-import Logger from '$lib/logger/log';
 import { HelixEmote } from '@twurple/api';
 import type { FFZEmote } from '$lib/store/emotes/ffz';
 import type { BTTVEmote } from '$lib/store/emotes/bttv';
+import type { SeventvEmote } from './seventv';
 
 export interface IInvalidEmote {
 	id: string;
@@ -11,7 +11,7 @@ export interface IInvalidEmote {
 
 export const InvalidEmote: IInvalidEmote = { id: 'invalid', name: 'invalid', url: '' };
 
-export declare type EmoteRef = HelixEmote | BTTVEmote | FFZEmote | IInvalidEmote;
+export declare type EmoteRef = HelixEmote | BTTVEmote | FFZEmote | SeventvEmote | IInvalidEmote;
 
 export interface Emote {
 	id: string;

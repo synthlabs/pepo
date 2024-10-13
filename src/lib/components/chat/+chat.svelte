@@ -75,14 +75,14 @@
 		// Logger.debug(`onMount - loading msg cache for ${channel}`);
 		// messages = messageCache.get(channel);
 
-		Logger.debug(`onMount - subscribing to ${channel}`);
+		Logger.debug(`onMount - subscribing to ${channel.name}`);
 		$chatClient.sub(channel.name, twitchMsgHandler);
 
 		if (channel.user) {
-			Logger.debug(`onMount - loading badges for ${channel}`);
+			Logger.debug(`onMount - loading badges for ${channel.name}`);
 			loadChannelBadges(channel.user, client.api, GlobalBadgeCache);
 
-			Logger.debug(`onMount - loading emotes for ${channel}`);
+			Logger.debug(`onMount - loading emotes for ${channel.name}`);
 			loadChannelEmotes(channel.user, client.api, GlobalEmoteCache);
 		}
 
