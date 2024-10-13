@@ -9,5 +9,5 @@
 </script>
 
 {#key $page.params.channel}
-	<Chat channel={$page.params.channel} />
+	<Chat name={$page.params.channel} />
 {/key}

@@ -15,18 +15,20 @@
 		ParsedMessageEmotePart
 	} from '@twurple/common/lib/emotes/ParsedMessagePart';
 	import { channels as channelCache } from '$lib/store/channels';
-	import { getTwitchEmoteURL } from '$lib/util/twitch';
+	import { getTwitchEmoteURL, getStream, getUserByName } from '$lib/util/twitch';
 	import { BrowserCache } from '$lib/chat/cache';
 	import { currentUser } from '$lib/store/runes/user.svelte';
 	import { client } from '$lib/store/runes/apiclient.svelte';
+	import { type Channel } from '$lib/types/twitch';
 
 	const GREY_NAME_COLOR = '#6B7280';
 	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
 
 	interface Props {
-		channel: string;
+		name: string;
 	}
-	const { channel }: Props = $props();
+	const { name }: Props = $props();
+	let channel: Channel = $state({ name: name });
 
 	let div: HTMLDivElement;
 	let autoscroll: boolean = $state(true);
@@ -35,8 +37,6 @@
 
 	let behavior: ScrollBehavior = 'auto';
 	let input = $state('');
-	let streamInfo: HelixStream | null = $state(null);
-	let channelUser: HelixUser;
 	let index = 0;
 	let streamRefreshInterval: NodeJS.Timeout;
 
@@ -54,34 +54,37 @@
 
 	let hasInput = $derived(input.length > 0);
 
+	$inspect(channel);
+
 	onMount(async () => {
 		Logger.debug('mounted');
 
 		await init();
 
-		Logger.debug(`onMount - ${channel}`);
-		$channelCache = $channelCache.add(channel);
+		Logger.debug(`onMount - ${channel.name}`);
+		$channelCache = $channelCache.add(channel.name);
 
-		const info = await getStream(channel);
-		streamInfo = info;
+		updateStreamInfo(await getStream(channel.name, client));
 
 		clearInterval(streamRefreshInterval);
 		streamRefreshInterval = setInterval(async () => {
 			Logger.debug('get stream tick');
-			streamInfo = await getStream(channel);
+			updateStreamInfo(await getStream(channel.name, client));
 		}, 60000);
 
 		// Logger.debug(`onMount - loading msg cache for ${channel}`);
 		// messages = messageCache.get(channel);
 
 		Logger.debug(`onMount - subscribing to ${channel}`);
-		$chatClient.sub(channel, twitchMsgHandler);
+		$chatClient.sub(channel.name, twitchMsgHandler);
 
-		Logger.debug(`onMount - loading badges for ${channel}`);
-		loadChannelBadges(channelUser, client.api, GlobalBadgeCache);
+		if (channel.user) {
+			Logger.debug(`onMount - loading badges for ${channel}`);
+			loadChannelBadges(channel.user, client.api, GlobalBadgeCache);
 
-		Logger.debug(`onMount - loading emotes for ${channel}`);
-		loadChannelEmotes(channelUser, client.api, GlobalEmoteCache);
+			Logger.debug(`onMount - loading emotes for ${channel}`);
+			loadChannelEmotes(channel.user, client.api, GlobalEmoteCache);
+		}
 
 		autoscrollDebounceFn();
 	});
@@ -89,8 +92,8 @@
 	onDestroy(() => {
 		Logger.debug('destroyed');
 
-		Logger.debug(`onDestroy - unsubscribing from ${channel}`);
-		$chatClient.unsub(channel);
+		Logger.debug(`onDestroy - unsubscribing from ${channel.name}`);
+		$chatClient.unsub(channel.name);
 
 		// Logger.debug(`onDestroy - persisting msg cache for ${channel}`);
 		// messageCache.set(channel, [...messages]);
@@ -98,7 +101,7 @@
 
 		Logger.debug(`onDestroy - clearing stream refresh interval`);
 		clearInterval(streamRefreshInterval);
-		streamInfo = null;
+		updateStreamInfo(null);
 	});
 
 	const init = async () => {
@@ -106,38 +109,35 @@
 
 		const validToken = await client.token.validate();
 
-		let user = await getUserByName(channel);
+		let user = await getUserByName(channel.name, client);
 		if (!user) {
-			Logger.error('failed to get user info', channel);
+			Logger.error('failed to get user info', channel.name);
 			return;
 		}
-		channelUser = user;
+		channel.user = user;
 
 		if (validToken) {
 			$chatClient.token = client.token;
 		}
 	};
 
-	const getUserByName = async (userName: string): Promise<HelixUser | null> => {
-		const user = await client.api.users.getUserByName(userName);
-		if (!user) {
-			Logger.debug('failed to get user');
-			return null;
+	const updateStreamInfo = (info: HelixStream | null) => {
+		Logger.debug('updateStreamInfo: ', info?.title, info?.viewers, info?.startDate);
+		if (info) {
+			channel.isLive = true;
+			channel.streamInfo = {
+				title: info.title,
+				viewers: info.viewers,
+				startDate: info.startDate
+			};
+		} else {
+			channel.isLive = false;
+			channel.streamInfo = undefined;
 		}
-		return user;
 	};
 
-	const getStream = async (userName: string): Promise<HelixStream | null> => {
-		const user = await client.api.users.getUserByName(userName);
-		if (!user) {
-			Logger.debug('failed to get user');
-			return null;
-		}
-		return await user.getStream();
-	};
-
-	const uptime = (stream: HelixStream): number => {
-		return (Date.now() - stream.startDate.getTime()) / 1000;
+	const uptime = (date: Date): number => {
+		return (Date.now() - date.getTime()) / 1000;
 	};
 
 	const formatTime = (seconds: number) => {
@@ -256,11 +256,12 @@
 	};
 
 	const submitForm = (event: SubmitEvent) => {
+		event.preventDefault();
 		let target = event.target as HTMLFormElement;
 
 		if (hasInput) {
 			$chatClient
-				.say(channel, input)
+				.say(channel.name, input)
 				.then(() => twitchMsgHandler(input))
 				.catch(Logger.error)
 				.finally(() => {
@@ -328,10 +329,10 @@
 <div class="flex flex-col flex-nowrap w-full h-full p-2">
 	<div class="flex p-1 pb-2 border-b border-b-base-300">
 		<!-- TODO: now that I have real tabs, this should be something else -->
-		<div class="flex items-center normal-case text-xl pl-1 pr-2 border-r-2">#{channel}</div>
+		<div class="flex items-center normal-case text-xl pl-1 pr-2 border-r-2">#{channel.name}</div>
 
-		{#if streamInfo}
-			<div class="flex items-center pl-1 ml-2 text-sm">{streamInfo.title}</div>
+		{#if channel.streamInfo}
+			<div class="flex items-center pl-1 ml-2 text-sm">{channel.streamInfo?.title}</div>
 		{:else if currentUser.isAnon}
 			<div class="flex items-center pl-1 ml-2 text-sm">Unknown</div>
 		{/if}
@@ -344,7 +345,7 @@
 				style={evenOddClass(msg.index)}
 			>
 				<span class="text-xs text-gray-500 whitespace-nowrap">{msg.ts}</span>
-				<Badges message={msg.raw} {channel} />
+				<Badges message={msg.raw} channel={channel.name} />
 				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
 					>{msg.username}</span
 				>:
@@ -378,7 +379,7 @@
 	<span class="flex items-center justify-center">
 		<!-- TODO: hide button first since there's a delay in the async scrollto -->
 		<button
-			on:click={pausedChatBtnAction}
+			onclick={pausedChatBtnAction}
 			class:hidden={autoscroll}
 			class="absolute bottom-24 bg-slate-700 hover:bg-slate-600 p-2 rounded-lg items-center justify-center text-center text-xs"
 		>
@@ -386,11 +387,11 @@
 		</button>
 	</span>
 
-	<form on:submit|preventDefault={submitForm}>
+	<form onsubmit={submitForm}>
 		<div class="form-control p-1 border-t border-t-base-300">
 			<div class="p-1 text-sm">
-				{#if streamInfo}
-					{streamInfo.viewers} viewers, {formatTime(uptime(streamInfo))} uptime
+				{#if channel.streamInfo}
+					{channel.streamInfo.viewers} viewers, {formatTime(uptime(channel.streamInfo.startDate))} uptime
 				{/if}
 			</div>
 			<div class="relative">
