@@ -88,14 +88,16 @@
 <svelte:window on:keyup={handleEscape} />
 
 <!-- tabs placeholder for when they're hidden -->
+<!-- svelte-ignore element_invalid_self_closing_tag -->
 <div class="flex-row flex-grow items-end xs:hidden h-full gap-1" />
 <!-- tabs -->
 <div class="flex-row flex-grow items-end xs:tabs hidden h-full gap-1">
 	{#each channels as name, i}
 		<!-- tab -->
 		<!-- svelte-ignore a11y-no-static-element-interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
-			class="tab tab-lifted ellipsis max-w-xs"
+			class="tab tab-lifted ellipsis max-w-40 min-w-24"
 			class:tab-active={name === $page.params.channel}
 			class:tab-border={borders[i]}
 			on:click={() => clickTab(name)}
@@ -120,6 +122,7 @@
 			</div>
 		</div>
 	{/each}
+	<!-- svelte-ignore a11y_consider_explicit_label -->
 	<button
 		on:click={openDialog}
 		class="flex items-center justify-center text-center plus cursor-pointer"
@@ -139,6 +142,7 @@
 <dialog id="add-channel" class="modal" bind:this={modal}>
 	<div class="modal-box">
 		<form method="dialog" on:submit|preventDefault={handleSave}>
+			<!-- svelte-ignore a11y_autofocus -->
 			<input
 				type="text"
 				autofocus
@@ -153,7 +157,6 @@
 <style lang="postcss">
 	.ellipsis {
 		flex: 1;
-		min-width: 4rem;
 		/* or some value */
 	}
 	.ellipsis a {
