@@ -3,7 +3,7 @@ import { TwitchApiClient } from '$lib/store/runes/apiclient.svelte';
 import { TWITCH_EMOTE_V2 } from '$lib/util/constants';
 import { HelixStream, HelixUser } from '@twurple/api';
 
-export function getTwitchEmoteURL(id: string, scale: number, animated = false, dark = true) {
+export function getTwitchEmoteURL(id: string, scale: number, animated = true, dark = true) {
 	return `${TWITCH_EMOTE_V2}/${id}/${animated ? 'default' : 'static'}/${dark ? 'dark' : 'light'}/${
 		scale == 4 ? 3 : scale
 	}.0`;
