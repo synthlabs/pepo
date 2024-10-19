@@ -43,7 +43,8 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install rust target
+      - name: Install rust target (macos only)
+        if: startsWith(matrix.platform, 'macos')
         run: rustup target add x86_64-apple-darwin
 
       - name: install dependencies (ubuntu only)
