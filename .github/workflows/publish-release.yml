@@ -64,7 +64,10 @@ jobs:
 
       - name: Read SUMRY file
         id: sumry
-        run: echo "file=$(cat SUMRY.md)" >> $GITHUB_OUTPUT
+        run: |
+          echo 'FILE<<EOF' >> $GITHUB_OUTPUT
+          cat SUMRY.md >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -74,7 +77,7 @@ jobs:
         with:
           tagName: app-${{ steps.short-sha.outputs.SHORT_SHA }}
           releaseName: 'Pepo v${{ steps.short-sha.outputs.SHORT_SHA }}'
-          releaseBody: '${{ steps.sumry.outputs.file }}'
+          releaseBody: '${{ steps.sumry.outputs.FILE }}'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
