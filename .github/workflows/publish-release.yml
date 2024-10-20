@@ -62,6 +62,10 @@ jobs:
         run: echo "${{ steps.short-sha.outputs.SHORT_SHA }}"
         shell: bash
 
+      - name: Read SUMRY file
+        id: sumry
+        run: echo "file=$(cat SUMRY.md)" >> $GITHUB_OUTPUT
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -70,7 +74,7 @@ jobs:
         with:
           tagName: app-${{ steps.short-sha.outputs.SHORT_SHA }}
           releaseName: 'Pepo v${{ steps.short-sha.outputs.SHORT_SHA }}'
-          releaseBody: 'See the assets to download this version and install.'
+          releaseBody: '${{ steps.sumry.outputs.file }}'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
