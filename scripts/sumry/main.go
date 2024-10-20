@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/go-git/go-git/v5"
@@ -19,25 +20,47 @@ import (
 // this file is disgusting, I'm just prototyping :)
 
 const (
-	COMMIT_MAGIC_STRING = `^\[commit\]: # '(.+)'$`
-	SUMRY_FILE_TMPL     = `[commit]: # '{{.Commit}}'
+	// this matches our commit format of {type}({scope}): {message}
+	COMMIT_SUMRY_FMT_MATCHER = `(.*)\((.+)\):\s(.*)`
+	COMMIT_MAGIC_STRING      = `^\[commit\]: # '(.+)'$`
+	SUMRY_FILE_TMPL          = `[commit]: # '{{.Commit}}'
 
-test
+Features:
+
+{{range .Features -}}
+	- {{. -}}
+{{end}}
+Fixes:
+
+{{range .Fixes -}}
+	- {{. -}}
+{{end}}
+Misc:
+
+{{range .Misc -}}
+	- {{. -}}
+{{end -}}
 `
 )
 
 var (
-	projectRoot string
-	sumryFile   string
-	debugLog    bool
+	projectRoot     string
+	sumryFile       string
+	sumryArchiveDir string
+	update          bool
+	forceUpdate     bool
+	debugLog        bool
 )
 
 type SumryFileTemplateVars struct {
-	Commit string
+	Commit   string
+	Features []string
+	Fixes    []string
+	Misc     []string
 }
 
 // this one goes to you Rob
-func parseCommit(line string) (commit string, found bool) {
+func parseSumryFileCommit(line string) (commit string, found bool) {
 	regex := regexp.MustCompile(COMMIT_MAGIC_STRING)
 
 	if match := regex.FindStringSubmatch(line); len(match) == 2 {
@@ -95,9 +118,8 @@ func mustGetRepo(gitPath string, logger *log.Logger) *git.Repository {
 	return repo
 }
 
-func generateSumryFileText(commit string) string {
+func generateSumryFileText(vars SumryFileTemplateVars) string {
 	output := bytes.Buffer{}
-	vars := SumryFileTemplateVars{commit}
 	tmpl, err := template.New("sumry").Parse(SUMRY_FILE_TMPL)
 	if err != nil {
 		log.Error("failed to parse template", "error", err)
@@ -109,9 +131,61 @@ func generateSumryFileText(commit string) string {
 	return output.String()
 }
 
+func generateSumryTemplateVars(head string, commits []*object.Commit) SumryFileTemplateVars {
+	vars := SumryFileTemplateVars{
+		Commit:   head,
+		Features: []string{},
+		Fixes:    []string{},
+		Misc:     []string{},
+	}
+
+	regex := regexp.MustCompile(COMMIT_SUMRY_FMT_MATCHER)
+	for _, commit := range commits {
+		matches := regex.FindStringSubmatch(commit.Message)
+		if len(matches) == 4 {
+			section := matches[1]
+			msg := fmt.Sprintf("(%s): %s\n", matches[2], matches[3])
+
+			switch section {
+			case "feat":
+				vars.Features = append(vars.Features, msg)
+			case "fix":
+				vars.Fixes = append(vars.Fixes, msg)
+			default:
+				vars.Misc = append(vars.Misc, msg)
+			}
+		} else {
+			// it didn't match the sumry format, so just add it to misc
+			vars.Misc = append(vars.Misc, commit.Message)
+		}
+	}
+
+	return vars
+}
+
+func backupSumryFile() error {
+	srcFile := fmt.Sprintf("%s/%s", projectRoot, sumryFile)
+	dstFile := fmt.Sprintf("%s/%s/%s.%s", projectRoot, sumryArchiveDir, time.Now().Format("200601021504"), sumryFile)
+
+	log.Debug("backing up sumry file", "src", srcFile, "dst", dstFile)
+
+	return os.Rename(srcFile, dstFile)
+}
+
+func writeSumryFile(contents string) error {
+	fileName := fmt.Sprintf("%s/%s", projectRoot, sumryFile)
+
+	log.Debug("writing sumry file", "file", fileName)
+
+	return os.WriteFile(fileName, []byte(contents), 0o664)
+}
+
 func init() {
 	flag.StringVar(&projectRoot, "project-root", "", "the project root vergo will parse")
-	flag.StringVar(&sumryFile, "sumry-file", "SUMRY.md", "the previous sumry output file")
+	flag.StringVar(&sumryFile, "sumry-file", "SUMRY.md", "the previous sumry output file (relative to the project root)")
+	flag.StringVar(&sumryArchiveDir, "sumry-archive-dir", "archive", "the dir to move old sumry files (relative to the project root)")
+	flag.BoolVar(&update, "update", false, "enable updating the sumry file, otherwise prints to stdout")
+	flag.BoolVar(&forceUpdate, "force-update", false, "force updating the sumry file even if the commit hasn't changed")
 	flag.BoolVar(&debugLog, "debug", false, "enable debug logs")
 
 	flag.Parse()
@@ -123,9 +197,15 @@ func main() {
 	}
 
 	log.Info("SUMRY")
-	logger := log.With("project-root", projectRoot,
-		"sumry-file", sumryFile)
-	logger.Debug("config")
+	logger := log.With(
+		"update", update,
+		"force-update", forceUpdate,
+	)
+	logger.Debug("config",
+		"sumry-file", sumryFile,
+		"archive-dir", sumryArchiveDir,
+		"project-root", projectRoot,
+	)
 
 	fileName := fmt.Sprintf("%s/%s", projectRoot, sumryFile)
 	firstLine, err := headFile(fileName)
@@ -133,7 +213,7 @@ func main() {
 		log.Fatal("failed to read file", "file", fileName, "error", err)
 	}
 
-	if commit, ok := parseCommit(firstLine); ok {
+	if commit, ok := parseSumryFileCommit(firstLine); ok {
 		logger.Info("Parsed previous log commit", "commit", commit)
 
 		gitPath := fmt.Sprintf("%s/%s", projectRoot, ".git")
@@ -146,19 +226,35 @@ func main() {
 		logger.Debug("current HEAD", "ref", head.Hash())
 
 		if commit == head.Hash().String() {
-			logger.Warn("sumry file is already up-to-date")
-			return
+			logger.Warn("sumry file is already up-to-date. Use -force-update=true to skip this check")
+			if !forceUpdate {
+				return
+			}
 		}
 
+		logger.Debug("getting commits")
 		commits, err := commitsSinceHash(commit, head, repo)
 		if err != nil {
 			log.Fatal("failed to get commits since last update", "err", err)
 		}
 
-		fmt.Println(commits)
-
+		logger.Debug("generating sumry vars")
+		vars := generateSumryTemplateVars(head.Hash().String(), commits)
 		logger.Debug("generating sumry file")
-		fmt.Print(generateSumryFileText(head.Hash().String()))
+		fileContents := generateSumryFileText(vars)
+		if !update {
+			logger.Info("update not enabled, printing sumry file")
+			// print the file to stdout so it's easy to capture in scripts if you want
+			fmt.Fprint(os.Stdout, fileContents)
+		} else {
+			if err := backupSumryFile(); err != nil {
+				logger.Fatal("failed to backup sumry file")
+			}
+
+			if err := writeSumryFile(fileContents); err != nil {
+				logger.Fatal("failed to write new sumry file")
+			}
+		}
 	} else {
 		logger.Error("failed to locate previous sumry file")
 	}
