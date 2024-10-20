@@ -1,7 +1,15 @@
-[commit]: # 'e43a7d1e19d6b8feda70fcc411988fe7fcbbb077'
+[commit]: # 'b08861ce28edbc9d7733c2e7ce28929473d9b014'
 
-test testing tester
+Features:
 
-tester mctesting face tests
+- (build): use the sumry file for the release body
+- (sumry): support backing up and generating sumry file
+- (scripts): initial sumry generator skeleton
 
-test pretending not to be a test
+Fixes:
+
+- (sumry): properly handle multiline string
+
+Misc:
+
+- (deps): update deps 10-19-2024
