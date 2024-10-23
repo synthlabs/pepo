@@ -66,7 +66,8 @@ jobs:
         id: sumry
         run: |
           echo 'FILE<<EOF' >> $GITHUB_OUTPUT
-          cat SUMRY.md >> $GITHUB_OUTPUT
+          echo 'https://github.com/synthlabs/pepo/releases/tag/app-${{ steps.short-sha.outputs.SHORT_SHA }}' >> $GITHUB_OUTPUT
+          cat SUMRY.md | tail -n +3 >> $GITHUB_OUTPUT
           echo 'EOF' >> $GITHUB_OUTPUT
 
       - uses: tauri-apps/tauri-action@v0
@@ -77,7 +78,8 @@ jobs:
         with:
           tagName: app-${{ steps.short-sha.outputs.SHORT_SHA }}
           releaseName: 'Pepo v${{ steps.short-sha.outputs.SHORT_SHA }}'
-          releaseBody: '${{ steps.sumry.outputs.FILE }}'
+          releaseBody: |
+            ${{ steps.sumry.outputs.FILE }}
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
