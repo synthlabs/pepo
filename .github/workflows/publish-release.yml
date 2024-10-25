@@ -67,6 +67,7 @@ jobs:
         run: |
           echo 'FILE<<EOF' >> $GITHUB_OUTPUT
           echo 'https://github.com/synthlabs/pepo/releases/tag/app-${{ steps.short-sha.outputs.SHORT_SHA }}' >> $GITHUB_OUTPUT
+          echo '' >> $GITHUB_OUTPUT
           cat SUMRY.md | tail -n +3 >> $GITHUB_OUTPUT
           echo 'EOF' >> $GITHUB_OUTPUT
 
