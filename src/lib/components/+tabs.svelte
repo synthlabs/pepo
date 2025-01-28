@@ -87,11 +87,8 @@
 
 <svelte:window on:keyup={handleEscape} />
 
-<!-- tabs placeholder for when they're hidden -->
-<!-- svelte-ignore element_invalid_self_closing_tag -->
-<div class="flex-row flex-grow items-end xs:hidden h-full gap-1" />
 <!-- tabs -->
-<div class="flex-row flex-grow items-end xs:tabs hidden h-full gap-1">
+<div class="flex-row flex-grow items-end tabs h-full gap-1 pt-1">
 	{#each channels as name, i}
 		<!-- tab -->
 		<!-- svelte-ignore a11y-no-static-element-interactions -->
@@ -141,7 +138,14 @@
 
 <dialog id="add-channel" class="modal" bind:this={modal}>
 	<div class="modal-box">
-		<form method="dialog" on:submit|preventDefault={handleSave}>
+		<form
+			method="dialog"
+			on:submit|preventDefault={handleSave}
+			autocapitalize="off"
+			autocomplete="off"
+			autocorrect="off"
+			spellcheck="false"
+		>
 			<!-- svelte-ignore a11y_autofocus -->
 			<input
 				type="text"
@@ -149,6 +153,10 @@
 				bind:value={inputStr}
 				class="input input-bordered m-auto w-full input-sm"
 				placeholder="Go to channel..."
+				autocapitalize="off"
+				autocomplete="off"
+				autocorrect="off"
+				spellcheck="false"
 			/>
 		</form>
 	</div>

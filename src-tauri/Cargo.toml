@@ -1,7 +1,11 @@
+[lib]
+  name = "pepo_lib"
+  crate-type = ["staticlib", "cdylib", "rlib"]
+
 [build-dependencies]
   [build-dependencies.tauri-build]
     features = []
-    version = "1.5.2"
+    version = "2"
 
 [dependencies]
   serde_json = "1.0"
@@ -9,11 +13,10 @@
     features = ["derive"]
     version = "1.0"
   [dependencies.tauri]
-    features = ["updater"]
-    version = "1.8.0"
+    features = []
+    version = "2"
   [dependencies.tauri-plugin-window-state]
-    branch = "v1"
-    git = "https://github.com/tauri-apps/plugins-workspace"
+version = "2"
 
 [features]
   custom-protocol = ["tauri/custom-protocol"]
@@ -28,3 +31,6 @@
   repository = ""
   rust-version = "1.60"
   version = "0.12.18"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
