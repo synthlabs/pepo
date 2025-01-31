@@ -1,70 +1,35 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "pepo",
+  "version": "0.1.0",
+  "identifier": "com.pepo.chat",
   "build": {
-    "beforeBuildCommand": "pnpm build",
     "beforeDevCommand": "pnpm dev",
-    "frontendDist": "../build",
-    "devUrl": "http://localhost:5173"
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "pepo",
+        "width": 800,
+        "height": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
-    "category": "DeveloperTool",
-    "copyright": "",
     "targets": "all",
-    "externalBin": [],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "windows": {
-      "certificateThumbprint": null,
-      "digestAlgorithm": "sha256",
-      "timestampUrl": ""
-    },
-    "longDescription": "",
-    "macOS": {
-      "entitlements": null,
-      "exceptionDomain": "",
-      "frameworks": [],
-      "providerShortName": null,
-      "signingIdentity": null
-    },
-    "resources": [],
-    "shortDescription": "",
-    "linux": {
-      "deb": {
-        "depends": []
-      }
-    },
-    "createUpdaterArtifacts": "v1Compatible"
-  },
-  "productName": "Pepo",
-  "mainBinaryName": "Pepo",
-  "version": "0.12.18",
-  "identifier": "com.pepo.chat",
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/synthlabs/pepo/releases/latest/download/latest.json"
-      ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIxM0EyNDBGNTM2M0Y2QTYKUldTbTltTlREeVE2SVRhZGhDamlXeHNHc2lzTjNLWFZWNXlJVVZFUytURmtHb2pXYm5CT0syRDcK"
-    }
-  },
-  "app": {
-    "windows": [
-      {
-        "fullscreen": false,
-        "height": 726,
-        "resizable": true,
-        "title": "Pepo ™",
-        "width": 968,
-        "useHttpsScheme": true
-      }
-    ],
-    "security": {
-      "csp": null
-    }
+    ]
   }
 }
