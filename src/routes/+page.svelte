@@ -1,9 +1,8 @@
 <script lang="ts">
-	import { invoke } from '@tauri-apps/api/core';
-
-	let text = $state('hi');
+	import { Button } from '$lib/components/ui/button/index.js';
 </script>
 
-<div class="container">
-	<h1>{text}</h1>
-</div>
+<h1>Welcome to SvelteKit</h1>
+<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>
+
+<Button>Click me</Button>
