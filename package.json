@@ -1,57 +1,29 @@
 {
-	"name": "pepo",
-	"version": "0.12.18",
-	"private": true,
-	"scripts": {
-		"build": "vite build",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --compiler-warnings 'a11y-aria-attributes:ignore,a11y-incorrect-aria-attribute-type:ignore,a11y-unknown-aria-attribute:ignore,a11y-hidden:ignore,a11y-misplaced-role:ignore,a11y-unknown-role:ignore,a11y-no-abstract-role:ignore,a11y-no-redundant-roles:ignore,a11y-role-has-required-aria-props:ignore,a11y-accesskey:ignore,a11y-autofocus:ignore,a11y-misplaced-scope:ignore,a11y-positive-tabindex:ignore,a11y-invalid-attribute:ignore,a11y-missing-attribute:ignore,a11y-img-redundant-alt:ignore,a11y-label-has-associated-control:ignore,a11y-media-has-caption:ignore,a11y-distracting-elements:ignore,a11y-structure:ignore,a11y-mouse-events-have-key-events:ignore,a11y-missing-content:ignore,a11y-click-events-have-key-events:ignore'",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch --compiler-warnings 'a11y-aria-attributes:ignore,a11y-incorrect-aria-attribute-type:ignore,a11y-unknown-aria-attribute:ignore,a11y-hidden:ignore,a11y-misplaced-role:ignore,a11y-unknown-role:ignore,a11y-no-abstract-role:ignore,a11y-no-redundant-roles:ignore,a11y-role-has-required-aria-props:ignore,a11y-accesskey:ignore,a11y-autofocus:ignore,a11y-misplaced-scope:ignore,a11y-positive-tabindex:ignore,a11y-invalid-attribute:ignore,a11y-missing-attribute:ignore,a11y-img-redundant-alt:ignore,a11y-label-has-associated-control:ignore,a11y-media-has-caption:ignore,a11y-distracting-elements:ignore,a11y-structure:ignore,a11y-mouse-events-have-key-events:ignore,a11y-missing-content:ignore,a11y-click-events-have-key-events:ignore'",
-		"dev": "vite dev --host",
-		"format": "prettier --plugin-search-dir . --write .",
-		"lint": "prettier --plugin-search-dir . --check . && eslint .",
-		"preview": "vite preview --host"
-	},
-	"devDependencies": {
-		"@steeze-ui/heroicons": "^2.4.2",
-		"@sveltejs/adapter-auto": "^2.1.1",
-		"@sveltejs/adapter-static": "^2.0.3",
-		"@sveltejs/kit": "^1.30.4",
-		"@tailwindcss/nesting": "0.0.0-insiders.565cd3e",
-		"@tauri-apps/cli": "^2.2.7",
-		"@types/uuid": "^9.0.8",
-		"@typescript-eslint/eslint-plugin": "^5.62.0",
-		"@typescript-eslint/parser": "^5.62.0",
-		"autoprefixer": "^10.4.20",
-		"cookie": ">=0.7.0",
-		"daisyui": "^3.9.4",
-		"eslint": "^8.57.1",
-		"eslint-config-prettier": "^8.10.0",
-		"eslint-plugin-svelte": "^2.46.1",
-		"postcss": "^8.5.3",
-		"postcss-import": "^15.1.0",
-		"prettier": "^2.8.8",
-		"prettier-plugin-svelte": "^2.10.1",
-		"svelte": "5.0.0-next.252",
-		"svelte-adapter-deno": "^0.9.1",
-		"svelte-check": "^3.8.6",
-		"tailwindcss": "^3.4.17",
-		"tslib": "^2.8.1",
-		"typescript": "^5.7.3",
-		"vite": "^4.5.9"
-	},
-	"type": "module",
-	"dependencies": {
-		"@steeze-ui/svelte-icon": "^1.6.2",
-		"@twurple/api": "^6.2.1",
-		"@twurple/auth": "^6.2.1",
-		"@twurple/chat": "^6.2.1",
-		"@twurple/common": "^6.2.1",
-		"cookie": "^0.7.2",
-		"elizabot": "^0.0.3",
-		"http-status-codes": "^2.3.0",
-		"tauri-plugin-window-state-api": "github:tauri-apps/tauri-plugin-window-state#v1",
-		"theme-change": "^2.5.0",
-		"uuid": "^9.0.1"
-	},
-	"packageManager": "pnpm@9.10.0"
+    "name": "pepo",
+    "version": "0.1.0",
+    "description": "",
+    "type": "module",
+    "scripts": {
+        "dev": "vite dev",
+        "build": "vite build",
+        "preview": "vite preview",
+        "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+        "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+        "tauri": "tauri"
+    },
+    "license": "MIT",
+    "dependencies": {
+        "@tauri-apps/api": "^2",
+        "@tauri-apps/plugin-opener": "^2"
+    },
+    "devDependencies": {
+        "@sveltejs/adapter-static": "^3.0.6",
+        "@sveltejs/kit": "^2.9.0",
+        "@sveltejs/vite-plugin-svelte": "^5.0.0",
+        "svelte": "^5.0.0",
+        "svelte-check": "^4.0.0",
+        "typescript": "~5.6.2",
+        "vite": "^6.0.3",
+        "@tauri-apps/cli": "^2"
+    }
 }
