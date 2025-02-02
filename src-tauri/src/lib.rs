@@ -1,6 +1,7 @@
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
-use tauri::{TitleBarStyle, WebviewUrl, WebviewWindowBuilder};
+use tauri::TitleBarStyle;
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -10,17 +11,23 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             println!("{}, {argv:?}, {cwd}", app.package_info().name);
             app.emit("single-instance", argv).unwrap();
         }))
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::new().build());
+
+    let _builder = builder
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-                .title("pepo")
-                .inner_size(1400.0, 400.0);
+            let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default());
+
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            let win_builder = win_builder.title("").inner_size(1200.0, 600.0);
 
             // set transparent title bar only when building for macOS
             #[cfg(target_os = "macos")]
