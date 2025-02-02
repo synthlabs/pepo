@@ -35,10 +35,11 @@ pub fn run() {
 
                 let ns_window = window.ns_window().unwrap() as id;
                 unsafe {
+                    //rgb(24, 31, 42)
                     let bg_color = NSColor::colorWithRed_green_blue_alpha_(
                         nil,
-                        39.0 / 255.0,
-                        39.0 / 255.0,
+                        24.0 / 255.0,
+                        31.0 / 255.0,
                         42.5 / 255.0,
                         1.0,
                     );
