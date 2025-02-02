@@ -3,18 +3,23 @@
 	import * as Sidebar from '$lib/components/ui/sidebar/index.ts';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
+	import { isTauriMobile } from '$lib/tauri';
+	import { cn } from '$lib/utils';
 
 	let { children } = $props();
 </script>
 
 <Sidebar.Provider>
 	<AppSidebar collapsible="icon"></AppSidebar>
-	<main class="flex max-h-screen w-full flex-col flex-nowrap">
-		<header class=" flex h-16 shrink-0 items-center gap-2 border-b px-4">
+	<main class="flex max-h-dvh w-full flex-col flex-nowrap">
+		<header class="flex h-12 shrink-0 items-center gap-2 border-b px-4">
 			<Sidebar.Trigger class="-ml-1" />
-			<Separator orientation="vertical" class="mr-2 h-4" />
+
+			{#if !isTauriMobile}
+				<Separator orientation="vertical" class="mr-2 h-4" />
+			{/if}
 		</header>
-		<div class="flex w-full flex-grow overflow-hidden">
+		<div class={cn('flex w-full flex-grow overflow-hidden', isTauriMobile && 'mb-8')}>
 			{@render children?.()}
 		</div>
 	</main>
