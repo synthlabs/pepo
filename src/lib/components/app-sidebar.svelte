@@ -3,5 +3,9 @@
 </script>
 
 <Sidebar.Root>
-	<Sidebar.Content></Sidebar.Content>
+	<Sidebar.Content>
+		<Sidebar.Group>
+			<Sidebar.GroupLabel>Application</Sidebar.GroupLabel>
+		</Sidebar.Group>
+	</Sidebar.Content>
 </Sidebar.Root>
