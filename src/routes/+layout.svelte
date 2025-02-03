@@ -19,7 +19,7 @@
 				<Separator orientation="vertical" class="mr-2 h-4" />
 			{/if}
 		</header>
-		<div class={cn('flex w-full flex-grow overflow-hidden', isTauriMobile && 'mb-8')}>
+		<div class={cn('flex w-full flex-grow overflow-hidden', isTauriMobile && 'mb-10')}>
 			{@render children?.()}
 		</div>
 	</main>
