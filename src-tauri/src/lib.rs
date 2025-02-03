@@ -46,9 +46,9 @@ pub fn run() {
                     //rgb(24, 31, 42)
                     let bg_color = NSColor::colorWithRed_green_blue_alpha_(
                         nil,
-                        24.0 / 255.0,
-                        31.0 / 255.0,
-                        42.5 / 255.0,
+                        20.0 / 255.0,
+                        26.0 / 255.0,
+                        39.0 / 255.0,
                         1.0,
                     );
                     ns_window.setBackgroundColor_(bg_color);

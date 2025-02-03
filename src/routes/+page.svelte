@@ -13,9 +13,8 @@
 
 <div class="flex h-full w-full flex-col flex-nowrap">
 	<div class="flex-grow overflow-y-auto overflow-x-hidden">
-		<h4 class="mb-4 text-sm font-medium leading-none">Tags</h4>
 		{#each tags as tag, index}
-			<div class="py-2 text-sm" style={evenOddClass(index)}>
+			<div class="p-2 text-sm" style={evenOddClass(index)}>
 				{tag}
 			</div>
 			<Separator class="" />
