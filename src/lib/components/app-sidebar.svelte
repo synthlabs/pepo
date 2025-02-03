@@ -12,36 +12,47 @@
 	// Menu items.
 	const items = [
 		{
-			title: 'Home',
+			title: 'AlveusSanctuary',
 			url: '#',
-			icon: House
+			icon: House,
+			avatar:
+				'https://static-cdn.jtvnw.net/jtv_user_pictures/4384f6c4-6608-48f4-b3a7-36d0eb6efbd3-profile_image-300x300.png'
 		},
 		{
-			title: 'Inbox',
+			title: 'hanner',
 			url: '#',
-			icon: Inbox
+			icon: Inbox,
+			avatar:
+				'https://static-cdn.jtvnw.net/jtv_user_pictures/0712d245-f404-4487-972d-c9caec092b16-profile_image-300x300.png'
 		},
 		{
-			title: 'Calendar',
+			title: 'SeanDaBlack',
 			url: '#',
-			icon: Calendar
+			icon: Calendar,
+			avatar:
+				'https://static-cdn.jtvnw.net/jtv_user_pictures/4bd8d660-5365-4f2f-ac71-b986710f413a-profile_image-300x300.png'
 		},
 		{
-			title: 'Search',
+			title: 'EsfandTV',
 			url: '#',
-			icon: Search
+			icon: Search,
+			avatar:
+				'https://static-cdn.jtvnw.net/jtv_user_pictures/476ee93d-66a6-4e57-b3a9-db1ceb168ad8-profile_image-300x300.png'
 		},
 		{
-			title: 'Settings',
+			title: 'fanfan',
 			url: '#',
-			icon: Settings
+			icon: Settings,
+			avatar:
+				'https://static-cdn.jtvnw.net/jtv_user_pictures/c65b6b35-0702-494e-9f81-0b2939f0adc2-profile_image-300x300.png'
 		}
 	];
 
 	const user = {
-		name: 'shadcn',
-		email: 'm@example.com',
-		avatar: 'https://github.com/shadcn.png'
+		name: 'sir_xin',
+		provider: 'Twitch',
+		avatar:
+			'https://static-cdn.jtvnw.net/jtv_user_pictures/07cc2a6a-b550-4ae3-abf3-c13d4f5c2d74-profile_image-300x300.png'
 	};
 
 	let {
@@ -54,15 +65,18 @@
 <Sidebar.Root bind:ref {collapsible} {...restProps}>
 	<Sidebar.Content>
 		<Sidebar.Group>
-			<Sidebar.GroupLabel>Application</Sidebar.GroupLabel>
+			<Sidebar.GroupLabel>Following</Sidebar.GroupLabel>
 			<Sidebar.GroupContent>
 				<Sidebar.Menu>
 					{#each items as item (item.title)}
 						<Sidebar.MenuItem>
-							<Sidebar.MenuButton>
+							<Sidebar.MenuButton size="lg">
 								{#snippet child({ props })}
 									<a href={item.url} {...props}>
-										<item.icon />
+										<Avatar.Root class="h-8 w-8 rounded-full">
+											<Avatar.Image src={item.avatar} alt={item.title} />
+											<Avatar.Fallback class="rounded-full">{item.title}</Avatar.Fallback>
+										</Avatar.Root>
 										<span>{item.title}</span>
 									</a>
 								{/snippet}
