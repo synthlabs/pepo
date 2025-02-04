@@ -1,17 +1,37 @@
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use specta_typescript::Typescript;
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri_specta::collect_commands;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
+#[specta::specta]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[derive(Serialize, Deserialize, Type)]
+pub struct MyStruct {
+    a: String,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
+
+    let handlers = tauri_specta::Builder::<tauri::Wry>::new()
+        .typ::<MyStruct>()
+        // Then register them (separated by a comma)
+        .commands(collect_commands![greet,]);
+
+    #[cfg(debug_assertions)] // <- Only export on non-release builds
+    handlers
+        .export(Typescript::default(), "../src/lib/bindings.ts")
+        .expect("Failed to export typescript bindings");
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder
@@ -22,8 +42,12 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build());
 
     let _builder = builder
+        .invoke_handler(handlers.invoke_handler())
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
+        .setup(move |app| {
+            // This is also required if you want to use events
+            handlers.mount_events(app);
+
             let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default());
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -57,7 +81,6 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
