@@ -69,12 +69,12 @@
 			<Sidebar.GroupContent>
 				<Sidebar.Menu>
 					{#each items as item (item.title)}
-						<Sidebar.MenuItem>
+						<Sidebar.MenuItem isActive={item.title == 'fanfan'}>
 							<Sidebar.MenuButton size="lg">
 								{#snippet child({ props })}
 									<a href={item.url} {...props}>
 										<Avatar.Root class="h-8 w-8 rounded-full">
-											<Avatar.Image src={item.avatar} alt={item.title} />
+											<Avatar.Image class="rounded-full " src={item.avatar} alt={item.title} />
 											<Avatar.Fallback class="rounded-full">{item.title}</Avatar.Fallback>
 										</Avatar.Root>
 										<span>{item.title}</span>
