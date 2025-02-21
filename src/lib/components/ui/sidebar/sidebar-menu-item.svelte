@@ -17,7 +17,7 @@
 <li
 	bind:this={ref}
 	data-sidebar="menu-item"
-	class={cn('group/menu-item relative', className, isActive ? 'border-r-2 border-primary' : '')}
+	class={cn('group/menu-item relative', className, isActive ? 'border-l-4 border-primary' : '')}
 	{...restProps}
 >
 	{@render children?.()}
