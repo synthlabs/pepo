@@ -2,14 +2,20 @@
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { onMount } from 'svelte';
 	import { commands, type UserToken } from '$lib/bindings.ts';
+	import type { UIEventHandler } from 'svelte/elements';
 
 	let banner = $state({} as UserToken);
-	let chatDIV: HTMLElement;
+	let chatDIV = $state<HTMLDivElement>();
+	let scrolledAmount = $state(0);
+	let isScrolled = $derived(scrolledAmount > 0);
 
 	$inspect(banner);
+	$inspect(isScrolled);
 
 	onMount(async () => {
-		scrollToBottom(chatDIV, 'instant');
+		if (chatDIV) {
+			scrollToBottom('instant');
+		}
 		// let result = await commands.login();
 		// if (result.status == 'ok') {
 		// 	banner = result.data;
@@ -29,16 +35,22 @@
 		return 'background-color: #0f1421';
 	};
 
-	const scrollToBottom = async (
-		node: HTMLElement,
-		behavior: ScrollBehavior | undefined = 'smooth'
-	) => {
-		node.scroll({ top: node.scrollHeight, behavior });
+	const scrollToBottom = async (behavior: ScrollBehavior | undefined = 'smooth') => {
+		if (chatDIV) {
+			chatDIV.scroll({ top: chatDIV.scrollHeight, behavior });
+		}
+	};
+
+	const scroll = (e: UIEvent & { currentTarget: EventTarget & HTMLDivElement }): any => {
+		if (chatDIV) {
+			let scrollArea = chatDIV.scrollHeight - chatDIV.offsetHeight;
+			scrolledAmount = Math.max(scrollArea - chatDIV.scrollTop, 0);
+		}
 	};
 </script>
 
 <div class="flex h-full w-full flex-col flex-nowrap">
-	<div class="flex-grow overflow-y-auto overflow-x-hidden" bind:this={chatDIV}>
+	<div class="flex-grow overflow-y-auto overflow-x-hidden" bind:this={chatDIV} onscroll={scroll}>
 		{banner}
 		{#each msgs as msg, index}
 			<div class="p-2 text-sm" style={evenOddClass(index)}>
@@ -47,7 +59,17 @@
 			<Separator class="" />
 		{/each}
 	</div>
-	<div class="cursor-pointer bg-green-400 text-center">More Messages Below</div>
+	{#if isScrolled}
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="cursor-pointer text-center"
+			onclick={() => scrollToBottom('smooth')}
+			style="background-color: hsl(262 83.3% 57.8% / 0.25);"
+		>
+			More Messages Below
+		</div>
+	{/if}
 	<div class="relative border-t">
 		<input
 			type="text"
