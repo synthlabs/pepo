@@ -16,12 +16,6 @@
 		if (chatDIV) {
 			scrollToBottom('instant');
 		}
-		// let result = await commands.login();
-		// if (result.status == 'ok') {
-		// 	banner = result.data;
-		// } else {
-		// 	console.log('failure', result.error);
-		// }
 	});
 
 	const msgs = Array.from({ length: 55 }).map(
@@ -51,7 +45,6 @@
 
 <div class="flex h-full w-full flex-col flex-nowrap">
 	<div class="flex-grow overflow-y-auto overflow-x-hidden" bind:this={chatDIV} onscroll={scroll}>
-		{banner}
 		{#each msgs as msg, index}
 			<div class="p-2 text-sm" style={evenOddClass(index)}>
 				{msg}

@@ -5,8 +5,19 @@
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { isTauriMobile } from '$lib/tauri';
 	import { cn } from '$lib/utils';
+	import { onMount } from 'svelte';
+	import { commands, type UserToken } from '$lib/bindings.ts';
 
 	let { children } = $props();
+
+	onMount(async () => {
+		let result = await commands.login();
+		if (result.status == 'ok') {
+			console.log(result.data);
+		} else {
+			console.log('failure', result.error);
+		}
+	});
 </script>
 
 <Sidebar.Provider>

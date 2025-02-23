@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use twitch_api::{client::CompatError, HelixClient};
 use twitch_oauth2::TwitchToken;
 
 #[derive(Clone, Serialize, Deserialize, Type, Debug)]
@@ -33,5 +34,21 @@ impl UserToken {
             ),
             expires_in: token.expires_in().as_secs(),
         }
+    }
+
+    pub async fn to_twitch_token(
+        self,
+        client: HelixClient<'static, reqwest::Client>,
+    ) -> std::result::Result<
+        twitch_oauth2::UserToken,
+        twitch_oauth2::tokens::errors::ValidationError<CompatError<reqwest::Error>>,
+    > {
+        twitch_oauth2::UserToken::from_existing(
+            &client,
+            twitch_oauth2::AccessToken::from(self.access_token),
+            twitch_oauth2::RefreshToken::from(self.refresh_token.unwrap_or("".to_owned())),
+            None,
+        )
+        .await
     }
 }
