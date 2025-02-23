@@ -1,20 +1,21 @@
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use specta::Type;
 use specta_typescript::Typescript;
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 use tauri::{Emitter, Manager};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_store::StoreExt;
 use tauri_specta::collect_commands;
+use token::TokenManager;
 use twitch_api::{client::ClientDefault, HelixClient};
-use twitch_oauth2::Scope;
+use types::UserToken;
 
+mod token;
 mod types;
-
-const CLIENT_ID: &str = "46oisb828x3q9lu42ctuhphonrlho9";
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -28,48 +29,29 @@ fn greet(name: &str) -> String {
 async fn login(app_handle: tauri::AppHandle) -> Result<types::UserToken, String> {
     println!("login");
 
-    let client: HelixClient<reqwest::Client> = twitch_api::HelixClient::with_client(
+    let client: HelixClient<'static, reqwest::Client> = twitch_api::HelixClient::with_client(
         ClientDefault::default_client_with_name(Some("pepo".parse().expect("invalid client name")))
             .unwrap(),
     );
 
     println!("made client");
 
-    // First we need to get a token, preferably you'd also store this information somewhere safe to reuse when restarting the application.
-    // For now we'll just get a new token every time the application starts.
-    // One way to store the token is to store the access_token and refresh_token in a file and load it when the application starts with
-    // `twitch_oauth2::UserToken::from_existing`
-    let mut builder = twitch_oauth2::tokens::DeviceUserTokenBuilder::new(
-        CLIENT_ID.to_string(),
-        vec![
-            Scope::UserReadChat,
-            Scope::UserWriteChat,
-            Scope::UserReadFollows,
-            Scope::UserReadEmotes,
-            Scope::UserReadBlockedUsers,
-            Scope::UserReadSubscriptions,
-        ],
-    );
+    let token_manager: TokenManager;
+    let store = app_handle.store("account.json").unwrap();
 
-    println!("made token builder");
+    if let Some(binding) = store.get("token") {
+        let token: UserToken = serde_json::from_value(binding.clone()).unwrap();
+        let token = token.to_twitch_token(client.clone()).await.unwrap();
+        token_manager = TokenManager::from_existing(token.clone(), client.clone());
+    } else {
+        token_manager = TokenManager::new(client, app_handle.clone()).await;
+    }
 
-    let code = match builder.start(&client).await {
-        Ok(code) => code,
-        Err(err) => return Err(err.to_string()),
-    };
+    let user_token = types::UserToken::from_twitch_token(token_manager.clone().user_token());
+    store.set("token", json!(user_token));
+    token_manager.manage();
 
-    println!("Please go to: {}", code.verification_uri);
-    app_handle
-        .opener()
-        .open_url(code.verification_uri.clone(), None::<&str>)
-        .unwrap();
-
-    let token = builder
-        .wait_for_code(&client, tokio::time::sleep)
-        .await
-        .map_err(|err| err.to_string())?;
-
-    let user_token = types::UserToken::from_twitch_token(token.clone());
+    // TODO: delete
     println!("{:#?}", user_token);
 
     app_handle.manage(Mutex::new(user_token.clone()));
@@ -84,7 +66,7 @@ pub struct MyStruct {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().plugin(tauri_plugin_store::Builder::new().build());
 
     let handlers = tauri_specta::Builder::<tauri::Wry>::new()
         .typ::<MyStruct>()
