@@ -30,6 +30,7 @@ twitch_oauth2 = { version = "0.15.1", features = ["client"] }
 tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
 tokio-tungstenite = { version = "0.26.1", features = ["native-tls", "url"] }
 reqwest = "0.12.12"
+tauri-plugin-store = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"
