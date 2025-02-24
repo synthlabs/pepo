@@ -6,17 +6,21 @@
 	let {
 		ref = $bindable(null),
 		class: className,
+		scrollWhenCollapsed = true,
 		children,
 		...restProps
-	}: WithElementRef<HTMLAttributes<HTMLElement>> = $props();
+	}: WithElementRef<HTMLAttributes<HTMLElement>> & {
+		scrollWhenCollapsed?: boolean;
+	} = $props();
 </script>
 
 <div
 	bind:this={ref}
 	data-sidebar="content"
 	class={cn(
-		'flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden',
-		className
+		'flex min-h-0 flex-1 flex-col gap-2 overflow-auto',
+		className,
+		scrollWhenCollapsed ? '' : 'group-data-[collapsible=icon]:overflow-hidden'
 	)}
 	{...restProps}
 >

@@ -4,8 +4,21 @@
 /** user-defined commands **/
 
 export const commands = {
-	async greet(name: string): Promise<string> {
-		return await TAURI_INVOKE('greet', { name });
+	async getFollowedStreams(): Promise<Result<Stream[], string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('get_followed_streams') };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async getFollowedChannels(): Promise<Result<Broadcaster[], string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('get_followed_channels') };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
 	},
 	async login(): Promise<Result<UserToken, string>> {
 		try {
@@ -23,7 +36,76 @@ export const commands = {
 
 /** user-defined types **/
 
+export type Broadcaster = {
+	/**
+	 * An ID that uniquely identifies the broadcaster that this user is following.
+	 */
+	id: string;
+	/**
+	 * The broadcaster’s login name.
+	 */
+	login: string;
+	/**
+	 * The broadcaster’s display name.
+	 */
+	display_name: string;
+	profile_image_url: string;
+	offline_image_url: string;
+	description: string;
+	created_at: string;
+};
 export type MyStruct = { a: string };
+export type Stream = {
+	/**
+	 * ID of the game being played on the stream.
+	 */
+	game_id: string;
+	/**
+	 * Name of the game being played.
+	 */
+	game_name: string;
+	/**
+	 * Stream ID.
+	 */
+	id: string;
+	/**
+	 * Stream language.
+	 */
+	language: string;
+	/**
+	 * Indicates if the broadcaster has specified their channel contains mature content that may be inappropriate for younger audiences.
+	 */
+	is_mature: boolean;
+	/**
+	 * UTC timestamp.
+	 */
+	started_at: string;
+	tags: string[];
+	/**
+	 * Thumbnail URL of the stream. All image URLs have variable width and height. You can replace {width} and {height} with any values to get that size image
+	 */
+	thumbnail_url: string;
+	/**
+	 * Stream title.
+	 */
+	title: string;
+	/**
+	 * ID of the user who is streaming.
+	 */
+	user_id: string;
+	/**
+	 * Display name corresponding to user_id.
+	 */
+	user_name: string;
+	/**
+	 * Login of the user who is streaming.
+	 */
+	user_login: string;
+	/**
+	 * Number of viewers watching the stream at the time of the query.
+	 */
+	viewer_count: bigint;
+};
 export type UserToken = {
 	/**
 	 * The access token used to authenticate requests with
