@@ -12,6 +12,7 @@ use tauri_plugin_store::StoreExt;
 use tauri_specta::collect_commands;
 use token::TokenManager;
 use twitch_api::{client::ClientDefault, HelixClient};
+use twitch_oauth2::tokens::errors::ValidationError;
 use types::UserToken;
 
 mod token;
@@ -41,10 +42,17 @@ async fn login(app_handle: tauri::AppHandle) -> Result<types::UserToken, String>
 
     if let Some(binding) = store.get("token") {
         let token: UserToken = serde_json::from_value(binding.clone()).unwrap();
-        let token = token.to_twitch_token(client.clone()).await.unwrap();
-        token_manager = TokenManager::from_existing(token.clone(), client.clone());
+        token_manager = match token.to_twitch_token(client.clone()).await {
+            Ok(token) => {
+                TokenManager::from_existing(token.clone(), client.clone(), app_handle.clone())
+            }
+            Err(ValidationError::NotAuthorized) => {
+                TokenManager::new(client.clone(), app_handle.clone()).await
+            }
+            Err(err) => panic!("{err}"),
+        };
     } else {
-        token_manager = TokenManager::new(client, app_handle.clone()).await;
+        token_manager = TokenManager::new(client.clone(), app_handle.clone()).await;
     }
 
     let user_token = types::UserToken::from_twitch_token(token_manager.clone().user_token());
