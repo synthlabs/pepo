@@ -20,14 +20,20 @@ pub struct TokenManager {
     pub on_refresh: Arc<Box<dyn Fn(UserToken) + Send + Sync>>,
     user_token: Arc<Mutex<UserToken>>,
     client: HelixClient<'static, reqwest::Client>,
+    app_handle: Arc<tauri::AppHandle>,
 }
 
 impl TokenManager {
-    pub fn from_existing(token: UserToken, client: HelixClient<'static, reqwest::Client>) -> Self {
+    pub fn from_existing(
+        token: UserToken,
+        client: HelixClient<'static, reqwest::Client>,
+        app_handle: tauri::AppHandle,
+    ) -> Self {
         TokenManager {
             user_token: Arc::new(Mutex::new(token)),
             on_refresh: Arc::new(Box::new(default_refresh_callback)),
             client,
+            app_handle: Arc::new(app_handle),
         }
     }
 
@@ -35,6 +41,14 @@ impl TokenManager {
         client: HelixClient<'static, reqwest::Client>,
         app_handle: tauri::AppHandle,
     ) -> Self {
+        let token = Self::get_new_token(client.clone(), app_handle.clone()).await;
+        Self::from_existing(token, client, app_handle)
+    }
+
+    async fn get_new_token(
+        client: HelixClient<'static, reqwest::Client>,
+        app_handle: tauri::AppHandle,
+    ) -> twitch_oauth2::UserToken {
         // First we need to get a token, preferably you'd also store this information somewhere safe to reuse when restarting the application.
         // For now we'll just get a new token every time the application starts.
         // One way to store the token is to store the access_token and refresh_token in a file and load it when the application starts with
@@ -61,12 +75,10 @@ impl TokenManager {
             .open_url(code.verification_uri.clone(), None::<&str>)
             .unwrap();
 
-        let token = builder
+        builder
             .wait_for_code(&client, tokio::time::sleep)
             .await
-            .unwrap();
-
-        Self::from_existing(token, client)
+            .unwrap()
     }
 
     pub fn manage(self) {
