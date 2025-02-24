@@ -14,7 +14,7 @@
 <div
 	bind:this={ref}
 	data-sidebar="footer"
-	class={cn('flex flex-col gap-2 p-2', className)}
+	class={cn('flex flex-col gap-2 px-2 pb-2', className)}
 	{...restProps}
 >
 	{@render children?.()}

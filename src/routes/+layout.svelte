@@ -6,7 +6,7 @@
 	import { isTauriMobile } from '$lib/tauri';
 	import { cn } from '$lib/utils';
 	import { onMount } from 'svelte';
-	import { commands, type UserToken } from '$lib/bindings.ts';
+	import { commands } from '$lib/bindings.ts';
 
 	let { children } = $props();
 

@@ -20,7 +20,7 @@ pub struct TokenManager {
     pub on_refresh: Arc<Box<dyn Fn(UserToken) + Send + Sync>>,
     user_token: Arc<Mutex<UserToken>>,
     client: HelixClient<'static, reqwest::Client>,
-    app_handle: Arc<tauri::AppHandle>,
+    _app_handle: Arc<tauri::AppHandle>,
 }
 
 impl TokenManager {
@@ -33,7 +33,7 @@ impl TokenManager {
             user_token: Arc::new(Mutex::new(token)),
             on_refresh: Arc::new(Box::new(default_refresh_callback)),
             client,
-            app_handle: Arc::new(app_handle),
+            _app_handle: Arc::new(app_handle),
         }
     }
 

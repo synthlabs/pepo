@@ -7,11 +7,24 @@
 	import * as Sidebar from '$lib/components/ui/sidebar/index.ts';
 	import * as Avatar from '$lib/components/ui/avatar/index.ts';
 	import NavUser from '$lib/components/nav-user.svelte';
-	import type { ComponentProps } from 'svelte';
+	import { onMount, type ComponentProps } from 'svelte';
 	import { page } from '$app/state';
+	import { commands, type Broadcaster } from '$lib/bindings.ts';
+	import { Separator } from '$lib/components/ui/separator/index.ts';
+
+	let followed_channels: Broadcaster[] = $state([]);
+
+	onMount(async () => {
+		let channels = await commands.getFollowedChannels();
+		if (channels.status == 'ok') {
+			console.log(channels.data);
+			followed_channels = channels.data;
+		} else {
+			console.log('failure', channels.error);
+		}
+	});
 
 	$inspect(page.url.pathname);
-
 	// Menu items.
 	const items = [
 		{
@@ -71,19 +84,19 @@
 			<Sidebar.GroupLabel>Following</Sidebar.GroupLabel>
 			<Sidebar.GroupContent>
 				<Sidebar.Menu>
-					{#each items as item (item.title)}
+					{#each followed_channels as item (item.id)}
 						<Sidebar.MenuItem
-							isActive={item.url == page.url.pathname}
-							class={item.url == page.url.pathname ? 'pl-1 pr-2' : 'px-2'}
+							isActive={`/chat/${item.login}` == page.url.pathname}
+							class={`/chat/${item.login}` == page.url.pathname ? 'pl-1 pr-2' : 'px-2'}
 						>
 							<Sidebar.MenuButton size="lg">
 								{#snippet child({ props })}
-									<a href={item.url} {...props}>
+									<a href={`/chat/${item.login}`} {...props}>
 										<Avatar.Root class="h-8 w-8">
-											<Avatar.Image src={item.avatar} alt={item.title} />
-											<Avatar.Fallback>{item.title}</Avatar.Fallback>
+											<Avatar.Image src={item.profile_image_url} alt={item.display_name} />
+											<Avatar.Fallback>{item.display_name}</Avatar.Fallback>
 										</Avatar.Root>
-										<span>{item.title}</span>
+										<span>{item.display_name}</span>
 									</a>
 								{/snippet}
 							</Sidebar.MenuButton>
@@ -94,6 +107,7 @@
 		</Sidebar.Group>
 	</Sidebar.Content>
 	<Sidebar.Footer>
+		<Separator class="" />
 		<NavUser {user} />
 	</Sidebar.Footer>
 	<Sidebar.Rail />

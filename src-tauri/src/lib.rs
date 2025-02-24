@@ -1,47 +1,95 @@
 use std::sync::{Arc, Mutex};
 
+use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use specta::Type;
 use specta_typescript::Typescript;
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
-use tauri::{Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_store::StoreExt;
 use tauri_specta::collect_commands;
 use token::TokenManager;
 use twitch_api::{client::ClientDefault, HelixClient};
 use twitch_oauth2::tokens::errors::ValidationError;
-use types::UserToken;
 
 mod token;
 mod types;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+type SharedUserToken = Mutex<types::UserToken>;
+type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
+
 #[tauri::command]
 #[specta::specta]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+fn get_followed_streams(
+    app_handle: AppHandle,
+    token: State<'_, SharedTwitchToken>,
+    client: State<'_, HelixClient<'static, reqwest::Client>>,
+) -> Result<Vec<types::Stream>, String> {
+    let client = client.inner();
+
+    let token_guard = token.lock().unwrap().clone();
+    let streams = tauri::async_runtime::block_on(
+        client
+            .get_followed_streams(&token_guard)
+            .try_collect::<Vec<_>>(),
+    )
+    .unwrap();
+
+    Ok(streams.into_iter().map(types::Stream::from).collect())
 }
 
 #[tauri::command]
 #[specta::specta]
-async fn login(app_handle: tauri::AppHandle) -> Result<types::UserToken, String> {
+fn get_followed_channels(
+    app_handle: AppHandle,
+    token: State<'_, SharedTwitchToken>,
+    client: State<'_, HelixClient<'static, reqwest::Client>>,
+) -> Result<Vec<types::Broadcaster>, String> {
+    let client = client.inner();
+
+    let token_guard = token.lock().unwrap().clone();
+    let channels = tauri::async_runtime::block_on(
+        client
+            .get_followed_channels(token_guard.user_id.to_string(), &token_guard)
+            .try_collect::<Vec<_>>(),
+    )
+    .unwrap();
+
+    let mut users: Vec<twitch_api::helix::users::User> = Vec::new();
+    for chunk in channels.chunks(100) {
+        let ids: Vec<twitch_api::types::UserId> =
+            chunk.iter().map(|b| b.broadcaster_id.clone()).collect();
+
+        println!("ids={:?}", ids);
+        let mut u: Vec<twitch_api::helix::users::User> = tauri::async_runtime::block_on(
+            client
+                .get_users_from_ids(&twitch_api::types::Collection::from(ids), &token_guard)
+                .try_collect::<Vec<_>>(),
+        )
+        .unwrap();
+        users.append(&mut u);
+    }
+
+    Ok(users.into_iter().map(types::Broadcaster::from).collect())
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn login(
+    app_handle: AppHandle,
+    client: State<'_, HelixClient<'static, reqwest::Client>>,
+) -> Result<types::UserToken, String> {
+    let client = client.inner();
     println!("login");
-
-    let client: HelixClient<'static, reqwest::Client> = twitch_api::HelixClient::with_client(
-        ClientDefault::default_client_with_name(Some("pepo".parse().expect("invalid client name")))
-            .unwrap(),
-    );
-
-    println!("made client");
 
     let mut token_manager: TokenManager;
     let store = app_handle.store("account.json").unwrap();
 
     if let Some(binding) = store.get("token") {
-        let token: UserToken = serde_json::from_value(binding.clone()).unwrap();
+        let token: types::UserToken = serde_json::from_value(binding.clone()).unwrap();
         token_manager = match token.to_twitch_token(client.clone()).await {
             Ok(token) => {
                 TokenManager::from_existing(token.clone(), client.clone(), app_handle.clone())
@@ -61,14 +109,22 @@ async fn login(app_handle: tauri::AppHandle) -> Result<types::UserToken, String>
     println!("{:#?}", user_token);
 
     app_handle.manage(Mutex::new(user_token.clone()));
+    app_handle.manage(Mutex::new(token_manager.clone().user_token()));
 
     let app_handle_ref = app_handle.clone();
     let store_ref = store.clone();
     token_manager.on_refresh = Arc::new(Box::new(move |token| {
-        let binding = app_handle_ref.state::<Mutex<types::UserToken>>();
-        let mut user_token_ref = binding.lock().unwrap();
-        let new_token = UserToken::from_twitch_token(token);
+        let user_token_binding = app_handle_ref.state::<SharedUserToken>();
+        let twitch_token_binding = app_handle_ref.state::<SharedTwitchToken>();
+        let mut user_token_ref = user_token_binding.lock().unwrap();
+        let mut twitch_token_ref = twitch_token_binding.lock().unwrap();
+
+        *twitch_token_ref = token.clone();
+
+        let new_token = types::UserToken::from_twitch_token(token);
         *user_token_ref = new_token.clone();
+
+        println!("{:#?}", new_token);
 
         println!("updating token store");
         store_ref.set("token", json!(new_token));
@@ -93,7 +149,11 @@ pub fn run() {
         .typ::<MyStruct>()
         .typ::<types::UserToken>()
         // Then register them (separated by a comma)
-        .commands(collect_commands![greet, login,]);
+        .commands(collect_commands![
+            get_followed_streams,
+            get_followed_channels,
+            login,
+        ]);
 
     #[cfg(debug_assertions)] // <- Only export on non-release builds
     handlers
@@ -151,6 +211,18 @@ pub fn run() {
                     ns_window.setBackgroundColor_(bg_color);
                 }
             }
+
+            let client: HelixClient<'static, reqwest::Client> =
+                twitch_api::HelixClient::with_client(
+                    ClientDefault::default_client_with_name(Some(
+                        "pepo".parse().expect("invalid client name"),
+                    ))
+                    .unwrap(),
+                );
+
+            println!("made client");
+
+            app.manage(client);
 
             Ok(())
         })
