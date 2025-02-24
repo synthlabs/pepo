@@ -9,17 +9,15 @@ use tauri_plugin_opener::OpenerExt;
 use twitch_api::HelixClient;
 use twitch_oauth2::{Scope, TwitchToken, UserToken};
 
-type RefreshCallback = fn(UserToken);
-
 fn default_refresh_callback(token: UserToken) {
     println!("token refreshed: {:#?}", token);
 }
 
-const CLIENT_ID: &str = "46oisb828x3q9lu42ctuhphonrlho9";
+const CLIENT_ID: &str = "uyf8apz7jdx3ujc3pboj58vim8c8a6";
 
 #[derive(Clone)]
 pub struct TokenManager {
-    pub on_refresh: RefreshCallback,
+    pub on_refresh: Arc<Box<dyn Fn(UserToken) + Send + Sync>>,
     user_token: Arc<Mutex<UserToken>>,
     client: HelixClient<'static, reqwest::Client>,
 }
@@ -28,7 +26,7 @@ impl TokenManager {
     pub fn from_existing(token: UserToken, client: HelixClient<'static, reqwest::Client>) -> Self {
         TokenManager {
             user_token: Arc::new(Mutex::new(token)),
-            on_refresh: default_refresh_callback,
+            on_refresh: Arc::new(Box::new(default_refresh_callback)),
             client,
         }
     }
