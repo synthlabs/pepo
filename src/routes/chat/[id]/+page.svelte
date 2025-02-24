@@ -8,6 +8,7 @@
 	let chatDIV = $state<HTMLDivElement>();
 	let scrolledAmount = $state(0);
 	let isScrolled = $derived(scrolledAmount > 0);
+	let showSeparator = $state(false);
 
 	$inspect(banner);
 	$inspect(isScrolled);
@@ -19,7 +20,8 @@
 	});
 
 	const msgs = Array.from({ length: 55 }).map(
-		(_, i, a) => `12:3${i % 10}pm twitch_user${i % 6}: bingo bang, bazinga`
+		(_, i, a) =>
+			`12:3${i % 10}pm twitch_user${i % 6}: bingo bango, bazinga, ringo rango, razinga, tingo tango, tazinga`
 	);
 
 	const evenOddClass = (x: number): string => {
@@ -49,7 +51,9 @@
 			<div class="p-2 text-sm" style={evenOddClass(index)}>
 				{msg}
 			</div>
-			<Separator class="" />
+			{#if showSeparator}
+				<Separator class="" />
+			{/if}
 		{/each}
 	</div>
 	{#if isScrolled}

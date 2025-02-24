@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -36,7 +36,7 @@ async fn login(app_handle: tauri::AppHandle) -> Result<types::UserToken, String>
 
     println!("made client");
 
-    let token_manager: TokenManager;
+    let mut token_manager: TokenManager;
     let store = app_handle.store("account.json").unwrap();
 
     if let Some(binding) = store.get("token") {
@@ -48,13 +48,26 @@ async fn login(app_handle: tauri::AppHandle) -> Result<types::UserToken, String>
     }
 
     let user_token = types::UserToken::from_twitch_token(token_manager.clone().user_token());
-    store.set("token", json!(user_token));
-    token_manager.manage();
 
     // TODO: delete
     println!("{:#?}", user_token);
 
     app_handle.manage(Mutex::new(user_token.clone()));
+
+    let app_handle_ref = app_handle.clone();
+    let store_ref = store.clone();
+    token_manager.on_refresh = Arc::new(Box::new(move |token| {
+        let binding = app_handle_ref.state::<Mutex<types::UserToken>>();
+        let mut user_token_ref = binding.lock().unwrap();
+        let new_token = UserToken::from_twitch_token(token);
+        *user_token_ref = new_token.clone();
+
+        println!("updating token store");
+        store_ref.set("token", json!(new_token));
+    }));
+
+    store.set("token", json!(user_token));
+    token_manager.manage();
 
     Ok(user_token)
 }
