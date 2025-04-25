@@ -15,6 +15,13 @@
 	let followed_channels: Broadcaster[] = $state([]);
 
 	onMount(async () => {
+		let result = await commands.login();
+		if (result.status == 'ok') {
+			console.log(result.data);
+		} else {
+			console.log('failure', result.error);
+		}
+
 		let channels = await commands.getFollowedChannels();
 		if (channels.status == 'ok') {
 			console.log(channels.data);
