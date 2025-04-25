@@ -7,17 +7,11 @@
 	import { cn } from '$lib/utils';
 	import { onMount } from 'svelte';
 	import { commands } from '$lib/bindings.ts';
+	import { goto } from '$app/navigation';
 
 	let { children } = $props();
 
-	onMount(async () => {
-		let result = await commands.login();
-		if (result.status == 'ok') {
-			console.log(result.data);
-		} else {
-			console.log('failure', result.error);
-		}
-	});
+	onMount(async () => {});
 </script>
 
 <Sidebar.Provider>

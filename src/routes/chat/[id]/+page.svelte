@@ -48,7 +48,7 @@
 <div class="flex h-full w-full flex-col flex-nowrap">
 	<div class="flex-grow overflow-y-auto overflow-x-hidden" bind:this={chatDIV} onscroll={scroll}>
 		{#each msgs as msg, index}
-			<div class="p-2 text-sm" style={evenOddClass(index)}>
+			<div class="px-2 py-1 text-sm" style={evenOddClass(index)}>
 				{msg}
 			</div>
 			{#if showSeparator}
@@ -61,7 +61,7 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="cursor-pointer text-center"
-			onclick={() => scrollToBottom('smooth')}
+			onclick={() => scrollToBottom('instant')}
 			style="background-color: hsl(262 83.3% 57.8% / 0.25);"
 		>
 			More Messages Below

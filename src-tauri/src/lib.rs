@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use eventsub::EventSubManager;
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -12,9 +13,12 @@ use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_store::StoreExt;
 use tauri_specta::collect_commands;
 use token::TokenManager;
+use tokio::task;
+use tracing::{debug, info};
 use twitch_api::{client::ClientDefault, HelixClient};
 use twitch_oauth2::tokens::errors::ValidationError;
 
+mod eventsub;
 mod token;
 mod types;
 
@@ -24,7 +28,7 @@ type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
 #[tauri::command]
 #[specta::specta]
 fn get_followed_streams(
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     token: State<'_, SharedTwitchToken>,
     client: State<'_, HelixClient<'static, reqwest::Client>>,
 ) -> Result<Vec<types::Stream>, String> {
@@ -44,7 +48,7 @@ fn get_followed_streams(
 #[tauri::command]
 #[specta::specta]
 fn get_followed_channels(
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     token: State<'_, SharedTwitchToken>,
     client: State<'_, HelixClient<'static, reqwest::Client>>,
 ) -> Result<Vec<types::Broadcaster>, String> {
@@ -63,7 +67,7 @@ fn get_followed_channels(
         let ids: Vec<twitch_api::types::UserId> =
             chunk.iter().map(|b| b.broadcaster_id.clone()).collect();
 
-        println!("ids={:?}", ids);
+        debug!("ids={:?}", ids);
         let mut u: Vec<twitch_api::helix::users::User> = tauri::async_runtime::block_on(
             client
                 .get_users_from_ids(&twitch_api::types::Collection::from(ids), &token_guard)
@@ -83,7 +87,7 @@ async fn login(
     client: State<'_, HelixClient<'static, reqwest::Client>>,
 ) -> Result<types::UserToken, String> {
     let client = client.inner();
-    println!("login");
+    info!("login");
 
     let mut token_manager: TokenManager;
     let store = app_handle.store("account.json").unwrap();
@@ -103,13 +107,27 @@ async fn login(
         token_manager = TokenManager::new(client.clone(), app_handle.clone()).await;
     }
 
-    let user_token = types::UserToken::from_twitch_token(token_manager.clone().user_token());
+    let user_token = types::UserToken::from_twitch_token(token_manager.clone().twitch_token());
 
-    // TODO: delete
-    println!("{:#?}", user_token);
+    let eventsub_manager = EventSubManager::create(
+        None,
+        token_manager.clone().twitch_token().clone(),
+        client.clone(),
+    );
 
-    app_handle.manage(Mutex::new(user_token.clone()));
-    app_handle.manage(Mutex::new(token_manager.clone().user_token()));
+    task::spawn(async move {
+        eventsub_manager
+            .run(|e, _ts| async move {
+                // self.handle_event(e, ts).await
+                debug!("got event {:?}", e);
+                Ok(())
+            })
+            .await
+            .expect("eventmanager failed");
+    });
+
+    app_handle.manage::<SharedUserToken>(Mutex::new(user_token.clone()));
+    app_handle.manage::<SharedTwitchToken>(Mutex::new(token_manager.clone().twitch_token()));
 
     let app_handle_ref = app_handle.clone();
     let store_ref = store.clone();
@@ -124,12 +142,15 @@ async fn login(
         let new_token = types::UserToken::from_twitch_token(token);
         *user_token_ref = new_token.clone();
 
-        println!("{:#?}", new_token);
+        debug!(
+            new_token.access_token,
+            new_token.login, new_token.user_id, "updating token store"
+        );
 
-        println!("updating token store");
         store_ref.set("token", json!(new_token));
     }));
 
+    debug!("setting token");
     store.set("token", json!(user_token));
     token_manager.manage();
 
@@ -143,6 +164,14 @@ pub struct MyStruct {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    color_eyre::install().expect("failed to install color_eyre");
+
+    tracing_subscriber::fmt()
+        // enable everything
+        .with_max_level(tracing::Level::DEBUG)
+        // sets this to be the default, global collector for this application.
+        .init();
+
     let builder = tauri::Builder::default().plugin(tauri_plugin_store::Builder::new().build());
 
     let handlers = tauri_specta::Builder::<tauri::Wry>::new()
@@ -169,7 +198,7 @@ pub fn run() {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            println!("{}, {argv:?}, {cwd}", app.package_info().name);
+            info!("{}, {argv:?}, {cwd}", app.package_info().name);
             app.emit("single-instance", argv).unwrap();
         }))
         .plugin(tauri_plugin_window_state::Builder::new().build());
@@ -220,7 +249,7 @@ pub fn run() {
                     .unwrap(),
                 );
 
-            println!("made client");
+            info!("made client");
 
             app.manage(client);
 
