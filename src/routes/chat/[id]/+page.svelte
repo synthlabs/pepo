@@ -1,14 +1,18 @@
 <script lang="ts">
 	import { Separator } from '$lib/components/ui/separator/index.ts';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { commands, type UserToken } from '$lib/bindings.ts';
 	import type { UIEventHandler } from 'svelte/elements';
+	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
+	import { cn } from '$lib/utils';
 
 	let banner = $state({} as UserToken);
 	let chatDIV = $state<HTMLDivElement>();
 	let scrolledAmount = $state(0);
 	let isScrolled = $derived(scrolledAmount > 0);
 	let showSeparator = $state(false);
+
+	let un_sub: UnlistenFn;
 
 	$inspect(banner);
 	$inspect(isScrolled);
@@ -17,6 +21,16 @@
 		if (chatDIV) {
 			scrollToBottom('instant');
 		}
+
+		console.log('subbing to chat messages');
+		un_sub = await listen<string>('chat_message', (event) => {
+			console.log(`${event.payload}`);
+		});
+	});
+
+	onDestroy(() => {
+		console.log('unsubbing');
+		un_sub();
 	});
 
 	const msgs = Array.from({ length: 55 }).map(
@@ -48,7 +62,12 @@
 <div class="flex h-full w-full flex-col flex-nowrap">
 	<div class="flex-grow overflow-y-auto overflow-x-hidden" bind:this={chatDIV} onscroll={scroll}>
 		{#each msgs as msg, index}
-			<div class="px-2 py-1 text-sm" style={evenOddClass(index)}>
+			<div
+				class={cn(
+					'px-2 py-1 text-sm',
+					index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary'
+				)}
+			>
 				{msg}
 			</div>
 			{#if showSeparator}
@@ -59,11 +78,7 @@
 	{#if isScrolled}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="cursor-pointer text-center"
-			onclick={() => scrollToBottom('instant')}
-			style="background-color: hsl(262 83.3% 57.8% / 0.25);"
-		>
+		<div class="cursor-pointer bg-primary text-center" onclick={() => scrollToBottom('instant')}>
 			More Messages Below
 		</div>
 	{/if}
