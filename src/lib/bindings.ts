@@ -20,6 +20,22 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
+	async joinChat(channelName: string): Promise<Result<null, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('join_chat', { channelName }) };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async leaveChat(channelName: string): Promise<Result<null, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('leave_chat', { channelName }) };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
 	async login(): Promise<Result<UserToken, string>> {
 		try {
 			return { status: 'ok', data: await TAURI_INVOKE('login') };
