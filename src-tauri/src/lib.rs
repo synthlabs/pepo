@@ -24,6 +24,23 @@ mod types;
 
 type SharedUserToken = Mutex<types::UserToken>;
 type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
+type SharedEventSubManager = Mutex<EventSubManager>;
+
+#[tauri::command]
+#[specta::specta]
+async fn join_chat(channel_name: String, _app_handle: AppHandle) -> Result<(), String> {
+    debug!("join: channel={}", channel_name);
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn leave_chat(channel_name: String, _app_handle: AppHandle) -> Result<(), String> {
+    debug!("leave: channel={}", channel_name);
+
+    Ok(())
+}
 
 #[tauri::command]
 #[specta::specta]
@@ -107,27 +124,32 @@ async fn login(
         token_manager = TokenManager::new(client.clone(), app_handle.clone()).await;
     }
 
-    let user_token = types::UserToken::from_twitch_token(token_manager.clone().twitch_token());
+    let twitch_token = token_manager.clone().twitch_token();
+    let user_token = types::UserToken::from_twitch_token(twitch_token.clone());
 
-    let eventsub_manager = EventSubManager::create(
-        None,
-        token_manager.clone().twitch_token().clone(),
-        client.clone(),
-    );
+    let eventsub_manager = EventSubManager::create();
 
+    app_handle.manage::<SharedEventSubManager>(Mutex::new(eventsub_manager));
+
+    let client_ref = client.clone();
+    let twitch_token_ref = twitch_token.clone();
     task::spawn(async move {
         eventsub_manager
-            .run(|e, _ts| async move {
-                // self.handle_event(e, ts).await
-                debug!("got event {:?}", e);
-                Ok(())
-            })
+            .run(
+                |e, _ts| async move {
+                    // self.handle_event(e, ts).await
+                    debug!("got event {:?}", e);
+                    Ok(())
+                },
+                client_ref,
+                twitch_token_ref,
+            )
             .await
             .expect("eventmanager failed");
     });
 
     app_handle.manage::<SharedUserToken>(Mutex::new(user_token.clone()));
-    app_handle.manage::<SharedTwitchToken>(Mutex::new(token_manager.clone().twitch_token()));
+    app_handle.manage::<SharedTwitchToken>(Mutex::new(twitch_token));
 
     let app_handle_ref = app_handle.clone();
     let store_ref = store.clone();
@@ -181,6 +203,8 @@ pub fn run() {
         .commands(collect_commands![
             get_followed_streams,
             get_followed_channels,
+            join_chat,
+            leave_chat,
             login,
         ]);
 

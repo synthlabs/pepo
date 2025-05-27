@@ -5,17 +5,24 @@
 	import type { UIEventHandler } from 'svelte/elements';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
 	import { cn } from '$lib/utils';
+	import { page } from '$app/state';
 
 	let banner = $state({} as UserToken);
 	let chatDIV = $state<HTMLDivElement>();
 	let scrolledAmount = $state(0);
 	let isScrolled = $derived(scrolledAmount > 0);
 	let showSeparator = $state(false);
+	let channel_name = $derived(page.params.id);
 
 	let un_sub: UnlistenFn;
 
 	$inspect(banner);
 	$inspect(isScrolled);
+
+	$effect(() => {
+		console.log('joining channel:', channel_name);
+		commands.joinChat(channel_name);
+	});
 
 	onMount(async () => {
 		if (chatDIV) {
@@ -28,7 +35,7 @@
 		});
 	});
 
-	onDestroy(() => {
+	onDestroy(async () => {
 		console.log('unsubbing');
 		un_sub();
 	});
