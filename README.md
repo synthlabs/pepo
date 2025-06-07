@@ -9,7 +9,7 @@
 This is a playground of a new chatting client. It currently only supports twitch, but the goal is to expand support for other sites such as youtube, kick, etc. It is very very early in development.
 
 <p align="center">
-  <img src="screenshots/Pepo_RhbZACa71T.gif" height="600">
+  <img src="screenshots/Pepo_gKoTqlm5h1.gif" height="600">
 </p>
 
 </span>
