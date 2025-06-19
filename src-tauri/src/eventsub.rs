@@ -1,9 +1,12 @@
 use color_eyre::Report;
 use eyre::eyre;
 use eyre::WrapErr;
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use std::borrow::Cow;
+use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tokio_tungstenite::tungstenite;
 use tracing::{debug, error, info};
@@ -14,51 +17,84 @@ use twitch_api::{
 };
 use twitch_oauth2::UserToken;
 
+type ThreadSafeCallback = Arc<
+    Mutex<
+        Box<
+            dyn FnMut(Event, twitch_api::types::Timestamp) -> BoxFuture<'static, Result<(), Report>>
+                + Send
+                + Sync,
+        >,
+    >,
+>;
+
+pub fn make_thread_safe_callback<Fut>(
+    mut event_fn: impl FnMut(Event, twitch_api::types::Timestamp) -> Fut + Send + Sync + 'static,
+) -> ThreadSafeCallback
+where
+    Fut: std::future::Future<Output = Result<(), Report>> + Send + 'static,
+{
+    Arc::new(Mutex::new(Box::new(move |event, ts| {
+        event_fn(event, ts).boxed()
+    })))
+}
+
 fn cow_to_static(cow: Cow<'_, str>) -> &'static str {
     let s: String = cow.into_owned();
     Box::leak(s.into_boxed_str())
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug)]
+pub struct EventNotification {
+    pub ts: twitch_api::types::Timestamp,
+    pub event: Event,
+}
+
+#[derive(Clone)]
 pub struct EventSubManager {
-    session_id: &'static str,
-    connect_url: &'static str,
+    session_id: Arc<Mutex<String>>,
+    connect_url: Arc<Mutex<String>>,
+}
+
+/// Connect to the websocket and return the stream
+async fn connect(
+    connect_url: String,
+) -> Result<
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    Report,
+> {
+    info!(url = connect_url, "connecting to twitch");
+    let config = tungstenite::protocol::WebSocketConfig::default();
+    let (socket, _) =
+        tokio_tungstenite::connect_async_with_config(connect_url, Some(config), false)
+            .await
+            .wrap_err("Can't connect")?;
+
+    Ok(socket)
 }
 
 impl EventSubManager {
-    pub fn create() -> EventSubManager {
+    pub fn new() -> EventSubManager {
         EventSubManager {
-            session_id: "",
-            connect_url: twitch_api::TWITCH_EVENTSUB_WEBSOCKET_URL.as_str().clone(),
+            session_id: Arc::new(Mutex::new("".to_owned())),
+            connect_url: Arc::new(Mutex::new(
+                twitch_api::TWITCH_EVENTSUB_WEBSOCKET_URL
+                    .as_str()
+                    .to_owned(),
+            )),
         }
     }
 
-    /// Connect to the websocket and return the stream
-    async fn connect(
-        &mut self,
-    ) -> Result<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-        Report,
-    > {
-        info!(url = self.connect_url, "connecting to twitch");
-        let config = tungstenite::protocol::WebSocketConfig::default();
-        let (socket, _) =
-            tokio_tungstenite::connect_async_with_config(self.connect_url, Some(config), false)
-                .await
-                .wrap_err("Can't connect")?;
-
-        Ok(socket)
-    }
-
     pub async fn join_chat(
+        self,
         chat_id: UserId,
-        session_id: &'static str,
         client: &HelixClient<'static, reqwest::Client>,
         token: UserToken,
     ) -> Result<(), Report> {
-        let transport = eventsub::Transport::websocket(session_id);
+        let session_id = {
+            let guard = self.session_id.lock().unwrap();
+            (*guard).clone()
+        };
+        let transport = eventsub::Transport::websocket(session_id.clone());
         debug!(
             "EventSubManager - creating ChannelChatMessageV1: user_id={}, session_id={}",
             chat_id, session_id
@@ -66,7 +102,7 @@ impl EventSubManager {
         let user_id = token.clone().user_id;
         let message =
             eventsub::channel::chat::ChannelChatMessageV1::new(chat_id.clone(), user_id.clone());
-        client
+        let resp = client
             .create_eventsub_subscription(message, transport.clone(), &token)
             .await?;
 
@@ -88,71 +124,86 @@ impl EventSubManager {
         Ok(())
     }
 
-    pub async fn leave_chat(channel_name: String, session_id: String) {
+    pub async fn leave_chat(
+        chat_id: UserId,
+        session_id: String,
+        client: &HelixClient<'static, reqwest::Client>,
+        token: UserToken,
+    ) -> Result<(), Report> {
+        let transport = eventsub::Transport::websocket(session_id.clone());
         debug!(
-            "EventSubManager - leave: channel_name={}, session_id={}",
-            channel_name, session_id
+            "EventSubManager - deleting ChannelChatMessageV1: user_id={}, session_id={}",
+            chat_id, session_id
         );
+
+        // client.delete_eventsub_subscription(id, token)
+        Ok(())
     }
 
-    pub async fn run<Fut>(
-        mut self,
-        mut event_fn: impl FnMut(Event, twitch_api::types::Timestamp) -> Fut,
+    pub fn start(
+        self,
         client: HelixClient<'static, reqwest::Client>,
         token: UserToken,
-    ) -> Result<(), Report>
-    where
-        Fut: std::future::Future<Output = Result<(), Report>>,
-    {
-        loop {
-            debug!("connecting to websocket");
-            // Establish the stream
-            let mut s = self
-                .connect()
-                .await
-                .context("when establishing connection")?;
+    ) -> Result<std::sync::mpsc::Receiver<EventNotification>, Report> {
+        let connect_url_ref = self.connect_url.clone();
 
-            while let Some(msg) = futures::StreamExt::next(&mut s).await {
-                debug!("message received: {:?}", msg);
-                let msg = match msg {
-                    Err(tungstenite::Error::Protocol(
-                        tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
-                    )) => {
-                        error!(
-                            "connection was sent an unexpected frame or was reset, reestablishing it"
-                        );
-                        break;
-                    }
-                    _ => msg.context("when getting message")?,
+        let (std_tx, std_rx) = std::sync::mpsc::sync_channel::<EventNotification>(32);
+
+        tauri::async_runtime::spawn(async move {
+            loop {
+                debug!("connecting to websocket");
+
+                let connect_url: String = {
+                    let guard = connect_url_ref.lock().unwrap();
+                    (*guard).clone()
                 };
-                match self
-                    .process_message(msg, &mut event_fn, &client, token.clone())
+                // Establish the stream
+                let mut s = connect(connect_url)
                     .await
-                {
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!("process_message - {:?}", e);
-                        break;
-                    }
-                };
-            }
+                    .context("when establishing connection")
+                    .unwrap();
 
-            debug!("EventSubManger - tick=10s");
-            sleep(Duration::from_secs(10)).await;
-        }
+                while let Some(msg) = futures::StreamExt::next(&mut s).await {
+                    debug!("message received: {:?}", msg);
+                    let msg = match msg {
+                        Err(tungstenite::Error::Protocol(
+                            tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
+                        )) => {
+                            error!(
+                                "connection was sent an unexpected frame or was reset, reestablishing it"
+                            );
+                            break;
+                        }
+                        _ => msg.context("when getting message").unwrap(),
+                    };
+                    let self_ref = self.clone();
+                    match self_ref
+                        .process_message(msg, std_tx.clone(), &client, token.clone())
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(e) => {
+                            error!("process_message - {:?}", e);
+                            break;
+                        }
+                    };
+                }
+
+                debug!("EventSubManger - tick=10s");
+                sleep(Duration::from_secs(10)).await;
+            }
+        });
+        Ok(std_rx)
     }
 
     /// Process a message from the websocket
-    async fn process_message<Fut>(
-        &mut self,
+    async fn process_message(
+        self,
         msg: tungstenite::Message,
-        event_fn: &mut impl FnMut(Event, twitch_api::types::Timestamp) -> Fut,
+        ts: SyncSender<EventNotification>,
         client: &HelixClient<'static, reqwest::Client>,
         token: UserToken,
-    ) -> Result<(), Report>
-    where
-        Fut: std::future::Future<Output = Result<(), Report>>,
-    {
+    ) -> Result<(), Report> {
         match msg {
             tungstenite::Message::Text(s) => {
                 debug!("{:?}", s);
@@ -166,8 +217,7 @@ impl EventSubManager {
                         payload: ReconnectPayload { session },
                         ..
                     } => {
-                        self.process_welcome_message(session, client, token.clone())
-                            .await?;
+                        self.process_welcome_message(session, client, token.clone())?;
                         // let transport = eventsub::Transport::websocket(
                         //     self.session_id.clone().unwrap_or_default(),
                         // );
@@ -180,7 +230,10 @@ impl EventSubManager {
                         Ok(())
                     }
                     EventsubWebsocketData::Notification { metadata, payload } => {
-                        event_fn(payload, metadata.message_timestamp.into_owned()).await?;
+                        ts.send(EventNotification {
+                            ts: metadata.message_timestamp.into_owned(),
+                            event: payload,
+                        })?;
                         Ok(())
                     }
                     re @ EventsubWebsocketData::Revocation { .. } => {
@@ -198,20 +251,23 @@ impl EventSubManager {
         }
     }
 
-    async fn process_welcome_message(
-        &mut self,
+    fn process_welcome_message(
+        self,
         data: SessionData<'_>,
-        client: &HelixClient<'static, reqwest::Client>,
-        token: UserToken,
+        _client: &HelixClient<'static, reqwest::Client>,
+        _token: UserToken,
     ) -> Result<(), Report> {
-        self.session_id = cow_to_static(data.id);
-        debug!("welcome message - {}", self.session_id);
+        let session_id = data.id.to_string();
+        debug!("welcome message - {}", session_id);
+
+        *self.session_id.lock().unwrap() = session_id;
+
         if let Some(url) = data.reconnect_url {
-            self.connect_url = cow_to_static(url);
+            *self.connect_url.lock().unwrap() = url.to_string();
         }
 
-        let user_id = token.clone().user_id;
-        Self::join_chat(user_id, self.session_id, client, token.clone()).await?;
+        // let user_id = token.clone().user_id;
+        // Self::join_chat(user_id, self.session_id, client, token.clone()).await?;
 
         Ok(())
     }
