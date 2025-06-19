@@ -1,20 +1,20 @@
-use std::sync::{Arc, Mutex};
-
+use color_eyre::Report;
 use eventsub::EventSubManager;
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use specta::Type;
 use specta_typescript::Typescript;
+use std::sync::Arc;
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Event, Manager, State};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_store::StoreExt;
 use tauri_specta::collect_commands;
 use token::TokenManager;
-use tokio::task;
-use tracing::{debug, info};
+use tokio::sync::Mutex;
+use tracing::{debug, error, info};
 use twitch_api::{client::ClientDefault, HelixClient};
 use twitch_oauth2::tokens::errors::ValidationError;
 
@@ -28,16 +28,49 @@ type SharedEventSubManager = Mutex<EventSubManager>;
 
 #[tauri::command]
 #[specta::specta]
-async fn join_chat(channel_name: String, _app_handle: AppHandle) -> Result<(), String> {
+async fn join_chat(
+    channel_name: String,
+    _app_handle: AppHandle,
+    eventsub_manager_ref: State<'_, SharedEventSubManager>,
+    token_ref: State<'_, SharedTwitchToken>,
+    client_ref: State<'_, HelixClient<'static, reqwest::Client>>,
+) -> Result<(), String> {
     debug!("join: channel={}", channel_name);
+
+    let token = token_ref.lock().await;
+    let client = client_ref.inner();
+    let eventsub_manager = eventsub_manager_ref.lock().await.clone();
+
+    match eventsub_manager
+        .join_chat(channel_name.into(), client, token.clone())
+        .await
+    {
+        Ok(_) => debug!("joined channel"),
+        Err(e) => error!("process_message - {:?}", e),
+    };
 
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-async fn leave_chat(channel_name: String, _app_handle: AppHandle) -> Result<(), String> {
+async fn leave_chat(
+    channel_name: String,
+    _app_handle: AppHandle,
+    eventsub_manager_ref: State<'_, SharedEventSubManager>,
+    token_ref: State<'_, SharedTwitchToken>,
+    client_ref: State<'_, HelixClient<'static, reqwest::Client>>,
+) -> Result<(), String> {
     debug!("leave: channel={}", channel_name);
+
+    let token = token_ref.lock().await;
+    let client = client_ref.inner();
+    let eventsub_manager = eventsub_manager_ref.lock().await;
+
+    // match EventSubManager::leave_chat(channel_name.into(), client, token.clone()).await {
+    //     Ok(_) => debug!("joined channel"),
+    //     Err(e) => error!("process_message - {:?}", e),
+    // };
 
     Ok(())
 }
@@ -51,7 +84,7 @@ fn get_followed_streams(
 ) -> Result<Vec<types::Stream>, String> {
     let client = client.inner();
 
-    let token_guard = token.lock().unwrap().clone();
+    let token_guard = tauri::async_runtime::block_on(token.lock()).clone();
     let streams = tauri::async_runtime::block_on(
         client
             .get_followed_streams(&token_guard)
@@ -71,7 +104,7 @@ fn get_followed_channels(
 ) -> Result<Vec<types::Broadcaster>, String> {
     let client = client.inner();
 
-    let token_guard = token.lock().unwrap().clone();
+    let token_guard = tauri::async_runtime::block_on(token.lock()).clone();
     let channels = tauri::async_runtime::block_on(
         client
             .get_followed_channels(token_guard.user_id.to_string(), &token_guard)
@@ -127,25 +160,21 @@ async fn login(
     let twitch_token = token_manager.clone().twitch_token();
     let user_token = types::UserToken::from_twitch_token(twitch_token.clone());
 
-    let eventsub_manager = EventSubManager::create();
-
-    app_handle.manage::<SharedEventSubManager>(Mutex::new(eventsub_manager));
-
+    let eventsub_manager = EventSubManager::new();
     let client_ref = client.clone();
     let twitch_token_ref = twitch_token.clone();
-    task::spawn(async move {
-        eventsub_manager
-            .run(
-                |e, _ts| async move {
-                    // self.handle_event(e, ts).await
-                    debug!("got event {:?}", e);
-                    Ok(())
-                },
-                client_ref,
-                twitch_token_ref,
-            )
-            .await
-            .expect("eventmanager failed");
+
+    let events = eventsub_manager
+        .clone()
+        .start(client_ref, twitch_token_ref)
+        .expect("unable to start eventsubmanager");
+
+    app_handle.manage::<SharedEventSubManager>(Mutex::new(eventsub_manager.clone()));
+
+    std::thread::spawn(move || {
+        for msg in events {
+            debug!("{:?}", msg);
+        }
     });
 
     app_handle.manage::<SharedUserToken>(Mutex::new(user_token.clone()));
@@ -156,8 +185,9 @@ async fn login(
     token_manager.on_refresh = Arc::new(Box::new(move |token| {
         let user_token_binding = app_handle_ref.state::<SharedUserToken>();
         let twitch_token_binding = app_handle_ref.state::<SharedTwitchToken>();
-        let mut user_token_ref = user_token_binding.lock().unwrap();
-        let mut twitch_token_ref = twitch_token_binding.lock().unwrap();
+
+        let mut user_token_ref = tauri::async_runtime::block_on(user_token_binding.lock());
+        let mut twitch_token_ref = tauri::async_runtime::block_on(twitch_token_binding.lock());
 
         *twitch_token_ref = token.clone();
 
