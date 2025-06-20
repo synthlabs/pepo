@@ -17,32 +17,6 @@ use twitch_api::{
 };
 use twitch_oauth2::UserToken;
 
-type ThreadSafeCallback = Arc<
-    Mutex<
-        Box<
-            dyn FnMut(Event, twitch_api::types::Timestamp) -> BoxFuture<'static, Result<(), Report>>
-                + Send
-                + Sync,
-        >,
-    >,
->;
-
-pub fn make_thread_safe_callback<Fut>(
-    mut event_fn: impl FnMut(Event, twitch_api::types::Timestamp) -> Fut + Send + Sync + 'static,
-) -> ThreadSafeCallback
-where
-    Fut: std::future::Future<Output = Result<(), Report>> + Send + 'static,
-{
-    Arc::new(Mutex::new(Box::new(move |event, ts| {
-        event_fn(event, ts).boxed()
-    })))
-}
-
-fn cow_to_static(cow: Cow<'_, str>) -> &'static str {
-    let s: String = cow.into_owned();
-    Box::leak(s.into_boxed_str())
-}
-
 #[derive(Debug)]
 pub struct EventNotification {
     pub ts: twitch_api::types::Timestamp,
@@ -94,6 +68,11 @@ impl EventSubManager {
             let guard = self.session_id.lock().unwrap();
             (*guard).clone()
         };
+
+        if session_id == "" {
+            return Err(eyre!("session id not set"));
+        }
+
         let transport = eventsub::Transport::websocket(session_id.clone());
         debug!(
             "EventSubManager - creating ChannelChatMessageV1: user_id={}, session_id={}",
@@ -102,7 +81,7 @@ impl EventSubManager {
         let user_id = token.clone().user_id;
         let message =
             eventsub::channel::chat::ChannelChatMessageV1::new(chat_id.clone(), user_id.clone());
-        let resp = client
+        let _resp = client
             .create_eventsub_subscription(message, transport.clone(), &token)
             .await?;
 
@@ -110,7 +89,7 @@ impl EventSubManager {
             "EventSubManager - creating ChannelChatNotificationV1: user_id={}, session_id={}",
             chat_id, session_id
         );
-        client
+        let _resp = client
             .create_eventsub_subscription(
                 eventsub::channel::chat::ChannelChatNotificationV1::new(
                     chat_id.clone(),
@@ -217,16 +196,9 @@ impl EventSubManager {
                         payload: ReconnectPayload { session },
                         ..
                     } => {
-                        self.process_welcome_message(session, client, token.clone())?;
-                        // let transport = eventsub::Transport::websocket(
-                        //     self.session_id.clone().unwrap_or_default(),
-                        // );
-                        // let message =
-                        //     eventsub::stream::StreamOnlineV1::broadcaster_user_id("207813352");
-                        // let token = self.token.lock().await;
-                        // self.client
-                        //     .create_eventsub_subscription(message, transport.clone(), &*token)
-                        //     .await?;
+                        self.process_welcome_message(session, client, token.clone())
+                            .await?;
+
                         Ok(())
                     }
                     EventsubWebsocketData::Notification { metadata, payload } => {
@@ -251,23 +223,30 @@ impl EventSubManager {
         }
     }
 
-    fn process_welcome_message(
+    async fn process_welcome_message(
         self,
         data: SessionData<'_>,
-        _client: &HelixClient<'static, reqwest::Client>,
-        _token: UserToken,
+        client: &HelixClient<'static, reqwest::Client>,
+        token: UserToken,
     ) -> Result<(), Report> {
         let session_id = data.id.to_string();
         debug!("welcome message - {}", session_id);
 
-        *self.session_id.lock().unwrap() = session_id;
+        *self.session_id.lock().unwrap() = session_id.clone();
 
         if let Some(url) = data.reconnect_url {
             *self.connect_url.lock().unwrap() = url.to_string();
         }
 
-        // let user_id = token.clone().user_id;
-        // Self::join_chat(user_id, self.session_id, client, token.clone()).await?;
+        debug!("subbing to user={} updates", token.login.clone());
+        let transport = eventsub::Transport::websocket(session_id.clone());
+        let _resp = client
+            .create_eventsub_subscription(
+                eventsub::user::UserUpdateV1::new(token.user_id.clone()),
+                transport.clone(),
+                &token,
+            )
+            .await?;
 
         Ok(())
     }

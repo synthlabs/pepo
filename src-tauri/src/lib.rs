@@ -41,8 +41,16 @@ async fn join_chat(
     let client = client_ref.inner();
     let eventsub_manager = eventsub_manager_ref.lock().await.clone();
 
+    let channel = client
+        .get_channel_from_login(&channel_name, &token.clone())
+        .await
+        .unwrap()
+        .expect("missing channel");
+
+    debug!("join: got channel info - {:?}", channel);
+
     match eventsub_manager
-        .join_chat(channel_name.into(), client, token.clone())
+        .join_chat(channel.broadcaster_id, client, token.clone())
         .await
     {
         Ok(_) => debug!("joined channel"),
@@ -209,11 +217,6 @@ async fn login(
     Ok(user_token)
 }
 
-#[derive(Serialize, Deserialize, Type)]
-pub struct MyStruct {
-    a: String,
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     color_eyre::install().expect("failed to install color_eyre");
@@ -227,7 +230,6 @@ pub fn run() {
     let builder = tauri::Builder::default().plugin(tauri_plugin_store::Builder::new().build());
 
     let handlers = tauri_specta::Builder::<tauri::Wry>::new()
-        .typ::<MyStruct>()
         .typ::<types::UserToken>()
         // Then register them (separated by a comma)
         .commands(collect_commands![
