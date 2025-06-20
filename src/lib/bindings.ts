@@ -70,7 +70,6 @@ export type Broadcaster = {
 	description: string;
 	created_at: string;
 };
-export type MyStruct = { a: string };
 export type Stream = {
 	/**
 	 * ID of the game being played on the stream.
