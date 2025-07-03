@@ -21,7 +21,11 @@
 
 	$effect(() => {
 		console.log('joining channel:', channel_name);
-		commands.joinChat(channel_name);
+		commands.joinChat(channel_name).then((result) => {
+			if (result.status == 'ok') {
+				console.log(result.data);
+			}
+		});
 	});
 
 	onMount(async () => {

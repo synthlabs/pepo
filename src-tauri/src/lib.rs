@@ -1,6 +1,6 @@
 use color_eyre::Report;
 use eventsub::EventSubManager;
-use futures::TryStreamExt;
+use futures::{stream, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use specta::Type;
@@ -26,6 +26,56 @@ type SharedUserToken = Mutex<types::UserToken>;
 type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
 type SharedEventSubManager = Mutex<EventSubManager>;
 
+#[derive(Deserialize, Serialize, Type)]
+pub struct ChannelInfo {
+    /// Twitch User ID of this channel owner
+    pub broadcaster_id: String,
+    /// Twitch User login of this channel owner
+    pub broadcaster_login: String,
+    /// Twitch user display name of this channel owner
+    pub broadcaster_name: String,
+    /// Current game ID being played on the channel
+    pub game_id: String,
+    /// Name of the game being played on the channel
+    pub game_name: String,
+    /// Language of the channel
+    pub broadcaster_language: String,
+    /// Title of the stream
+    pub title: String,
+    /// Description of the stream
+    #[serde(default)]
+    pub description: String,
+    /// Stream delay in seconds
+    ///
+    /// # Notes
+    ///
+    /// This value may not be accurate, it'll only be accurate when the token belongs to the broadcaster and they are partnered.
+    #[serde(default)]
+    pub delay: i64,
+    /// The tags applied to the channel.
+    pub tags: Vec<String>,
+    /// Boolean flag indicating if the channel has branded content.
+    pub is_branded_content: bool,
+}
+
+impl From<twitch_api::helix::channels::ChannelInformation> for ChannelInfo {
+    fn from(value: twitch_api::helix::channels::ChannelInformation) -> Self {
+        ChannelInfo {
+            broadcaster_id: value.broadcaster_id.into(),
+            broadcaster_login: value.broadcaster_login.into(),
+            broadcaster_name: value.broadcaster_name.into(),
+            game_id: value.game_id.into(),
+            game_name: value.game_name.into(),
+            broadcaster_language: value.broadcaster_language.clone(),
+            title: value.title.clone(),
+            description: value.description.clone(),
+            delay: value.delay,
+            tags: value.tags.clone(),
+            is_branded_content: value.is_branded_content,
+        }
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 async fn join_chat(
@@ -34,7 +84,7 @@ async fn join_chat(
     eventsub_manager_ref: State<'_, SharedEventSubManager>,
     token_ref: State<'_, SharedTwitchToken>,
     client_ref: State<'_, HelixClient<'static, reqwest::Client>>,
-) -> Result<(), String> {
+) -> Result<ChannelInfo, String> {
     debug!("join: channel={}", channel_name);
 
     let token = token_ref.lock().await;
@@ -47,17 +97,22 @@ async fn join_chat(
         .unwrap()
         .expect("missing channel");
 
-    debug!("join: got channel info - {:?}", channel);
+    debug!("join: got channel info - {:?}", channel.clone());
 
     match eventsub_manager
-        .join_chat(channel.broadcaster_id, client, token.clone())
+        .join_chat(
+            channel.broadcaster_id.clone(),
+            channel_name,
+            client,
+            token.clone(),
+        )
         .await
     {
         Ok(_) => debug!("joined channel"),
-        Err(e) => error!("process_message - {:?}", e),
+        Err(e) => error!("join_chat - {:?}", e),
     };
 
-    Ok(())
+    Ok(ChannelInfo::from(channel))
 }
 
 #[tauri::command]
@@ -73,12 +128,15 @@ async fn leave_chat(
 
     let token = token_ref.lock().await;
     let client = client_ref.inner();
-    let eventsub_manager = eventsub_manager_ref.lock().await;
+    let eventsub_manager = eventsub_manager_ref.lock().await.clone();
 
-    // match EventSubManager::leave_chat(channel_name.into(), client, token.clone()).await {
-    //     Ok(_) => debug!("joined channel"),
-    //     Err(e) => error!("process_message - {:?}", e),
-    // };
+    match eventsub_manager
+        .leave_chat(channel_name, client, token.clone())
+        .await
+    {
+        Ok(_) => debug!("left channel"),
+        Err(e) => error!("leave_chat - {:?}", e),
+    };
 
     Ok(())
 }

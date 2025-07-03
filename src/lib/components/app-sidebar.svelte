@@ -32,44 +32,6 @@
 	});
 
 	$inspect(page.url.pathname);
-	// Menu items.
-	const items = [
-		{
-			title: 'AlveusSanctuary',
-			url: '/chat/alveussanctuary',
-			icon: House,
-			avatar:
-				'https://static-cdn.jtvnw.net/jtv_user_pictures/4384f6c4-6608-48f4-b3a7-36d0eb6efbd3-profile_image-300x300.png'
-		},
-		{
-			title: 'hanner',
-			url: '/chat/hanner',
-			icon: Inbox,
-			avatar:
-				'https://static-cdn.jtvnw.net/jtv_user_pictures/0712d245-f404-4487-972d-c9caec092b16-profile_image-300x300.png'
-		},
-		{
-			title: 'SeanDaBlack',
-			url: '/chat/seandablack',
-			icon: Calendar,
-			avatar:
-				'https://static-cdn.jtvnw.net/jtv_user_pictures/4bd8d660-5365-4f2f-ac71-b986710f413a-profile_image-300x300.png'
-		},
-		{
-			title: 'EsfandTV',
-			url: '/chat/esfandtv',
-			icon: Search,
-			avatar:
-				'https://static-cdn.jtvnw.net/jtv_user_pictures/476ee93d-66a6-4e57-b3a9-db1ceb168ad8-profile_image-300x300.png'
-		},
-		{
-			title: 'fanfan',
-			url: '/chat/fanfan',
-			icon: Settings,
-			avatar:
-				'https://static-cdn.jtvnw.net/jtv_user_pictures/c65b6b35-0702-494e-9f81-0b2939f0adc2-profile_image-300x300.png'
-		}
-	];
 
 	const user = {
 		name: 'sir_xin',
