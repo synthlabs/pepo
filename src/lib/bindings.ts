@@ -20,7 +20,7 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async joinChat(channelName: string): Promise<Result<null, string>> {
+	async joinChat(channelName: string): Promise<Result<ChannelInfo, string>> {
 		try {
 			return { status: 'ok', data: await TAURI_INVOKE('join_chat', { channelName }) };
 		} catch (e) {
@@ -69,6 +69,56 @@ export type Broadcaster = {
 	offline_image_url: string;
 	description: string;
 	created_at: string;
+};
+export type ChannelInfo = {
+	/**
+	 * Twitch User ID of this channel owner
+	 */
+	broadcaster_id: string;
+	/**
+	 * Twitch User login of this channel owner
+	 */
+	broadcaster_login: string;
+	/**
+	 * Twitch user display name of this channel owner
+	 */
+	broadcaster_name: string;
+	/**
+	 * Current game ID being played on the channel
+	 */
+	game_id: string;
+	/**
+	 * Name of the game being played on the channel
+	 */
+	game_name: string;
+	/**
+	 * Language of the channel
+	 */
+	broadcaster_language: string;
+	/**
+	 * Title of the stream
+	 */
+	title: string;
+	/**
+	 * Description of the stream
+	 */
+	description?: string;
+	/**
+	 * Stream delay in seconds
+	 *
+	 * # Notes
+	 *
+	 * This value may not be accurate, it'll only be accurate when the token belongs to the broadcaster and they are partnered.
+	 */
+	delay?: bigint;
+	/**
+	 * The tags applied to the channel.
+	 */
+	tags: string[];
+	/**
+	 * Boolean flag indicating if the channel has branded content.
+	 */
+	is_branded_content: boolean;
 };
 export type Stream = {
 	/**
