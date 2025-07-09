@@ -8,8 +8,11 @@
 	import { onMount } from 'svelte';
 	import { commands } from '$lib/bindings.ts';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 
 	let { children } = $props();
+
+	$inspect(page.params.id);
 
 	onMount(async () => {});
 </script>
@@ -25,7 +28,9 @@
 			{/if}
 		</header>
 		<div class={cn('flex w-full flex-grow overflow-hidden', isTauriMobile && 'mb-10')}>
-			{@render children?.()}
+			{#key page.params.id}
+				{@render children?.()}
+			{/key}
 		</div>
 	</main>
 </Sidebar.Provider>
