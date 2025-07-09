@@ -239,7 +239,7 @@ async fn login(
 
     std::thread::spawn(move || {
         for msg in events {
-            debug!("{:?}", msg);
+            debug!("event notification: {:?}", msg);
         }
     });
 

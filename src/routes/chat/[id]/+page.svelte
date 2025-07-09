@@ -42,6 +42,7 @@
 	onDestroy(async () => {
 		console.log('unsubbing');
 		un_sub();
+		commands.leaveChat(channel_name).then(console.log);
 	});
 
 	const msgs = Array.from({ length: 55 }).map(

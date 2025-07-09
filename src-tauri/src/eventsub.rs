@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tokio_tungstenite::tungstenite;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 use twitch_api::types::UserId;
 use twitch_api::{
     eventsub::{self, Event, EventsubWebsocketData, ReconnectPayload, SessionData, WelcomePayload},
@@ -230,7 +230,7 @@ impl EventSubManager {
                     .unwrap();
 
                 while let Some(msg) = futures::StreamExt::next(&mut s).await {
-                    debug!("message received: {:?}", msg);
+                    trace!("message received: {:?}", msg);
                     let msg = match msg {
                         Err(tungstenite::Error::Protocol(
                             tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
@@ -272,7 +272,7 @@ impl EventSubManager {
     ) -> Result<(), Report> {
         match msg {
             tungstenite::Message::Text(s) => {
-                debug!("{:?}", s);
+                trace!("process_message: {:?}", s);
                 // Parse the message into a [twitch_api::eventsub::EventsubWebsocketData]
                 match Event::parse_websocket(&s)? {
                     EventsubWebsocketData::Welcome {
