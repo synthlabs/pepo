@@ -1,14 +1,12 @@
-use color_eyre::Report;
 use eventsub::EventSubManager;
-use futures::{stream, TryStreamExt};
+use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use specta::Type;
 use specta_typescript::Typescript;
 use std::sync::Arc;
 #[cfg(target_os = "macos")]
-use tauri::TitleBarStyle;
-use tauri::{AppHandle, Emitter, Event, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, TitleBarStyle};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_store::StoreExt;
 use tauri_specta::collect_commands;
@@ -237,9 +235,23 @@ async fn login(
 
     app_handle.manage::<SharedEventSubManager>(Mutex::new(eventsub_manager.clone()));
 
+    let app_ref = app_handle.clone();
     std::thread::spawn(move || {
+        use twitch_api::eventsub::{Message as M, Payload as P};
+
         for msg in events {
-            debug!("event notification: {:?}", msg);
+            match msg.event {
+                twitch_api::eventsub::Event::ChannelChatMessageV1(P {
+                    message: M::Notification(chat_message),
+                    ..
+                }) => {
+                    let raw_msg = serde_json::to_string(&chat_message).unwrap();
+                    let key = format!("chat_message:{}", chat_message.broadcaster_user_login);
+                    debug!("chat message: id={} msg={}", key, raw_msg);
+                    app_ref.emit(&key, raw_msg).expect("unable to emit state")
+                }
+                _ => debug!("event notification: {:?}", msg.event),
+            }
         }
     });
 
@@ -338,20 +350,19 @@ pub fn run() {
             // set background color only when building for macOS
             #[cfg(target_os = "macos")]
             {
-                use cocoa::appkit::{NSColor, NSWindow};
-                use cocoa::base::{id, nil};
+                use objc2_app_kit::{NSColor, NSWindow};
 
-                let ns_window = window.ns_window().unwrap() as id;
                 unsafe {
+                    let ns_window = &*(window.ns_window().unwrap() as *mut NSWindow);
+
                     //rgb(24, 31, 42)
-                    let bg_color = NSColor::colorWithRed_green_blue_alpha_(
-                        nil,
+                    let bg_color = NSColor::colorWithRed_green_blue_alpha(
                         20.0 / 255.0,
                         26.0 / 255.0,
                         39.0 / 255.0,
                         1.0,
                     );
-                    ns_window.setBackgroundColor_(bg_color);
+                    ns_window.setBackgroundColor(bg_color.downcast_ref());
                 }
             }
 

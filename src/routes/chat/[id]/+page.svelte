@@ -1,18 +1,25 @@
 <script lang="ts">
 	import { Separator } from '$lib/components/ui/separator/index.ts';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { commands, type UserToken } from '$lib/bindings.ts';
 	import type { UIEventHandler } from 'svelte/elements';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
 
+	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
+
 	let banner = $state({} as UserToken);
 	let chatDIV = $state<HTMLDivElement>();
-	let scrolledAmount = $state(0);
-	let isScrolled = $derived(scrolledAmount > 0);
-	let showSeparator = $state(false);
+	let scrolledAmount = $state(window.innerHeight);
+	let autoscroll: boolean = $state(true);
+	let isScrolled = $derived(
+		chatDIV ? scrolledAmount < chatDIV.scrollHeight - AUTOSCROLL_BUFFER : false
+	);
+	let forceAutoscrollDebounce: boolean = $state(true);
+	let showSeparator: boolean = $state(false);
 	let channel_name = $derived(page.params.id);
+	let msgs: string[] = $state([]);
 
 	let un_sub: UnlistenFn;
 
@@ -29,26 +36,22 @@
 	});
 
 	onMount(async () => {
-		if (chatDIV) {
-			scrollToBottom('instant');
-		}
-
 		console.log('subbing to chat messages');
-		un_sub = await listen<string>('chat_message', (event) => {
-			console.log(`${event.payload}`);
+		un_sub = await listen<string>(`chat_message:${channel_name}`, (event) => {
+			msgs.push('5:51 message');
+			processAutoscroll();
 		});
+
+		scrollToBottom();
 	});
 
 	onDestroy(async () => {
 		console.log('unsubbing');
-		un_sub();
+		if (un_sub) {
+			un_sub();
+		}
 		commands.leaveChat(channel_name).then(console.log);
 	});
-
-	const msgs = Array.from({ length: 55 }).map(
-		(_, i, a) =>
-			`12:3${i % 10}pm twitch_user${i % 6}: bingo bango, bazinga, ringo rango, razinga, tingo tango, tazinga`
-	);
 
 	const evenOddClass = (x: number): string => {
 		if (x % 2 === 0) {
@@ -57,26 +60,58 @@
 		return 'background-color: #0f1421';
 	};
 
-	const scrollToBottom = async (behavior: ScrollBehavior | undefined = 'smooth') => {
-		if (chatDIV) {
-			chatDIV.scroll({ top: chatDIV.scrollHeight, behavior });
+	const refreshScrollAmount = () => {
+		scrolledAmount = chatDIV ? chatDIV.offsetHeight + chatDIV.scrollTop : 0;
+	};
+
+	const shouldScroll = (): boolean => {
+		if (forceAutoscrollDebounce) {
+			autoscroll = true;
+		} else {
+			refreshScrollAmount();
+			// determine whether we should auto-scroll
+			// once the DOM is updated...
+			// if the scroll amount matches the tail minus a buffer amount then autoscroll
+			autoscroll = !!chatDIV && scrolledAmount > chatDIV.scrollHeight - AUTOSCROLL_BUFFER;
+		}
+		return autoscroll;
+	};
+
+	const processAutoscroll = async () => {
+		await tick();
+
+		if (shouldScroll()) {
+			if (chatDIV) {
+				chatDIV.scrollTo({ top: chatDIV.scrollHeight, left: 0, behavior: 'auto' });
+			}
 		}
 	};
 
-	const scroll = (e: UIEvent & { currentTarget: EventTarget & HTMLDivElement }): any => {
-		if (chatDIV) {
-			let scrollArea = chatDIV.scrollHeight - chatDIV.offsetHeight;
-			scrolledAmount = Math.max(scrollArea - chatDIV.scrollTop, 0);
-		}
+	const forceAutoscrollDebounceFn = () => {
+		forceAutoscrollDebounce = true;
+		console.log('autoscroll debounce START');
+		setTimeout(() => {
+			console.log('autoscroll debounce FINISH');
+			forceAutoscrollDebounce = false;
+		}, 2000);
+	};
+
+	const scrollToBottom = () => {
+		forceAutoscrollDebounceFn();
+		processAutoscroll();
 	};
 </script>
 
 <div class="flex h-full w-full flex-col flex-nowrap">
-	<div class="flex-grow overflow-y-auto overflow-x-hidden" bind:this={chatDIV} onscroll={scroll}>
+	<div
+		class="flex-grow overflow-y-auto overflow-x-hidden"
+		bind:this={chatDIV}
+		onscroll={refreshScrollAmount}
+	>
 		{#each msgs as msg, index}
 			<div
 				class={cn(
-					'px-2 py-1 text-sm',
+					'text-wrap break-words px-2 py-1 text-sm',
 					index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary'
 				)}
 			>
@@ -90,7 +125,7 @@
 	{#if isScrolled}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="cursor-pointer bg-primary text-center" onclick={() => scrollToBottom('instant')}>
+		<div class="cursor-pointer bg-primary text-center" onclick={scrollToBottom}>
 			More Messages Below
 		</div>
 	{/if}

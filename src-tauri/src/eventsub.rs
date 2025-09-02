@@ -1,13 +1,10 @@
 use color_eyre::Report;
 use eyre::eyre;
 use eyre::WrapErr;
-use futures::future::BoxFuture;
-use futures::FutureExt;
 use futures::{stream, TryStreamExt};
-use serde_json::json;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -24,24 +21,31 @@ type SharedMap<V> = Arc<Mutex<HashMap<String, Mutex<HashSet<V>>>>>;
 
 #[derive(Debug)]
 pub struct EventNotification {
-    pub ts: twitch_api::types::Timestamp,
+    pub _ts: twitch_api::types::Timestamp,
     pub event: Event,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EventSubSubscription {
-    pub cost: usize,
-    pub condition: serde_json::Value,
-    pub created_at: twitch_api::types::Timestamp,
+    pub channel_name: String,
     pub id: twitch_api::types::EventSubId,
-    pub status: eventsub::Status,
+    pub sub_type: eventsub::EventType,
+}
+
+// Implement hashing using ALL fields
+impl Hash for EventSubSubscription {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.channel_name.hash(state);
+        self.id.hash(state);
+        self.sub_type.to_string().hash(state); // Convert enum to string
+    }
 }
 
 #[derive(Clone)]
 pub struct EventSubManager {
     session_id: Arc<Mutex<String>>,
     connect_url: Arc<Mutex<String>>,
-    subscriptions: SharedMap<String>,
+    subscriptions: SharedMap<EventSubSubscription>,
 }
 
 /// Connect to the websocket and return the stream
@@ -74,24 +78,28 @@ impl EventSubManager {
         }
     }
 
-    fn add_subscription(self, channel_name: String, id: String) {
+    fn add_subscription(self, channel_name: String, sub: EventSubSubscription) {
         let mut guard = self.subscriptions.lock().unwrap();
 
         let mut subs = guard.entry(channel_name).or_default().lock().unwrap();
-        subs.insert(id);
+        subs.insert(sub);
     }
 
-    fn remove_subscription(self, channel_name: String, id: String) {
+    fn remove_subscriptions(self, channel_name: String, _sub: Vec<EventSubSubscription>) {
         let mut guard = self.subscriptions.lock().unwrap();
 
-        let mut subs = guard.entry(channel_name).or_default().lock().unwrap();
-        subs.remove(&id);
+        guard.remove(&channel_name);
     }
 
-    fn get_subscriptions(self, channel_name: String) -> Vec<String> {
+    fn has_subscription(self, channel_name: String) -> bool {
+        let guard = self.subscriptions.lock().unwrap();
+        guard.contains_key(&channel_name)
+    }
+
+    fn get_subscriptions(self, channel_name: String) -> Vec<EventSubSubscription> {
         let mut guard = self.subscriptions.lock().unwrap();
 
-        let mut subs = guard.entry(channel_name).or_default().lock().unwrap();
+        let subs = guard.entry(channel_name).or_default().lock().unwrap();
 
         subs.iter().map(|s| s.clone()).collect()
     }
@@ -112,6 +120,14 @@ impl EventSubManager {
             return Err(eyre!("session id not set"));
         }
 
+        if self.clone().has_subscription(chat_name.clone()) {
+            debug!(
+                "EventSubManager - channel already subbed to: chat={}",
+                chat_name,
+            );
+            return Ok(());
+        }
+
         let transport = eventsub::Transport::websocket(session_id.clone());
         debug!(
             "EventSubManager - creating ChannelChatMessageV1: user_id={}, session_id={}",
@@ -124,8 +140,14 @@ impl EventSubManager {
             .create_eventsub_subscription(message.clone(), transport.clone(), &token)
             .await?;
 
-        self.clone()
-            .add_subscription(chat_name.clone(), resp.id.clone().to_string());
+        self.clone().add_subscription(
+            chat_name.clone(),
+            EventSubSubscription {
+                channel_name: chat_name.clone(),
+                id: resp.id.clone(),
+                sub_type: resp.type_.clone(),
+            },
+        );
 
         debug!(
             "EventSubManager - creating ChannelChatNotificationV1: user_id={}, session_id={}",
@@ -139,7 +161,14 @@ impl EventSubManager {
             .create_eventsub_subscription(condition.clone(), transport.clone(), &token.clone())
             .await?;
 
-        self.add_subscription(chat_name, resp.id.clone().to_string());
+        self.add_subscription(
+            chat_name.clone(),
+            EventSubSubscription {
+                channel_name: chat_name.clone(),
+                id: resp.id.clone(),
+                sub_type: resp.type_.clone(),
+            },
+        );
 
         Ok(())
     }
@@ -159,13 +188,21 @@ impl EventSubManager {
             return Err(eyre!("session id not set"));
         }
 
-        let subs = self.get_subscriptions(chat_name);
+        if !self.clone().has_subscription(chat_name.clone()) {
+            debug!("EventSubManager - sub doesn't exist: chat={}", chat_name);
+            return Ok(());
+        }
 
-        for s in subs {
+        debug!("EventSubManager - deleting subs: chat={}", chat_name);
+
+        let subs = self.clone().get_subscriptions(chat_name.clone());
+
+        for s in subs.clone() {
             client
-                .delete_eventsub_subscription(s, &token.clone())
+                .delete_eventsub_subscription(s.id.clone(), &token.clone())
                 .await?;
         }
+        self.remove_subscriptions(chat_name, subs);
 
         Ok(())
     }
@@ -290,7 +327,7 @@ impl EventSubManager {
                     }
                     EventsubWebsocketData::Notification { metadata, payload } => {
                         ts.send(EventNotification {
-                            ts: metadata.message_timestamp.into_owned(),
+                            _ts: metadata.message_timestamp.into_owned(),
                             event: payload,
                         })?;
                         Ok(())
