@@ -89,7 +89,6 @@
 		width: 10px;
 	}
 	*::-webkit-scrollbar-track {
-		border-radius: 5px;
 		background-color: #27272a;
 	}
 
