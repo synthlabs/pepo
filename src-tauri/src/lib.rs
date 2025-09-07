@@ -24,7 +24,7 @@ type SharedUserToken = Mutex<types::UserToken>;
 type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
 type SharedEventSubManager = Mutex<EventSubManager>;
 
-#[derive(Deserialize, Serialize, Type)]
+#[derive(Clone, Deserialize, Serialize, Type)]
 pub struct ChannelInfo {
     /// Twitch User ID of this channel owner
     pub broadcaster_id: String,
@@ -54,6 +54,22 @@ pub struct ChannelInfo {
     pub tags: Vec<String>,
     /// Boolean flag indicating if the channel has branded content.
     pub is_branded_content: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+pub struct ChannelMessage {
+    pub ts: String,
+    pub payload: String,
+}
+
+impl ChannelMessage {
+    fn from(value: twitch_api::eventsub::channel::ChannelChatMessageV1Payload, ts: String) -> Self {
+        let raw_msg = serde_json::to_string(&value).unwrap();
+        ChannelMessage {
+            ts: ts,
+            payload: raw_msg,
+        }
+    }
 }
 
 impl From<twitch_api::helix::channels::ChannelInformation> for ChannelInfo {
@@ -245,10 +261,13 @@ async fn login(
                     message: M::Notification(chat_message),
                     ..
                 }) => {
-                    let raw_msg = serde_json::to_string(&chat_message).unwrap();
+                    let channel_msg =
+                        ChannelMessage::from(chat_message.clone(), msg.ts.to_string());
                     let key = format!("chat_message:{}", chat_message.broadcaster_user_login);
-                    debug!("chat message: id={} msg={}", key, raw_msg);
-                    app_ref.emit(&key, raw_msg).expect("unable to emit state")
+                    debug!("chat message: id={} msg={:?}", key, channel_msg);
+                    app_ref
+                        .emit(&key, channel_msg)
+                        .expect("unable to emit state")
                 }
                 _ => debug!("event notification: {:?}", msg.event),
             }
@@ -301,6 +320,7 @@ pub fn run() {
 
     let handlers = tauri_specta::Builder::<tauri::Wry>::new()
         .typ::<types::UserToken>()
+        .typ::<ChannelMessage>()
         // Then register them (separated by a comma)
         .commands(collect_commands![
             get_followed_streams,

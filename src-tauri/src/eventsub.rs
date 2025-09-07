@@ -21,7 +21,7 @@ type SharedMap<V> = Arc<Mutex<HashMap<String, Mutex<HashSet<V>>>>>;
 
 #[derive(Debug)]
 pub struct EventNotification {
-    pub _ts: twitch_api::types::Timestamp,
+    pub ts: twitch_api::types::Timestamp,
     pub event: Event,
 }
 
@@ -327,7 +327,7 @@ impl EventSubManager {
                     }
                     EventsubWebsocketData::Notification { metadata, payload } => {
                         ts.send(EventNotification {
-                            _ts: metadata.message_timestamp.into_owned(),
+                            ts: metadata.message_timestamp.into_owned(),
                             event: payload,
                         })?;
                         Ok(())

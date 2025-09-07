@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { onDestroy, onMount, tick } from 'svelte';
-	import { commands, type UserToken } from '$lib/bindings.ts';
+	import { commands, type ChannelMessage, type UserToken } from '$lib/bindings.ts';
 	import type { UIEventHandler } from 'svelte/elements';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
+	import { join } from '@tauri-apps/api/path';
 
 	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
+	const CHAT_MESSAGE_LIMIT = 10000;
 
 	let banner = $state({} as UserToken);
 	let chatDIV = $state<HTMLDivElement>();
@@ -37,8 +39,12 @@
 
 	onMount(async () => {
 		console.log('subbing to chat messages');
-		un_sub = await listen<string>(`chat_message:${channel_name}`, (event) => {
-			msgs.push('5:51 message');
+		un_sub = await listen<ChannelMessage>(`chat_message:${channel_name}`, (event) => {
+			const msg = JSON.parse(event.payload.payload);
+			msgs.push(
+				`[${event.payload.ts.substring(11, 19)}] ${msg.chatter_user_name}: ${msg.message.text}`
+			);
+			if (msgs.length > CHAT_MESSAGE_LIMIT) msgs.shift();
 			processAutoscroll();
 		});
 
