@@ -2,11 +2,9 @@
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { commands, type ChannelMessage, type UserToken } from '$lib/bindings.ts';
-	import type { UIEventHandler } from 'svelte/elements';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
-	import { join } from '@tauri-apps/api/path';
 
 	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
 	const CHAT_MESSAGE_LIMIT = 10000;
