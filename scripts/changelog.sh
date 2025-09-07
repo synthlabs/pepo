@@ -1,5 +1,7 @@
 #!/bin/bash
 
+ROOT=$(git rev-parse --show-toplevel)
+
 set -ex
 
 EXTRA_ARGS="-project-root ${ROOT} -debug"
