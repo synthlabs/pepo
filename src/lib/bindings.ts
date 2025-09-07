@@ -120,6 +120,7 @@ export type ChannelInfo = {
 	 */
 	is_branded_content: boolean;
 };
+export type ChannelMessage = { ts: string; payload: string };
 export type Stream = {
 	/**
 	 * ID of the game being played on the stream.
