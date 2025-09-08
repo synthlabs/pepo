@@ -6,7 +6,8 @@ use specta::Type;
 use specta_typescript::Typescript;
 use std::sync::Arc;
 #[cfg(target_os = "macos")]
-use tauri::{AppHandle, Emitter, Manager, State, TitleBarStyle};
+use tauri::TitleBarStyle;
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_store::StoreExt;
 use tauri_specta::collect_commands;

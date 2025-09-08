@@ -246,8 +246,8 @@ impl EventSubManager {
                             sub.id, sub.cost, sub.condition, sub.status
                         )
                     }
-                    debug!("EventSubManger::cost_watcher - tick=10s");
-                    sleep(Duration::from_secs(10)).await;
+                    debug!("EventSubManger::cost_watcher - tick=30s");
+                    sleep(Duration::from_secs(30)).await;
                 }
             });
         }

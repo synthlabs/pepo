@@ -58,10 +58,10 @@
 							isActive={`/chat/${item.login}` == page.url.pathname}
 							class={`/chat/${item.login}` == page.url.pathname ? 'pl-1 pr-2' : 'px-2'}
 						>
-							<Sidebar.MenuButton size="lg">
+							<Sidebar.MenuButton size="sm">
 								{#snippet child({ props })}
 									<a href={`/chat/${item.login}`} {...props}>
-										<Avatar.Root class="h-8 w-8">
+										<Avatar.Root class="size-7">
 											<Avatar.Image src={item.profile_image_url} alt={item.display_name} />
 											<Avatar.Fallback>{item.display_name}</Avatar.Fallback>
 										</Avatar.Root>
