@@ -20,11 +20,11 @@
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
 					<Sidebar.MenuButton
-						size="lg"
+						size="sm"
 						class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 						{...props}
 					>
-						<Avatar.Root class="h-8 w-8">
+						<Avatar.Root class="size-7">
 							<Avatar.Image src={user.avatar} alt={user.name} />
 							<Avatar.Fallback>{user.name}</Avatar.Fallback>
 						</Avatar.Root>
