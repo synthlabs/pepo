@@ -3,218 +3,213 @@
 
 /** user-defined commands **/
 
-
 export const commands = {
-async getFollowedStreams() : Promise<Result<Stream[], string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_followed_streams") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getFollowedChannels() : Promise<Result<Broadcaster[], string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_followed_channels") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async joinChat(channelName: string) : Promise<Result<ChannelInfo, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("join_chat", { channelName }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async leaveChat(channelName: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("leave_chat", { channelName }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async login() : Promise<Result<UserToken, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("login") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-}
-}
+	async getFollowedStreams(): Promise<Result<Stream[], string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('get_followed_streams') };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async getFollowedChannels(): Promise<Result<Broadcaster[], string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('get_followed_channels') };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async joinChat(channelName: string): Promise<Result<ChannelInfo, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('join_chat', { channelName }) };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async leaveChat(channelName: string): Promise<Result<null, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('leave_chat', { channelName }) };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async login(): Promise<Result<UserToken, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('login') };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	}
+};
 
 /** user-defined events **/
 
-
-
 /** user-defined constants **/
-
-
 
 /** user-defined types **/
 
-export type Broadcaster = { 
-/**
- * An ID that uniquely identifies the broadcaster that this user is following.
- */
-id: string; 
-/**
- * The broadcaster’s login name.
- */
-login: string; 
-/**
- * The broadcaster’s display name.
- */
-display_name: string; profile_image_url: string; offline_image_url: string; description: string; created_at: string }
-export type ChannelInfo = { 
-/**
- * Twitch User ID of this channel owner
- */
-broadcaster_id: string; 
-/**
- * Twitch User login of this channel owner
- */
-broadcaster_login: string; 
-/**
- * Twitch user display name of this channel owner
- */
-broadcaster_name: string; 
-/**
- * Current game ID being played on the channel
- */
-game_id: string; 
-/**
- * Name of the game being played on the channel
- */
-game_name: string; 
-/**
- * Language of the channel
- */
-broadcaster_language: string; 
-/**
- * Title of the stream
- */
-title: string; 
-/**
- * Description of the stream
- */
-description?: string; 
-/**
- * Stream delay in seconds
- * 
- * # Notes
- * 
- * This value may not be accurate, it'll only be accurate when the token belongs to the broadcaster and they are partnered.
- */
-delay?: bigint; 
-/**
- * The tags applied to the channel.
- */
-tags: string[]; 
-/**
- * Boolean flag indicating if the channel has branded content.
- */
-is_branded_content: boolean }
-export type ChannelMessage = { ts: string; payload: string }
-export type Stream = { 
-/**
- * ID of the game being played on the stream.
- */
-game_id: string; 
-/**
- * Name of the game being played.
- */
-game_name: string; 
-/**
- * Stream ID.
- */
-id: string; 
-/**
- * Stream language.
- */
-language: string; 
-/**
- * Indicates if the broadcaster has specified their channel contains mature content that may be inappropriate for younger audiences.
- */
-is_mature: boolean; 
-/**
- * UTC timestamp.
- */
-started_at: string; tags: string[]; 
-/**
- * Thumbnail URL of the stream. All image URLs have variable width and height. You can replace {width} and {height} with any values to get that size image
- */
-thumbnail_url: string; 
-/**
- * Stream title.
- */
-title: string; 
-/**
- * ID of the user who is streaming.
- */
-user_id: string; 
-/**
- * Display name corresponding to user_id.
- */
-user_name: string; 
-/**
- * Login of the user who is streaming.
- */
-user_login: string; 
-/**
- * Number of viewers watching the stream at the time of the query.
- */
-viewer_count: bigint }
-export type UserToken = { 
-/**
- * The access token used to authenticate requests with
- */
-access_token: string; client_id: string; 
-/**
- * Username of user associated with this token
- */
-login: string; 
-/**
- * User ID of the user associated with this token
- */
-user_id: string; 
-/**
- * The refresh token used to extend the life of this user token
- */
-refresh_token: string | null; expires_in: bigint }
+export type Broadcaster = {
+	/**
+	 * An ID that uniquely identifies the broadcaster that this user is following.
+	 */
+	id: string;
+	/**
+	 * The broadcaster’s login name.
+	 */
+	login: string;
+	/**
+	 * The broadcaster’s display name.
+	 */
+	display_name: string;
+	profile_image_url: string;
+	offline_image_url: string;
+	description: string;
+	created_at: string;
+};
+export type ChannelInfo = {
+	/**
+	 * Twitch User ID of this channel owner
+	 */
+	broadcaster_id: string;
+	/**
+	 * Twitch User login of this channel owner
+	 */
+	broadcaster_login: string;
+	/**
+	 * Twitch user display name of this channel owner
+	 */
+	broadcaster_name: string;
+	/**
+	 * Current game ID being played on the channel
+	 */
+	game_id: string;
+	/**
+	 * Name of the game being played on the channel
+	 */
+	game_name: string;
+	/**
+	 * Language of the channel
+	 */
+	broadcaster_language: string;
+	/**
+	 * Title of the stream
+	 */
+	title: string;
+	/**
+	 * Description of the stream
+	 */
+	description?: string;
+	/**
+	 * Stream delay in seconds
+	 *
+	 * # Notes
+	 *
+	 * This value may not be accurate, it'll only be accurate when the token belongs to the broadcaster and they are partnered.
+	 */
+	delay?: bigint;
+	/**
+	 * The tags applied to the channel.
+	 */
+	tags: string[];
+	/**
+	 * Boolean flag indicating if the channel has branded content.
+	 */
+	is_branded_content: boolean;
+};
+export type ChannelMessage = { ts: string; payload: string };
+export type Stream = {
+	/**
+	 * ID of the game being played on the stream.
+	 */
+	game_id: string;
+	/**
+	 * Name of the game being played.
+	 */
+	game_name: string;
+	/**
+	 * Stream ID.
+	 */
+	id: string;
+	/**
+	 * Stream language.
+	 */
+	language: string;
+	/**
+	 * Indicates if the broadcaster has specified their channel contains mature content that may be inappropriate for younger audiences.
+	 */
+	is_mature: boolean;
+	/**
+	 * UTC timestamp.
+	 */
+	started_at: string;
+	tags: string[];
+	/**
+	 * Thumbnail URL of the stream. All image URLs have variable width and height. You can replace {width} and {height} with any values to get that size image
+	 */
+	thumbnail_url: string;
+	/**
+	 * Stream title.
+	 */
+	title: string;
+	/**
+	 * ID of the user who is streaming.
+	 */
+	user_id: string;
+	/**
+	 * Display name corresponding to user_id.
+	 */
+	user_name: string;
+	/**
+	 * Login of the user who is streaming.
+	 */
+	user_login: string;
+	/**
+	 * Number of viewers watching the stream at the time of the query.
+	 */
+	viewer_count: bigint;
+};
+export type UserToken = {
+	/**
+	 * The access token used to authenticate requests with
+	 */
+	access_token: string;
+	client_id: string;
+	/**
+	 * Username of user associated with this token
+	 */
+	login: string;
+	/**
+	 * User ID of the user associated with this token
+	 */
+	user_id: string;
+	/**
+	 * The refresh token used to extend the life of this user token
+	 */
+	refresh_token: string | null;
+	expires_in: bigint;
+};
 
 /** tauri-specta globals **/
 
-import {
-	invoke as TAURI_INVOKE,
-	Channel as TAURI_CHANNEL,
-} from "@tauri-apps/api/core";
-import * as TAURI_API_EVENT from "@tauri-apps/api/event";
-import { type WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
+import { invoke as TAURI_INVOKE, Channel as TAURI_CHANNEL } from '@tauri-apps/api/core';
+import * as TAURI_API_EVENT from '@tauri-apps/api/event';
+import { type WebviewWindow as __WebviewWindow__ } from '@tauri-apps/api/webviewWindow';
 
 type __EventObj__<T> = {
-	listen: (
-		cb: TAURI_API_EVENT.EventCallback<T>,
-	) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
-	once: (
-		cb: TAURI_API_EVENT.EventCallback<T>,
-	) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
+	listen: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
+	once: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
 	emit: null extends T
 		? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
 		: (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
 };
 
-export type Result<T, E> =
-	| { status: "ok"; data: T }
-	| { status: "error"; error: E };
+export type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error: E };
 
-function __makeEvents__<T extends Record<string, any>>(
-	mappings: Record<keyof T, string>,
-) {
+function __makeEvents__<T extends Record<string, any>>(mappings: Record<keyof T, string>) {
 	return new Proxy(
 		{} as unknown as {
 			[K in keyof T]: __EventObj__<T[K]> & {
@@ -229,20 +224,20 @@ function __makeEvents__<T extends Record<string, any>>(
 					apply: (_, __, [window]: [__WebviewWindow__]) => ({
 						listen: (arg: any) => window.listen(name, arg),
 						once: (arg: any) => window.once(name, arg),
-						emit: (arg: any) => window.emit(name, arg),
+						emit: (arg: any) => window.emit(name, arg)
 					}),
 					get: (_, command: keyof __EventObj__<any>) => {
 						switch (command) {
-							case "listen":
+							case 'listen':
 								return (arg: any) => TAURI_API_EVENT.listen(name, arg);
-							case "once":
+							case 'once':
 								return (arg: any) => TAURI_API_EVENT.once(name, arg);
-							case "emit":
+							case 'emit':
 								return (arg: any) => TAURI_API_EVENT.emit(name, arg);
 						}
-					},
+					}
 				});
-			},
-		},
+			}
+		}
 	);
 }

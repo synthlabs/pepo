@@ -20,11 +20,11 @@
 			<DropdownMenu.Trigger>
 				{#snippet child({ props })}
 					<Sidebar.MenuButton
-						size="sm"
+						size="lg"
 						class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 						{...props}
 					>
-						<Avatar.Root class="size-7">
+						<Avatar.Root class="size-8">
 							<Avatar.Image src={user.avatar} alt={user.name} />
 							<Avatar.Fallback>{user.name}</Avatar.Fallback>
 						</Avatar.Root>
@@ -32,7 +32,7 @@
 							<span class="truncate font-semibold">{user.name}</span>
 							<span class="truncate text-xs text-muted-foreground">{user.provider}</span>
 						</div>
-						<ChevronsUpDown class="ml-auto size-4" />
+						<ChevronsUpDown class="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
 					</Sidebar.MenuButton>
 				{/snippet}
 			</DropdownMenu.Trigger>
@@ -40,7 +40,7 @@
 				class="w-[--bits-dropdown-menu-anchor-width] min-w-56 rounded-lg"
 				side={sidebar.isMobile ? 'bottom' : 'right'}
 				align="end"
-				sideOffset={4}
+				sideOffset={10}
 			>
 				<DropdownMenu.Label class="p-0 font-normal">
 					<div class="flex items-center gap-2 px-1 py-1.5 text-left text-sm">

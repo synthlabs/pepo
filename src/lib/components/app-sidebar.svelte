@@ -48,7 +48,7 @@
 </script>
 
 <Sidebar.Root bind:ref {collapsible} {...restProps}>
-	<Sidebar.Content>
+	<Sidebar.Content class="overscroll-none">
 		<Sidebar.Group>
 			<Sidebar.GroupLabel>Following</Sidebar.GroupLabel>
 			<Sidebar.GroupContent>
@@ -56,12 +56,12 @@
 					{#each followed_channels as item (item.id)}
 						<Sidebar.MenuItem
 							isActive={`/chat/${item.login}` == page.url.pathname}
-							class={`/chat/${item.login}` == page.url.pathname ? 'pl-1 pr-2' : 'px-2'}
+							class={`/chat/${item.login}` == page.url.pathname ? '' : ''}
 						>
-							<Sidebar.MenuButton size="sm">
+							<Sidebar.MenuButton size="lg" class="p-2">
 								{#snippet child({ props })}
 									<a href={`/chat/${item.login}`} {...props}>
-										<Avatar.Root class="size-7">
+										<Avatar.Root class="size-8">
 											<Avatar.Image src={item.profile_image_url} alt={item.display_name} />
 											<Avatar.Fallback>{item.display_name}</Avatar.Fallback>
 										</Avatar.Root>
