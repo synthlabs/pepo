@@ -108,7 +108,7 @@
 
 <div class="flex h-full w-full flex-col flex-nowrap">
 	<div
-		class="flex-grow overflow-y-auto overflow-x-hidden"
+		class="grow overflow-y-auto overflow-x-hidden"
 		bind:this={chatDIV}
 		onscroll={refreshScrollAmount}
 	>
@@ -136,7 +136,7 @@
 	<div class="relative border-t">
 		<input
 			type="text"
-			class="h-full w-full bg-background p-3 text-sm outline-none placeholder:text-muted-foreground focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+			class="h-full w-full bg-background p-3 text-sm outline-hidden placeholder:text-muted-foreground focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
 			placeholder="Send message as sir_xin"
 		/>
 		<!-- svelte-ignore a11y_consider_explicit_label -->
