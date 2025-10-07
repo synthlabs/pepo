@@ -177,3 +177,73 @@ impl From<twitch_api::helix::users::User> for Broadcaster {
         }
     }
 }
+
+#[derive(Clone, Deserialize, Serialize, Type)]
+pub struct ChannelInfo {
+    /// Twitch User ID of this channel owner
+    pub broadcaster_id: String,
+    /// Twitch User login of this channel owner
+    pub broadcaster_login: String,
+    /// Twitch user display name of this channel owner
+    pub broadcaster_name: String,
+    /// Current game ID being played on the channel
+    pub game_id: String,
+    /// Name of the game being played on the channel
+    pub game_name: String,
+    /// Language of the channel
+    pub broadcaster_language: String,
+    /// Title of the stream
+    pub title: String,
+    /// Description of the stream
+    #[serde(default)]
+    pub description: String,
+    /// Stream delay in seconds
+    ///
+    /// # Notes
+    ///
+    /// This value may not be accurate, it'll only be accurate when the token belongs to the broadcaster and they are partnered.
+    #[serde(default)]
+    pub delay: i64,
+    /// The tags applied to the channel.
+    pub tags: Vec<String>,
+    /// Boolean flag indicating if the channel has branded content.
+    pub is_branded_content: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+pub struct ChannelMessage {
+    pub ts: String,
+    pub payload: String,
+}
+
+impl ChannelMessage {
+    pub fn new(
+        value: twitch_api::eventsub::channel::ChannelChatMessageV1Payload,
+        ts: String,
+    ) -> Self {
+        let raw_msg = serde_json::to_string(&value).unwrap();
+        ChannelMessage {
+            ts: ts,
+            payload: raw_msg,
+        }
+    }
+}
+
+impl From<twitch_api::helix::channels::ChannelInformation> for ChannelInfo {
+    fn from(value: twitch_api::helix::channels::ChannelInformation) -> Self {
+        ChannelInfo {
+            broadcaster_id: value.broadcaster_id.into(),
+            broadcaster_login: value.broadcaster_login.into(),
+            broadcaster_name: value.broadcaster_name.into(),
+            game_id: value.game_id.into(),
+            game_name: value.game_name.into(),
+            broadcaster_language: value.broadcaster_language.clone(),
+            title: value.title.clone(),
+            description: value.description.clone(),
+            delay: value.delay,
+            tags: value.tags.clone(),
+            is_branded_content: value.is_branded_content,
+        }
+    }
+}
+

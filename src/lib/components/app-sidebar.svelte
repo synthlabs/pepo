@@ -1,9 +1,4 @@
 <script lang="ts">
-	import Calendar from 'lucide-svelte/icons/calendar';
-	import House from 'lucide-svelte/icons/house';
-	import Inbox from 'lucide-svelte/icons/inbox';
-	import Search from 'lucide-svelte/icons/search';
-	import Settings from 'lucide-svelte/icons/settings';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.ts';
 	import * as Avatar from '$lib/components/ui/avatar/index.ts';
 	import NavUser from '$lib/components/nav-user.svelte';
@@ -15,13 +10,6 @@
 	let followed_channels: Broadcaster[] = $state([]);
 
 	onMount(async () => {
-		let result = await commands.login();
-		if (result.status == 'ok') {
-			console.log(result.data);
-		} else {
-			console.log('failure', result.error);
-		}
-
 		let channels = await commands.getFollowedChannels();
 		if (channels.status == 'ok') {
 			console.log(channels.data);
@@ -55,12 +43,12 @@
 				<Sidebar.Menu>
 					{#each followed_channels as item (item.id)}
 						<Sidebar.MenuItem
-							isActive={`/chat/${item.login}` == page.url.pathname}
-							class={`/chat/${item.login}` == page.url.pathname ? '' : ''}
+							isActive={`/app/chat/${item.login}` == page.url.pathname}
+							class={`/app/chat/${item.login}` == page.url.pathname ? '' : ''}
 						>
 							<Sidebar.MenuButton size="lg" class="p-2">
 								{#snippet child({ props })}
-									<a href={`/chat/${item.login}`} {...props}>
+									<a href={`/app/chat/${item.login}`} {...props}>
 										<Avatar.Root class="size-8">
 											<Avatar.Image src={item.profile_image_url} alt={item.display_name} />
 											<Avatar.Fallback>{item.display_name}</Avatar.Fallback>
