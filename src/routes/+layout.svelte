@@ -1,36 +1,12 @@
-<script lang="ts">
+<script>
 	import '../app.css';
-	import * as Sidebar from '$lib/components/ui/sidebar/index.ts';
-	import AppSidebar from '$lib/components/app-sidebar.svelte';
-	import { Separator } from '$lib/components/ui/separator/index.ts';
-	import { isTauriMobile } from '$lib/tauri';
-	import { cn } from '$lib/utils';
-	import { onMount } from 'svelte';
-	import { commands } from '$lib/bindings.ts';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 
 	let { children } = $props();
 
 	$inspect(page.params.id);
-
-	onMount(async () => {});
 </script>
 
-<Sidebar.Provider>
-	<AppSidebar collapsible="icon"></AppSidebar>
-	<main class="flex max-h-dvh w-full max-w-full flex-col flex-nowrap">
-		<header class="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-			<Sidebar.Trigger class="-ml-1" />
-
-			{#if !isTauriMobile}
-				<Separator orientation="vertical" class="mr-2 h-4" />
-			{/if}
-		</header>
-		<div class={cn('flex w-full grow overflow-hidden', isTauriMobile && 'mb-10')}>
-			{#key page.params.id}
-				{@render children?.()}
-			{/key}
-		</div>
-	</main>
-</Sidebar.Provider>
+<div class="h-full w-full">
+	{@render children?.()}
+</div>

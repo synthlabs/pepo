@@ -68,7 +68,9 @@ impl TokenManager {
 
         debug!("made token builder");
 
-        let code = builder.start(&client).await.unwrap();
+        let code: &twitch_oauth2::id::DeviceCodeResponse = builder.start(&client).await.unwrap();
+
+        // onDeviceCode
 
         info!("login {}", code.verification_uri);
         app_handle
@@ -76,10 +78,16 @@ impl TokenManager {
             .open_url(code.verification_uri.clone(), None::<&str>)
             .unwrap();
 
-        builder
+        // onUrlOpened
+
+        let token = builder
             .wait_for_code(&client, tokio::time::sleep)
             .await
-            .unwrap()
+            .unwrap();
+
+        // onUserToken
+
+        return token
     }
 
     pub fn manage(self) {
