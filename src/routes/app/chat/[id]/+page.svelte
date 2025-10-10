@@ -57,13 +57,6 @@
 		commands.leaveChat(channel_name).then(console.log);
 	});
 
-	const evenOddClass = (x: number): string => {
-		if (x % 2 === 0) {
-			return 'background-color: #040a18';
-		}
-		return 'background-color: #0f1421';
-	};
-
 	const refreshScrollAmount = () => {
 		scrolledAmount = chatDIV ? chatDIV.offsetHeight + chatDIV.scrollTop : 0;
 	};
@@ -108,14 +101,14 @@
 
 <div class="flex h-full w-full flex-col flex-nowrap">
 	<div
-		class="grow overflow-y-auto overflow-x-hidden"
+		class="grow overflow-x-hidden overflow-y-auto"
 		bind:this={chatDIV}
 		onscroll={refreshScrollAmount}
 	>
 		{#each msgs as msg, index}
 			<div
 				class={cn(
-					'text-wrap break-words px-2 py-1 text-sm',
+					'px-2 py-1 text-sm text-wrap break-words',
 					index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary'
 				)}
 			>
@@ -129,14 +122,14 @@
 	{#if isScrolled}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="cursor-pointer bg-primary text-center" onclick={scrollToBottom}>
+		<div class="bg-primary cursor-pointer text-center" onclick={scrollToBottom}>
 			More Messages Below
 		</div>
 	{/if}
 	<div class="relative border-t">
 		<input
 			type="text"
-			class="h-full w-full bg-background p-3 text-sm outline-hidden placeholder:text-muted-foreground focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+			class="bg-background placeholder:text-muted-foreground h-full w-full p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
 			placeholder="Send message as sir_xin"
 		/>
 		<!-- svelte-ignore a11y_consider_explicit_label -->
