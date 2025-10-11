@@ -16,7 +16,8 @@
         "@tauri-apps/api": "^2.6.0",
         "@tauri-apps/plugin-opener": "^2.4.0",
         "@tauri-apps/plugin-store": "~2.2.1",
-        "@tauri-apps/plugin-window-state": "~2.2.3"
+        "@tauri-apps/plugin-window-state": "~2.2.3",
+        "tauri-svelte-synced-store": "github:synthlabs/tauri-svelte-synced-store"
     },
     "devDependencies": {
         "@eslint/compat": "^1.3.1",

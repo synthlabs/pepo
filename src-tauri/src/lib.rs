@@ -11,11 +11,14 @@ use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
 use tauri_specta::collect_commands;
+use tauri_svelte_synced_store::StateSyncer;
 use token::TokenManager;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 use twitch_api::{client::ClientDefault, HelixClient};
 use twitch_oauth2::tokens::errors::ValidationError;
+
+use crate::types::AuthState;
 
 mod eventsub;
 mod token;
@@ -24,6 +27,8 @@ mod types;
 type SharedUserToken = Mutex<types::UserToken>;
 type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
 type SharedEventSubManager = Mutex<EventSubManager>;
+
+tauri_svelte_synced_store::state_handlers!(AuthState = "auth_state");
 
 #[tauri::command]
 #[specta::specta]
@@ -149,6 +154,7 @@ fn get_followed_channels(
 #[specta::specta]
 async fn login(
     app_handle: AppHandle,
+    state_syncer: State<'_, StateSyncer>,
     client: State<'_, HelixClient<'static, reqwest::Client>>,
 ) -> Result<types::UserToken, String> {
     let client = client.inner();
@@ -170,6 +176,14 @@ async fn login(
 
     let device_code = token_manager.clone().start_device_code_flow().await;
 
+    {
+        let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
+        let mut auth_state = auth_state_ref.lock().unwrap();
+
+        auth_state.phase = types::AuthPhase::WaitingForAuth;
+        auth_state.device_code = device_code.user_code;
+    }
+
     info!("login {}", device_code.verification_uri);
     app_handle
         .opener()
@@ -179,6 +193,14 @@ async fn login(
     let twitch_token: twitch_oauth2::UserToken =
         token_manager.clone().finish_device_code_flow().await;
     let user_token: types::UserToken = types::UserToken::from_twitch_token(twitch_token.clone());
+
+    {
+        let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
+        let mut auth_state = auth_state_ref.lock().unwrap();
+
+        auth_state.phase = types::AuthPhase::Authorized;
+        auth_state.token = Some(user_token.clone());
+    }
 
     let eventsub_manager = EventSubManager::new();
     let client_ref = client.clone();
@@ -270,6 +292,8 @@ pub fn run() {
             join_chat,
             leave_chat,
             login,
+            emit_state,
+            update_state,
         ]);
 
     #[cfg(debug_assertions)] // <- Only export on non-release builds
@@ -337,6 +361,18 @@ pub fn run() {
                 );
 
             info!("made client");
+
+            let state_syncer = StateSyncer::new(app.handle().clone());
+
+            state_syncer.set(
+                "auth_state",
+                AuthState {
+                    phase: types::AuthPhase::Unauthorized,
+                    device_code: "".to_string(),
+                    token: None,
+                },
+            );
+            app.manage::<StateSyncer>(state_syncer);
 
             app.manage(client);
 

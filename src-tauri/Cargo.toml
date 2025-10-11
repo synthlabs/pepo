@@ -36,6 +36,7 @@ eyre = "0.6.12"
 color-eyre = "0.6.3"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
+tauri-svelte-synced-store = { git = "https://github.com/synthlabs/tauri-svelte-synced-store.git" }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"
