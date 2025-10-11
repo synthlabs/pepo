@@ -1,19 +1,26 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { commands } from '$lib/bindings';
+	import { commands, type AuthState } from '$lib/bindings';
 	import { cn } from '$lib/utils.js';
 
 	type State = 'WaitingForCode' | 'WaitingForLogin' | undefined;
-	let loading: State = $state(undefined);
-	let code = $state('D31DB3EFbAr');
+	let authState: AuthState = $state({
+		phase: 'unauthorized',
+		device_code: 'D31DB3EFbAr',
+		token: null
+	});
+
+	let loading: boolean = $derived(
+		authState.phase === 'waitingForDeviceCode' || authState.phase === 'waitingForAuth'
+	);
 
 	$inspect(loading);
 
 	async function login() {
 		console.log('click');
-		loading = 'WaitingForCode';
+		authState.phase = 'waitingForDeviceCode';
 		setTimeout(() => {
-			loading = 'WaitingForLogin';
+			authState.phase = 'waitingForAuth';
 		}, 5000);
 
 		let result = await commands.login();
@@ -38,22 +45,22 @@
 	>
 		<img class="flex size-28" alt="The project logo" src="/pepo.png" />
 		<span class="flex flex-col items-center justify-center">
-			{#if loading === 'WaitingForCode'}
+			{#if authState.phase === 'waitingForDeviceCode'}
 				<span class="loading text-primary w-12"></span>
-			{:else if loading === 'WaitingForLogin'}
+			{:else if authState.phase === 'waitingForAuth'}
 				<span
-					class="bg-muted-foreground text-accent flex rounded-lg px-4 py-2 text-center font-mono text-2xl font-bold tracking-wider hover:cursor-text"
-					>{code}</span
+					class="bg-muted-foreground text-accent w-3xs rounded-lg px-4 py-2 text-center font-mono text-2xl font-bold tracking-wider hover:cursor-text"
+					>{authState.device_code}</span
 				>
 			{:else}
 				<span class="pb-2"> Login </span>
 			{/if}
 		</span>
 	</button>
-	{#if loading === 'WaitingForLogin'}
+	{#if authState.phase === 'waitingForAuth'}
 		<span class="text-muted-foreground flex p-2 text-center text-xs hover:cursor-text">
 			or goto <br />
-			https://www.twitch.tv/activate?device-code={code}
+			https://www.twitch.tv/activate?device-code={authState.device_code}
 		</span>
 	{/if}
 </div>
