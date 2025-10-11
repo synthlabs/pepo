@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tauri::TitleBarStyle;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
 use tauri_specta::collect_commands;
 use token::TokenManager;
@@ -159,20 +160,25 @@ async fn login(
     if let Some(binding) = store.get("token") {
         let token: types::UserToken = serde_json::from_value(binding.clone()).unwrap();
         token_manager = match token.to_twitch_token(client.clone()).await {
-            Ok(token) => {
-                TokenManager::from_existing(token.clone(), client.clone(), app_handle.clone())
-            }
-            Err(ValidationError::NotAuthorized) => {
-                TokenManager::new(client.clone(), app_handle.clone()).await
-            }
+            Ok(token) => TokenManager::from_existing(token.clone(), client.clone()),
+            Err(ValidationError::NotAuthorized) => TokenManager::new(client.clone()),
             Err(err) => panic!("{err}"),
         };
     } else {
-        token_manager = TokenManager::new(client.clone(), app_handle.clone()).await;
+        token_manager = TokenManager::new(client.clone());
     }
 
-    let twitch_token = token_manager.clone().twitch_token();
-    let user_token = types::UserToken::from_twitch_token(twitch_token.clone());
+    let device_code = token_manager.clone().start_device_code_flow().await;
+
+    info!("login {}", device_code.verification_uri);
+    app_handle
+        .opener()
+        .open_url(device_code.verification_uri.clone(), None::<&str>)
+        .unwrap();
+
+    let twitch_token: twitch_oauth2::UserToken =
+        token_manager.clone().finish_device_code_flow().await;
+    let user_token: types::UserToken = types::UserToken::from_twitch_token(twitch_token.clone());
 
     let eventsub_manager = EventSubManager::new();
     let client_ref = client.clone();
@@ -255,6 +261,8 @@ pub fn run() {
     let handlers = tauri_specta::Builder::<tauri::Wry>::new()
         .typ::<types::UserToken>()
         .typ::<types::ChannelMessage>()
+        .typ::<types::AuthState>()
+        .typ::<types::AuthPhase>()
         // Then register them (separated by a comma)
         .commands(collect_commands![
             get_followed_streams,

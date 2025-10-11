@@ -3,6 +3,23 @@ use specta::Type;
 use twitch_api::{client::CompatError, HelixClient};
 use twitch_oauth2::TwitchToken;
 
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct AuthState {
+    pub phase: AuthPhase,
+    pub device_code: String,
+    pub token: Option<UserToken>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum AuthPhase {
+    Unauthorized,
+    WaitingForDeviceCode,
+    WaitingForAuth,
+    FailedAuth,
+    Authorized,
+}
+
 #[derive(Clone, Serialize, Deserialize, Type, Debug)]
 pub struct UserToken {
     /// The access token used to authenticate requests with
@@ -246,4 +263,3 @@ impl From<twitch_api::helix::channels::ChannelInformation> for ChannelInfo {
         }
     }
 }
-

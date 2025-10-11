@@ -52,6 +52,13 @@ export const commands = {
 
 /** user-defined types **/
 
+export type AuthPhase =
+	| 'unauthorized'
+	| 'waitingForDeviceCode'
+	| 'waitingForAuth'
+	| 'failedAuth'
+	| 'authorized';
+export type AuthState = { phase: AuthPhase; device_code: string; token: UserToken | null };
 export type Broadcaster = {
 	/**
 	 * An ID that uniquely identifies the broadcaster that this user is following.
