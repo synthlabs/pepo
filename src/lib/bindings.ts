@@ -43,6 +43,12 @@ export const commands = {
 			if (e instanceof Error) throw e;
 			else return { status: 'error', error: e as any };
 		}
+	},
+	async emitState(name: string): Promise<boolean> {
+		return await TAURI_INVOKE('emit_state', { name });
+	},
+	async updateState(state: StateUpdate): Promise<boolean> {
+		return await TAURI_INVOKE('update_state', { state });
 	}
 };
 
@@ -128,6 +134,7 @@ export type ChannelInfo = {
 	is_branded_content: boolean;
 };
 export type ChannelMessage = { ts: string; payload: string };
+export type StateUpdate = { version: bigint | null; name: string; value: string };
 export type Stream = {
 	/**
 	 * ID of the game being played on the stream.

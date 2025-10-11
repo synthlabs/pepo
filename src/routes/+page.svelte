@@ -2,26 +2,25 @@
 	import { goto } from '$app/navigation';
 	import { commands, type AuthState } from '$lib/bindings';
 	import { cn } from '$lib/utils.js';
+	import { SyncedState } from 'tauri-svelte-synced-store';
+	import { CircleCheckBig } from '@lucide/svelte';
 
-	type State = 'WaitingForCode' | 'WaitingForLogin' | undefined;
-	let authState: AuthState = $state({
+	let authState = new SyncedState<AuthState>('auth_state', {
 		phase: 'unauthorized',
-		device_code: 'D31DB3EFbAr',
+		device_code: '',
 		token: null
 	});
 
 	let loading: boolean = $derived(
-		authState.phase === 'waitingForDeviceCode' || authState.phase === 'waitingForAuth'
+		authState.obj.phase === 'waitingForDeviceCode' || authState.obj.phase === 'waitingForAuth'
 	);
 
 	$inspect(loading);
 
 	async function login() {
-		console.log('click');
-		authState.phase = 'waitingForDeviceCode';
-		setTimeout(() => {
-			authState.phase = 'waitingForAuth';
-		}, 5000);
+		console.log('login');
+		authState.obj.phase = 'waitingForDeviceCode';
+		await authState.sync();
 
 		let result = await commands.login();
 		if (result.status == 'ok') {
@@ -45,22 +44,24 @@
 	>
 		<img class="flex size-28" alt="The project logo" src="/pepo.png" />
 		<span class="flex flex-col items-center justify-center">
-			{#if authState.phase === 'waitingForDeviceCode'}
+			{#if authState.obj.phase === 'waitingForDeviceCode'}
 				<span class="loading text-primary w-12"></span>
-			{:else if authState.phase === 'waitingForAuth'}
+			{:else if authState.obj.phase === 'waitingForAuth'}
 				<span
 					class="bg-muted-foreground text-accent w-3xs rounded-lg px-4 py-2 text-center font-mono text-2xl font-bold tracking-wider hover:cursor-text"
-					>{authState.device_code}</span
+					>{authState.obj.device_code}</span
 				>
+			{:else if authState.obj.phase === 'authorized'}
+				<CircleCheckBig class="text-primary" />
 			{:else}
 				<span class="pb-2"> Login </span>
 			{/if}
 		</span>
 	</button>
-	{#if authState.phase === 'waitingForAuth'}
+	{#if authState.obj.phase === 'waitingForAuth'}
 		<span class="text-muted-foreground flex p-2 text-center text-xs hover:cursor-text">
 			or goto <br />
-			https://www.twitch.tv/activate?device-code={authState.device_code}
+			https://www.twitch.tv/activate?device-code={authState.obj.device_code}
 		</span>
 	{/if}
 </div>
