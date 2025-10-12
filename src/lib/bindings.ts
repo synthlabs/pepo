@@ -44,6 +44,17 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
+	async sendChatMessage(broadcasterId: string, message: string): Promise<Result<null, string>> {
+		try {
+			return {
+				status: 'ok',
+				data: await TAURI_INVOKE('send_chat_message', { broadcasterId, message })
+			};
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
 	async emitState(name: string): Promise<boolean> {
 		return await TAURI_INVOKE('emit_state', { name });
 	},
