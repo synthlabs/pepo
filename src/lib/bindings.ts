@@ -134,7 +134,7 @@ export type ChannelInfo = {
 	 *
 	 * This value may not be accurate, it'll only be accurate when the token belongs to the broadcaster and they are partnered.
 	 */
-	delay?: bigint;
+	delay?: number;
 	/**
 	 * The tags applied to the channel.
 	 */
@@ -144,8 +144,69 @@ export type ChannelInfo = {
 	 */
 	is_branded_content: boolean;
 };
-export type ChannelMessage = { ts: string; payload: string };
-export type StateUpdate = { version: bigint | null; name: string; value: string };
+export type ChannelMessage = {
+	ts: string;
+	payload: string;
+	/**
+	 * The user ID of the user that sent the message.
+	 */
+	chatter_user_id: string;
+	/**
+	 * The user name of the user that sent the message.
+	 */
+	chatter_user_name: string;
+	/**
+	 * A UUID that identifies the message.
+	 */
+	message_id: string;
+	text: string;
+	/**
+	 * The type of message.
+	 */
+	message_type: ChannelMessageType;
+	/**
+	 * List of chat badges.
+	 * Metadata if this message is a cheer.
+	 * The color of the user's name in the chat room.
+	 * This is a hexadecimal RGB color code in the form, `#<RGB>`.
+	 * This may be empty if it is never set.
+	 */
+	color: string;
+	/**
+	 * A stable message int that can be used by the UI
+	 */
+	index: number;
+};
+export type ChannelMessageType =
+	/**
+	 * An Unknown Message Type
+	 */
+	| 'unknown'
+	/**
+	 * A regular text message
+	 */
+	| 'text'
+	/**
+	 * A highlighted message with channel points
+	 */
+	| 'channel_points_highlighted'
+	/**
+	 * A message sent with channel points during sub-only mode
+	 */
+	| 'channel_points_sub_only'
+	/**
+	 * A first message from a user
+	 */
+	| 'user_intro'
+	/**
+	 * A gigantified emote
+	 */
+	| 'power_ups_gigantified_emote'
+	/**
+	 * A message sent with effects
+	 */
+	| 'power_ups_message_effect';
+export type StateUpdate = { version: number | null; name: string; value: string };
 export type Stream = {
 	/**
 	 * ID of the game being played on the stream.
@@ -195,7 +256,7 @@ export type Stream = {
 	/**
 	 * Number of viewers watching the stream at the time of the query.
 	 */
-	viewer_count: bigint;
+	viewer_count: number;
 };
 export type UserToken = {
 	/**
@@ -215,7 +276,7 @@ export type UserToken = {
 	 * The refresh token used to extend the life of this user token
 	 */
 	refresh_token: string | null;
-	expires_in: bigint;
+	expires_in: number;
 };
 
 /** tauri-specta globals **/

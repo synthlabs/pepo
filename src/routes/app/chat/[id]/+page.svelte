@@ -26,11 +26,12 @@
 	let forceAutoscrollDebounce: boolean = $state(true);
 	let showSeparator: boolean = $state(false);
 	let channel_name = $derived(page.params.id);
-	let msgs: string[] = $state([]);
+	let msgs: ChannelMessage[] = $state([]);
 	let chatInput = $state('');
 	let hasInput = $derived(chatInput.length > 0);
 	let errorState = $state({ active: false, msg: '' });
 	let channelInfo = $state({} as ChannelInfo);
+	let index = 0;
 
 	let un_sub: UnlistenFn;
 
@@ -51,11 +52,14 @@
 		console.log('subbing to chat messages');
 		un_sub = await listen<ChannelMessage>(`chat_message:${channel_name}`, (event) => {
 			const msg = JSON.parse(event.payload.payload);
-			msgs.push(
-				`[${event.payload.ts.substring(11, 19)}] ${msg.chatter_user_name}: ${msg.message.text}`
-			);
+			// msgs.push(
+			// 	`[${event.payload.ts.substring(11, 19)}] ${msg.chatter_user_name}: ${msg.message.text}`
+			// );
+			event.payload.index = index;
+			msgs.push(event.payload);
 			if (msgs.length > CHAT_MESSAGE_LIMIT) msgs.shift();
 			processAutoscroll();
+			index = index + 1;
 		});
 
 		scrollToBottom();
@@ -146,14 +150,20 @@
 		bind:this={chatDIV}
 		onscroll={refreshScrollAmount}
 	>
-		{#each msgs as msg, index}
+		{#each msgs as msg}
 			<div
 				class={cn(
-					'px-2 py-1 text-sm text-wrap break-words',
-					index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary'
+					'inline-block w-full px-2 py-1 text-sm text-wrap',
+					msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary'
 				)}
 			>
-				{msg}
+				<span class="text-xs whitespace-nowrap text-gray-500"
+					>{new Date(msg.ts).toLocaleTimeString('en', { timeStyle: 'short' })}</span
+				>
+				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
+					>{msg.chatter_user_name}</span
+				>:
+				{msg.text}
 			</div>
 			{#if showSeparator}
 				<Separator class="" />

@@ -335,7 +335,7 @@ pub fn run() {
         .export(
             Typescript::default()
                 .formatter(specta_typescript::formatter::prettier)
-                .bigint(specta_typescript::BigIntExportBehavior::BigInt)
+                .bigint(specta_typescript::BigIntExportBehavior::Number)
                 .header("/* eslint-disable */"),
             "../src/lib/bindings.ts",
         )
