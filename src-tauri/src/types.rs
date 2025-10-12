@@ -228,9 +228,76 @@ pub struct ChannelInfo {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelMessageType {
+    /// An Unknown Message Type
+    Unknown,
+    /// A regular text message
+    Text,
+    /// A highlighted message with channel points
+    ChannelPointsHighlighted,
+    /// A message sent with channel points during sub-only mode
+    ChannelPointsSubOnly,
+    /// A first message from a user
+    UserIntro,
+    /// A gigantified emote
+    PowerUpsGigantifiedEmote,
+    /// A message sent with effects
+    PowerUpsMessageEffect,
+}
+
+impl From<twitch_api::eventsub::channel::chat::message::MessageType> for ChannelMessageType {
+    fn from(item: twitch_api::eventsub::channel::chat::message::MessageType) -> Self {
+        match item {
+            twitch_api::eventsub::channel::chat::message::MessageType::Text => {
+                ChannelMessageType::Text
+            }
+            twitch_api::eventsub::channel::chat::message::MessageType::ChannelPointsHighlighted => {
+                ChannelMessageType::ChannelPointsHighlighted
+            }
+            twitch_api::eventsub::channel::chat::message::MessageType::ChannelPointsSubOnly => {
+                ChannelMessageType::ChannelPointsSubOnly
+            }
+            twitch_api::eventsub::channel::chat::message::MessageType::UserIntro => {
+                ChannelMessageType::UserIntro
+            }
+            twitch_api::eventsub::channel::chat::message::MessageType::PowerUpsGigantifiedEmote => {
+                ChannelMessageType::PowerUpsGigantifiedEmote
+            }
+            twitch_api::eventsub::channel::chat::message::MessageType::PowerUpsMessageEffect => {
+                ChannelMessageType::PowerUpsMessageEffect
+            }
+            _ => ChannelMessageType::Unknown,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Type)]
 pub struct ChannelMessage {
     pub ts: String,
     pub payload: String,
+    /// The user ID of the user that sent the message.
+    pub chatter_user_id: String,
+    /// The user name of the user that sent the message.
+    pub chatter_user_name: String,
+    /// A UUID that identifies the message.
+    pub message_id: String,
+    pub text: String,
+    // pub fragments: Vec<Fragment>,
+    /// The type of message.
+    pub message_type: ChannelMessageType,
+    /// List of chat badges.
+    // pub badges: Vec<Badge>,
+    /// Metadata if this message is a cheer.
+    // pub cheer: Option<Cheer>,
+    /// The color of the user's name in the chat room.
+    /// This is a hexadecimal RGB color code in the form, `#<RGB>`.
+    /// This may be empty if it is never set.
+    pub color: String,
+    // Metadata if this message is a reply.
+    // pub reply: Option<Reply>,
+    /// A stable message int that can be used by the UI
+    pub index: usize,
 }
 
 impl ChannelMessage {
@@ -242,6 +309,13 @@ impl ChannelMessage {
         ChannelMessage {
             ts: ts,
             payload: raw_msg,
+            chatter_user_id: value.chatter_user_id.to_string(),
+            chatter_user_name: value.chatter_user_name.to_string(),
+            message_id: value.message_id.to_string(),
+            text: value.message.text,
+            message_type: value.message_type.into(),
+            color: value.color.to_string(),
+            index: 0,
         }
     }
 }
