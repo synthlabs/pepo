@@ -1,7 +1,14 @@
 <script lang="ts">
+	import { slide } from 'svelte/transition';
+	import { cubicOut, quadInOut } from 'svelte/easing';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { onDestroy, onMount, tick } from 'svelte';
-	import { commands, type ChannelMessage, type UserToken } from '$lib/bindings.ts';
+	import {
+		commands,
+		type ChannelInfo,
+		type ChannelMessage,
+		type UserToken
+	} from '$lib/bindings.ts';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
@@ -20,22 +27,27 @@
 	let showSeparator: boolean = $state(false);
 	let channel_name = $derived(page.params.id);
 	let msgs: string[] = $state([]);
+	let chatInput = $state('');
+	let hasInput = $derived(chatInput.length > 0);
+	let errorState = $state({ active: false, msg: '' });
+	let channelInfo = $state({} as ChannelInfo);
 
 	let un_sub: UnlistenFn;
 
 	$inspect(banner);
 	$inspect(isScrolled);
 
-	$effect(() => {
-		console.log('joining channel:', channel_name);
-		commands.joinChat(channel_name).then((result) => {
-			if (result.status == 'ok') {
-				console.log(result.data);
-			}
-		});
-	});
-
 	onMount(async () => {
+		console.log('joining channel:', channel_name);
+		let result = await commands.joinChat(channel_name);
+		console.log(result);
+		if (result.status !== 'ok') {
+			console.log('RESULT NOT OK');
+			return;
+		}
+
+		channelInfo = result.data;
+
 		console.log('subbing to chat messages');
 		un_sub = await listen<ChannelMessage>(`chat_message:${channel_name}`, (event) => {
 			const msg = JSON.parse(event.payload.payload);
@@ -54,7 +66,7 @@
 		if (un_sub) {
 			un_sub();
 		}
-		commands.leaveChat(channel_name).then(console.log);
+		await commands.leaveChat(channel_name).then(console.log);
 	});
 
 	const refreshScrollAmount = () => {
@@ -97,6 +109,35 @@
 		forceAutoscrollDebounceFn();
 		processAutoscroll();
 	};
+
+	const submitForm = (event: SubmitEvent) => {
+		event.preventDefault();
+		let target = event.target as HTMLFormElement;
+
+		if (hasInput) {
+			commands
+				.sendChatMessage(channelInfo.broadcaster_id, chatInput)
+				.then(() => console.log('message sent'))
+				.catch(console.log)
+				.finally(() => {
+					chatInput = '';
+					if (event.target) {
+						target.reset();
+					}
+				});
+		} else {
+			showMessageError('Message cannot be empty');
+		}
+	};
+
+	const showMessageError = (msg: string, timeout = 5000) => {
+		errorState.msg = msg;
+		errorState.active = true;
+		setTimeout(() => {
+			errorState.active = false;
+			errorState.msg = '';
+		}, timeout);
+	};
 </script>
 
 <div class="flex h-full w-full flex-col flex-nowrap">
@@ -126,28 +167,39 @@
 			More Messages Below
 		</div>
 	{/if}
+	{#if errorState.active}
+		<div
+			transition:slide={{ easing: quadInOut, duration: 250 }}
+			class="cursor-none bg-red-950 text-center"
+		>
+			{errorState.msg}
+		</div>
+	{/if}
 	<div class="relative border-t">
-		<input
-			type="text"
-			class="bg-background placeholder:text-muted-foreground h-full w-full p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
-			placeholder="Send message as sir_xin"
-		/>
-		<!-- svelte-ignore a11y_consider_explicit_label -->
-		<button type="submit" class="absolute inset-y-0 right-0 flex cursor-pointer items-center p-3">
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke-width="1.5"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				class="h-5 w-5 fill-none stroke-slate-100"
-			>
-				<circle cx="12" cy="12" r="10" />
-				<path d="M8 14s1.5 2 4 2 4-2 4-2" />
-				<line x1="9" x2="9.01" y1="9" y2="9" />
-				<line x1="15" x2="15.01" y1="9" y2="9" />
-			</svg>
-		</button>
+		<form onsubmit={submitForm}>
+			<input
+				bind:value={chatInput}
+				type="text"
+				class="bg-background placeholder:text-muted-foreground h-full w-full p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+				placeholder="Send message as sir_xin"
+			/>
+			<!-- svelte-ignore a11y_consider_explicit_label -->
+			<button type="submit" class="absolute inset-y-0 right-0 flex cursor-pointer items-center p-3">
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke-width="1.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					class="h-5 w-5 fill-none stroke-slate-100"
+				>
+					<circle cx="12" cy="12" r="10" />
+					<path d="M8 14s1.5 2 4 2 4-2 4-2" />
+					<line x1="9" x2="9.01" y1="9" y2="9" />
+					<line x1="15" x2="15.01" y1="9" y2="9" />
+				</svg>
+			</button>
+		</form>
 	</div>
 </div>

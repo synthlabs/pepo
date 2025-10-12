@@ -4,6 +4,7 @@ use serde_json::json;
 #[cfg(debug_assertions)]
 use specta_typescript::Typescript;
 use std::sync::Arc;
+use std::time::Duration;
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -29,6 +30,35 @@ type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
 type SharedEventSubManager = Mutex<EventSubManager>;
 
 tauri_svelte_synced_store::state_handlers!(AuthState = "auth_state");
+
+#[tauri::command]
+#[specta::specta]
+fn send_chat_message(
+    broadcaster_id: String,
+    message: String,
+    _app_handle: AppHandle,
+    token: State<'_, SharedTwitchToken>,
+    client: State<'_, HelixClient<'static, reqwest::Client>>,
+) -> Result<(), String> {
+    debug!(
+        "sending chat message: broadcaster_id={}, message={}",
+        broadcaster_id, message
+    );
+
+    let client = client.inner();
+
+    let token_guard = tauri::async_runtime::block_on(token.lock()).clone();
+    let user_id = token_guard.user_id.clone();
+    match tauri::async_runtime::block_on(client.send_chat_message(
+        broadcaster_id,
+        user_id,
+        message.as_str(),
+        &token_guard,
+    )) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("request failed: {:?}", e)),
+    }
+}
 
 #[tauri::command]
 #[specta::specta]
@@ -184,6 +214,9 @@ async fn login(
         auth_state.device_code = device_code.user_code;
     }
 
+    debug!("pausing to show verification code");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
     info!("login {}", device_code.verification_uri);
     app_handle
         .opener()
@@ -292,6 +325,7 @@ pub fn run() {
             join_chat,
             leave_chat,
             login,
+            send_chat_message,
             emit_state,
             update_state,
         ]);
