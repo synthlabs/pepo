@@ -9,7 +9,7 @@
 This is a playground of a new chatting client. It currently only supports twitch, but the goal is to expand support for other sites such as youtube, etc. It is very very early in development.
 
 <p align="center">
-  <img src="screenshots/Pepo_gKoTqlm5h1.gif" height="600">
+  <img src="screenshots/Pepo_6dmew4rWfN.gif" height="500">
 </p>
 
 </span>
@@ -18,7 +18,7 @@ This is a playground of a new chatting client. It currently only supports twitch
 
 It's not really in a usable state yet. After the rewrite I need to rebuild support for:
 
-- [ ] Sending messages
+- [x] Sending messages
 - [ ] Basic message parsing
 - [ ] Third-party Emote parsing
 - [ ] Basic message history
