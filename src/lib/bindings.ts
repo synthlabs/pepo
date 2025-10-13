@@ -76,6 +76,22 @@ export type AuthPhase =
 	| 'failedAuth'
 	| 'authorized';
 export type AuthState = { phase: AuthPhase; device_code: string; token: UserToken | null };
+export type Badge = {
+	/**
+	 * An ID that identifies this set of chat badges. For example, Bits or Subscriber.
+	 */
+	set_id: string;
+	/**
+	 * An ID that identifies this version of the badge. The ID can be any value.
+	 * For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
+	 */
+	id: string;
+	/**
+	 * Contains metadata related to the chat badges in the badges tag.
+	 * Currently, this tag contains metadata only for subscriber badges, to indicate the number of months the user has been a subscriber.
+	 */
+	info: string;
+};
 export type Broadcaster = {
 	/**
 	 * An ID that uniquely identifies the broadcaster that this user is following.
@@ -166,6 +182,9 @@ export type ChannelMessage = {
 	message_type: ChannelMessageType;
 	/**
 	 * List of chat badges.
+	 */
+	badges: Badge[];
+	/**
 	 * Metadata if this message is a cheer.
 	 * The color of the user's name in the chat room.
 	 * This is a hexadecimal RGB color code in the form, `#<RGB>`.

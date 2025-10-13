@@ -12,6 +12,7 @@
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
+	import Badges from '$lib/components/chat/+badges.svelte';
 
 	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
 	const CHAT_MESSAGE_LIMIT = 10000;
@@ -160,6 +161,7 @@
 				<span class="text-xs whitespace-nowrap text-gray-500"
 					>{new Date(msg.ts).toLocaleTimeString('en', { timeStyle: 'short' })}</span
 				>
+				<Badges badges={msg.badges} />
 				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
 					>{msg.chatter_user_name}</span
 				>:
