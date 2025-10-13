@@ -139,20 +139,6 @@ impl From<twitch_api::helix::streams::Stream> for Stream {
     }
 }
 
-// {
-//     "id": "141981764",
-//     "login": "twitchdev",
-//     "display_name": "TwitchDev",
-//     "type": "",
-//     "broadcaster_type": "partner",
-//     "description": "Supporting third-party developers building Twitch integrations from chatbots to game integrations.",
-//     "profile_image_url": "https://static-cdn.jtvnw.net/jtv_user_pictures/8a6381c7-d0c0-4576-b179-38bd5ce1d6af-profile_image-300x300.png",
-//     "offline_image_url": "https://static-cdn.jtvnw.net/jtv_user_pictures/3f13ab61-ec78-4fe6-8481-8682cb3b0ac2-channel_offline_image-1920x1080.png",
-//     "view_count": 5980557,
-//     "email": "not-real@email.com",
-//     "created_at": "2016-12-14T20:32:28Z"
-//   }
-
 #[derive(Clone, Serialize, Deserialize, Type, Debug)]
 pub struct Broadcaster {
     /// An ID that uniquely identifies the broadcaster that this user is following.
@@ -228,6 +214,18 @@ pub struct ChannelInfo {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Type)]
+pub struct Badge {
+    /// An ID that identifies this set of chat badges. For example, Bits or Subscriber.
+    pub set_id: String,
+    /// An ID that identifies this version of the badge. The ID can be any value.
+    /// For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
+    pub id: String,
+    /// Contains metadata related to the chat badges in the badges tag.
+    /// Currently, this tag contains metadata only for subscriber badges, to indicate the number of months the user has been a subscriber.
+    pub info: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ChannelMessageType {
     /// An Unknown Message Type
@@ -287,7 +285,7 @@ pub struct ChannelMessage {
     /// The type of message.
     pub message_type: ChannelMessageType,
     /// List of chat badges.
-    // pub badges: Vec<Badge>,
+    pub badges: Vec<Badge>,
     /// Metadata if this message is a cheer.
     // pub cheer: Option<Cheer>,
     /// The color of the user's name in the chat room.
@@ -316,6 +314,15 @@ impl ChannelMessage {
             message_type: value.message_type.into(),
             color: value.color.to_string(),
             index: 0,
+            badges: value
+                .badges
+                .iter()
+                .map(|v| Badge {
+                    set_id: v.set_id.to_string(),
+                    id: v.id.to_string(),
+                    info: v.info.clone(),
+                })
+                .collect(),
         }
     }
 }
