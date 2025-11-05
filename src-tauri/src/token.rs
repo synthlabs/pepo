@@ -90,6 +90,7 @@ impl TokenManager {
         return token;
     }
 
+    // TODO: fix the this weird async/std bs
     pub fn manage(self) {
         std::thread::spawn(move || {
             let mut last_validation_tick = Instant::now();

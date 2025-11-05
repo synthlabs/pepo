@@ -19,8 +19,10 @@ use tracing::{debug, error, info};
 use twitch_api::{client::ClientDefault, HelixClient};
 use twitch_oauth2::tokens::errors::ValidationError;
 
+use crate::badgemanager::BadgeManager;
 use crate::types::AuthState;
 
+mod badgemanager;
 mod eventsub;
 mod token;
 mod types;
@@ -28,6 +30,7 @@ mod types;
 type SharedUserToken = Mutex<types::UserToken>;
 type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
 type SharedEventSubManager = Mutex<EventSubManager>;
+type SharedBadgeManager<'a> = Mutex<BadgeManager>;
 
 tauri_svelte_synced_store::state_handlers!(AuthState = "auth_state");
 
@@ -238,13 +241,17 @@ async fn login(
     let eventsub_manager = EventSubManager::new();
     let client_ref = client.clone();
     let twitch_token_ref = twitch_token.clone();
+    let badge_manager = BadgeManager::new(client_ref.clone(), twitch_token_ref.clone())
+        .await
+        .expect("unable to create badge manager");
 
     let events = eventsub_manager
         .clone()
-        .start(client_ref, twitch_token_ref)
+        .start(client_ref.clone(), twitch_token_ref.clone())
         .expect("unable to start eventsubmanager");
 
     app_handle.manage::<SharedEventSubManager>(Mutex::new(eventsub_manager.clone()));
+    app_handle.manage::<SharedBadgeManager>(Mutex::new(badge_manager.clone()));
 
     let app_ref = app_handle.clone();
     std::thread::spawn(move || {
