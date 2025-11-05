@@ -20,7 +20,7 @@ pub enum AuthPhase {
     Authorized,
 }
 
-#[derive(Clone, Serialize, Deserialize, Type, Debug)]
+#[derive(Clone, Serialize, Deserialize, Type)]
 pub struct UserToken {
     /// The access token used to authenticate requests with
     pub access_token: String,
@@ -32,6 +32,29 @@ pub struct UserToken {
     /// The refresh token used to extend the life of this user token
     pub refresh_token: Option<String>,
     pub expires_in: u64,
+}
+
+impl core::fmt::Debug for UserToken {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            UserToken {
+                access_token: _,
+                client_id,
+                login,
+                user_id,
+                refresh_token: _,
+                expires_in,
+            } => f
+                .debug_struct("UserToken")
+                .field("access_token", &"********")
+                .field("client_id", &client_id)
+                .field("login", &login)
+                .field("user_id", &user_id)
+                .field("refresh_token", &"********")
+                .field("expires_in", &expires_in)
+                .finish(),
+        }
+    }
 }
 
 impl UserToken {
