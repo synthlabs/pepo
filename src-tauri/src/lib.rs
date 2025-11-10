@@ -1,5 +1,6 @@
 use eventsub::EventSubManager;
 use futures::TryStreamExt;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 #[cfg(debug_assertions)]
 use specta_typescript::Typescript;
@@ -27,12 +28,21 @@ mod eventsub;
 mod token;
 mod types;
 
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type, Default)]
+struct InternalState {
+    version: String,
+    name: String,
+}
+
 type SharedUserToken = Mutex<types::UserToken>;
 type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
 type SharedEventSubManager = Mutex<EventSubManager>;
 type SharedBadgeManager = Mutex<BadgeManager>;
 
-tauri_svelte_synced_store::state_handlers!(AuthState = "auth_state");
+tauri_svelte_synced_store::state_handlers!(
+    AuthState = "auth_state",
+    InternalState = "internal_state"
+);
 
 #[tauri::command]
 #[specta::specta]
@@ -373,6 +383,10 @@ pub fn run() {
             // This is also required if you want to use events
             handlers.mount_events(app);
 
+            let mut internal_state = InternalState::default();
+            internal_state.version = app.package_info().version.to_string();
+            internal_state.name = app.package_info().name.to_string();
+
             let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default());
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -382,7 +396,13 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             let win_builder = win_builder.title_bar_style(TitleBarStyle::Transparent);
 
-            let _window = win_builder.build().unwrap();
+            let window = win_builder.build().unwrap();
+
+            let _ = window.set_title(&format!(
+                "{} {}",
+                internal_state.name.clone(),
+                internal_state.version.clone()
+            ));
 
             // set background color only when building for macOS
             #[cfg(target_os = "macos")]
@@ -390,7 +410,7 @@ pub fn run() {
                 use objc2_app_kit::{NSColor, NSWindow};
 
                 unsafe {
-                    let ns_window = &*(_window.ns_window().unwrap() as *mut NSWindow);
+                    let ns_window = &*(window.ns_window().unwrap() as *mut NSWindow);
 
                     //rgb(24, 31, 42)
                     let bg_color = NSColor::colorWithRed_green_blue_alpha(
@@ -415,14 +435,8 @@ pub fn run() {
 
             let state_syncer = StateSyncer::new(app.handle().clone());
 
-            state_syncer.set(
-                "auth_state",
-                AuthState {
-                    phase: types::AuthPhase::Unauthorized,
-                    device_code: "".to_string(),
-                    token: None,
-                },
-            );
+            state_syncer.set("auth_state", AuthState::default());
+            state_syncer.set("internal_state", internal_state);
             app.manage::<StateSyncer>(state_syncer);
 
             app.manage(client);
