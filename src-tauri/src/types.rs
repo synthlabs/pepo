@@ -7,6 +7,14 @@ use twitch_oauth2::TwitchToken;
 
 use crate::badgemanager::{Badge, BadgeManager};
 
+static INDEX_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+macro_rules! next_index {
+    () => {
+        INDEX_COUNTER.fetch_add(1, Ordering::Relaxed)
+    };
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct AuthState {
     pub phase: AuthPhase,
@@ -353,7 +361,7 @@ impl ChannelMessage {
             text: value.message.text,
             message_type: value.message_type.into(),
             color: value.color.to_string(),
-            index: 0,
+            index: next_index!(),
             badges: value
                 .badges
                 .iter()
