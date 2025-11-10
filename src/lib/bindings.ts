@@ -87,10 +87,45 @@ export type Badge = {
 	 */
 	id: string;
 	/**
+	 * URL to png of size 28x28
+	 */
+	image_url_1x: string;
+	/**
+	 * URL to png of size 56x56
+	 */
+	image_url_2x: string;
+	/**
+	 * URL to png of size 112x112
+	 */
+	image_url_4x: string;
+	/**
+	 * Title of the badge
+	 */
+	title: string;
+	/**
+	 * Descrition of the badge
+	 */
+	description: string;
+};
+export type BadgeRef = {
+	/**
+	 * An ID that identifies this set of chat badges. For example, Bits or Subscriber.
+	 */
+	set_id: string;
+	/**
+	 * An ID that identifies this version of the badge. The ID can be any value.
+	 * For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
+	 */
+	id: string;
+	/**
 	 * Contains metadata related to the chat badges in the badges tag.
 	 * Currently, this tag contains metadata only for subscriber badges, to indicate the number of months the user has been a subscriber.
 	 */
 	info: string;
+	/**
+	 * The info for displaying the badge
+	 */
+	badge: Badge;
 };
 export type Broadcaster = {
 	/**
@@ -164,6 +199,18 @@ export type ChannelMessage = {
 	ts: string;
 	payload: string;
 	/**
+	 * The broadcaster user ID.
+	 */
+	broadcaster_user_id: string;
+	/**
+	 * The broadcaster display name.
+	 */
+	broadcaster_user_name: string;
+	/**
+	 * The broadcaster login.
+	 */
+	broadcaster_user_login: string;
+	/**
 	 * The user ID of the user that sent the message.
 	 */
 	chatter_user_id: string;
@@ -183,7 +230,7 @@ export type ChannelMessage = {
 	/**
 	 * List of chat badges.
 	 */
-	badges: Badge[];
+	badges: BadgeRef[];
 	/**
 	 * Metadata if this message is a cheer.
 	 * The color of the user's name in the chat room.

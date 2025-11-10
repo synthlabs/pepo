@@ -15,7 +15,7 @@ use tauri_specta::collect_commands;
 use tauri_svelte_synced_store::StateSyncer;
 use token::TokenManager;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 use twitch_api::{client::ClientDefault, HelixClient};
 use twitch_oauth2::tokens::errors::ValidationError;
 
@@ -30,7 +30,7 @@ mod types;
 type SharedUserToken = Mutex<types::UserToken>;
 type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
 type SharedEventSubManager = Mutex<EventSubManager>;
-type SharedBadgeManager<'a> = Mutex<BadgeManager>;
+type SharedBadgeManager = Mutex<BadgeManager>;
 
 tauri_svelte_synced_store::state_handlers!(AuthState = "auth_state");
 
@@ -69,6 +69,7 @@ async fn join_chat(
     channel_name: String,
     _app_handle: AppHandle,
     eventsub_manager_ref: State<'_, SharedEventSubManager>,
+    badge_manager_ref: State<'_, SharedBadgeManager>,
     token_ref: State<'_, SharedTwitchToken>,
     client_ref: State<'_, HelixClient<'static, reqwest::Client>>,
 ) -> Result<types::ChannelInfo, String> {
@@ -77,6 +78,7 @@ async fn join_chat(
     let token = token_ref.lock().await;
     let client = client_ref.inner();
     let eventsub_manager = eventsub_manager_ref.lock().await.clone();
+    let badge_manager = badge_manager_ref.lock().await.clone();
 
     let channel = client
         .get_channel_from_login(&channel_name, &token.clone())
@@ -85,6 +87,10 @@ async fn join_chat(
         .expect("missing channel");
 
     debug!("join: got channel info - {:?}", channel.clone());
+
+    badge_manager
+        .load_channel(channel.broadcaster_id.to_string(), client.clone())
+        .await;
 
     match eventsub_manager
         .join_chat(
@@ -254,6 +260,7 @@ async fn login(
     app_handle.manage::<SharedBadgeManager>(Mutex::new(badge_manager.clone()));
 
     let app_ref = app_handle.clone();
+    let badge_manager_ref = badge_manager.clone();
     std::thread::spawn(move || {
         use twitch_api::eventsub::{Message as M, Payload as P};
 
@@ -263,10 +270,13 @@ async fn login(
                     message: M::Notification(chat_message),
                     ..
                 }) => {
-                    let channel_msg =
-                        types::ChannelMessage::new(chat_message.clone(), msg.ts.to_string());
+                    let channel_msg = types::ChannelMessage::new(
+                        chat_message.clone(),
+                        msg.ts.to_string(),
+                        badge_manager_ref.clone(),
+                    );
                     let key = format!("chat_message:{}", chat_message.broadcaster_user_login);
-                    debug!("chat message: id={} msg={:?}", key, channel_msg);
+                    trace!("chat message: id={} msg={:?}", key, channel_msg);
                     app_ref
                         .emit(&key, channel_msg)
                         .expect("unable to emit state")

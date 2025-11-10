@@ -1,9 +1,9 @@
 <script lang="ts">
-	import type { Badge as BadgeType } from '$lib/bindings';
+	import type { BadgeRef } from '$lib/bindings';
 	import Badge from '$lib/components/chat/+badge.svelte';
 
 	interface Props {
-		badges: BadgeType[];
+		badges: BadgeRef[];
 	}
 
 	let { badges }: Props = $props();
@@ -11,6 +11,6 @@
 
 <span class="inline-flex items-center gap-1 align-middle whitespace-nowrap">
 	{#each badges as badge}
-		<Badge {badge} />
+		<Badge badge_ref={badge} />
 	{/each}
 </span>
