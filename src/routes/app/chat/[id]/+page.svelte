@@ -32,7 +32,6 @@
 	let hasInput = $derived(chatInput.length > 0);
 	let errorState = $state({ active: false, msg: '' });
 	let channelInfo = $state({} as ChannelInfo);
-	let index = 0;
 
 	let un_sub: UnlistenFn;
 
@@ -56,11 +55,9 @@
 			// msgs.push(
 			// 	`[${event.payload.ts.substring(11, 19)}] ${msg.chatter_user_name}: ${msg.message.text}`
 			// );
-			event.payload.index = index;
 			msgs.push(event.payload);
 			if (msgs.length > CHAT_MESSAGE_LIMIT) msgs.shift();
 			processAutoscroll();
-			index = index + 1;
 		});
 
 		scrollToBottom();
