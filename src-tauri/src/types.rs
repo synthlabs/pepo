@@ -15,7 +15,7 @@ macro_rules! next_index {
     };
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Default)]
 pub struct AuthState {
     pub phase: AuthPhase,
     pub device_code: String,
@@ -30,6 +30,12 @@ pub enum AuthPhase {
     WaitingForAuth,
     FailedAuth,
     Authorized,
+}
+
+impl Default for AuthPhase {
+    fn default() -> Self {
+        AuthPhase::Unauthorized
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Type)]
