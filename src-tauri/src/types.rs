@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::sync::atomic::{AtomicU64, Ordering};
+use tracing::debug;
 use twitch_api::{client::CompatError, HelixClient};
 use twitch_oauth2::TwitchToken;
+
+use crate::badgemanager::{Badge, BadgeManager};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct AuthState {
@@ -237,7 +241,7 @@ pub struct ChannelInfo {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Type)]
-pub struct Badge {
+pub struct BadgeRef {
     /// An ID that identifies this set of chat badges. For example, Bits or Subscriber.
     pub set_id: String,
     /// An ID that identifies this version of the badge. The ID can be any value.
@@ -246,6 +250,8 @@ pub struct Badge {
     /// Contains metadata related to the chat badges in the badges tag.
     /// Currently, this tag contains metadata only for subscriber badges, to indicate the number of months the user has been a subscriber.
     pub info: String,
+    /// The info for displaying the badge
+    pub badge: Badge,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Type)]
@@ -297,6 +303,12 @@ impl From<twitch_api::eventsub::channel::chat::message::MessageType> for Channel
 pub struct ChannelMessage {
     pub ts: String,
     pub payload: String,
+    /// The broadcaster user ID.
+    pub broadcaster_user_id: String,
+    /// The broadcaster display name.
+    pub broadcaster_user_name: String,
+    /// The broadcaster login.
+    pub broadcaster_user_login: String,
     /// The user ID of the user that sent the message.
     pub chatter_user_id: String,
     /// The user name of the user that sent the message.
@@ -308,7 +320,7 @@ pub struct ChannelMessage {
     /// The type of message.
     pub message_type: ChannelMessageType,
     /// List of chat badges.
-    pub badges: Vec<Badge>,
+    pub badges: Vec<BadgeRef>,
     /// Metadata if this message is a cheer.
     // pub cheer: Option<Cheer>,
     /// The color of the user's name in the chat room.
@@ -318,18 +330,23 @@ pub struct ChannelMessage {
     // Metadata if this message is a reply.
     // pub reply: Option<Reply>,
     /// A stable message int that can be used by the UI
-    pub index: usize,
+    pub index: u64,
 }
 
 impl ChannelMessage {
     pub fn new(
         value: twitch_api::eventsub::channel::ChannelChatMessageV1Payload,
         ts: String,
+        bm: BadgeManager,
     ) -> Self {
         let raw_msg = serde_json::to_string(&value).unwrap();
+        let bm_ref = bm.clone();
         ChannelMessage {
             ts: ts,
-            payload: raw_msg,
+            payload: raw_msg.clone(),
+            broadcaster_user_id: value.broadcaster_user_id.to_string(),
+            broadcaster_user_name: value.broadcaster_user_name.to_string(),
+            broadcaster_user_login: value.broadcaster_user_login.to_string(),
             chatter_user_id: value.chatter_user_id.to_string(),
             chatter_user_name: value.chatter_user_name.to_string(),
             message_id: value.message_id.to_string(),
@@ -340,10 +357,29 @@ impl ChannelMessage {
             badges: value
                 .badges
                 .iter()
-                .map(|v| Badge {
-                    set_id: v.set_id.to_string(),
-                    id: v.id.to_string(),
-                    info: v.info.clone(),
+                .map(|v| {
+                    let bm_ref = bm_ref.clone();
+                    let b = match tauri::async_runtime::block_on(bm_ref
+                        .get(v.set_id.to_string(), value.broadcaster_user_id.to_string()))
+                    {
+                        Some(b_set) => b_set.version(v.id.to_string()),
+                        None => None,
+                    };
+
+                    let b = match b {
+                        Some(b) => b,
+                        None => {
+                            debug!("failed to find badge: set_id={}, version={}, broadcaster_id={}, raw_msg={}", v.set_id.to_string(), v.id.to_string(), value.broadcaster_user_id.to_string(), raw_msg);
+                            Default::default()
+                        },
+                    };
+
+                    BadgeRef {
+                        set_id: v.set_id.to_string(),
+                        id: v.id.to_string(),
+                        info: v.info.clone(),
+                        badge: b.clone(),
+                    }
                 })
                 .collect(),
         }
