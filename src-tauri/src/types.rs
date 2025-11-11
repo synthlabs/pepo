@@ -5,15 +5,11 @@ use tracing::debug;
 use twitch_api::{client::CompatError, HelixClient};
 use twitch_oauth2::TwitchToken;
 
-use crate::badgemanager::{Badge, BadgeManager};
-
-static INDEX_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-macro_rules! next_index {
-    () => {
-        INDEX_COUNTER.fetch_add(1, Ordering::Relaxed)
-    };
-}
+use crate::{
+    badgemanager::{Badge, BadgeManager},
+    emotemanager::EmoteManager,
+    message,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default)]
 pub struct AuthState {
@@ -254,6 +250,24 @@ pub struct ChannelInfo {
     pub is_branded_content: bool,
 }
 
+impl From<twitch_api::helix::channels::ChannelInformation> for ChannelInfo {
+    fn from(value: twitch_api::helix::channels::ChannelInformation) -> Self {
+        ChannelInfo {
+            broadcaster_id: value.broadcaster_id.into(),
+            broadcaster_login: value.broadcaster_login.into(),
+            broadcaster_name: value.broadcaster_name.into(),
+            game_id: value.game_id.into(),
+            game_name: value.game_name.into(),
+            broadcaster_language: value.broadcaster_language.clone(),
+            title: value.title.clone(),
+            description: value.description.clone(),
+            delay: value.delay,
+            tags: value.tags.clone(),
+            is_branded_content: value.is_branded_content,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, Type)]
 pub struct BadgeRef {
     /// An ID that identifies this set of chat badges. For example, Bits or Subscriber.
@@ -268,7 +282,15 @@ pub struct BadgeRef {
     pub badge: Badge,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+static INDEX_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+macro_rules! next_index {
+    () => {
+        INDEX_COUNTER.fetch_add(1, Ordering::Relaxed)
+    };
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ChannelMessageType {
     /// An Unknown Message Type
@@ -313,7 +335,7 @@ impl From<twitch_api::eventsub::channel::chat::message::MessageType> for Channel
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 pub struct ChannelMessage {
     pub ts: String,
     pub payload: String,
@@ -330,7 +352,8 @@ pub struct ChannelMessage {
     /// A UUID that identifies the message.
     pub message_id: String,
     pub text: String,
-    // pub fragments: Vec<Fragment>,
+    /// The parsed fragments of the text field for rendering
+    pub fragments: Vec<String>,
     /// The type of message.
     pub message_type: ChannelMessageType,
     /// List of chat badges.
@@ -352,9 +375,16 @@ impl ChannelMessage {
         value: twitch_api::eventsub::channel::ChannelChatMessageV1Payload,
         ts: String,
         bm: BadgeManager,
+        em: EmoteManager,
     ) -> Self {
         let raw_msg = serde_json::to_string(&value).unwrap();
         let bm_ref = bm.clone();
+        let emote_cache = em
+            .get_emote_cache(
+                value.broadcaster_user_login.to_string(),
+                "TwitchProvider".to_owned(),
+            )
+            .expect("emote cache to exist");
         ChannelMessage {
             ts: ts,
             payload: raw_msg.clone(),
@@ -364,7 +394,7 @@ impl ChannelMessage {
             chatter_user_id: value.chatter_user_id.to_string(),
             chatter_user_name: value.chatter_user_name.to_string(),
             message_id: value.message_id.to_string(),
-            text: value.message.text,
+            text: value.message.text.clone(),
             message_type: value.message_type.into(),
             color: value.color.to_string(),
             index: next_index!(),
@@ -396,24 +426,7 @@ impl ChannelMessage {
                     }
                 })
                 .collect(),
-        }
-    }
-}
-
-impl From<twitch_api::helix::channels::ChannelInformation> for ChannelInfo {
-    fn from(value: twitch_api::helix::channels::ChannelInformation) -> Self {
-        ChannelInfo {
-            broadcaster_id: value.broadcaster_id.into(),
-            broadcaster_login: value.broadcaster_login.into(),
-            broadcaster_name: value.broadcaster_name.into(),
-            game_id: value.game_id.into(),
-            game_name: value.game_name.into(),
-            broadcaster_language: value.broadcaster_language.clone(),
-            title: value.title.clone(),
-            description: value.description.clone(),
-            delay: value.delay,
-            tags: value.tags.clone(),
-            is_branded_content: value.is_branded_content,
+            fragments: message::Parser::parse(value.message.text.clone(), &emote_cache),
         }
     }
 }

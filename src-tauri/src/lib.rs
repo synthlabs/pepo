@@ -21,10 +21,14 @@ use twitch_api::{client::ClientDefault, HelixClient};
 use twitch_oauth2::tokens::errors::ValidationError;
 
 use crate::badgemanager::BadgeManager;
+use crate::emotemanager::EmoteManager;
 use crate::types::AuthState;
 
 mod badgemanager;
+mod emote;
+mod emotemanager;
 mod eventsub;
+mod message;
 mod token;
 mod types;
 
@@ -38,6 +42,7 @@ type SharedUserToken = Mutex<types::UserToken>;
 type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
 type SharedEventSubManager = Mutex<EventSubManager>;
 type SharedBadgeManager = Mutex<BadgeManager>;
+type SharedEmoteManager = Mutex<EmoteManager>;
 
 tauri_svelte_synced_store::state_handlers!(
     AuthState = "auth_state",
@@ -80,6 +85,7 @@ async fn join_chat(
     _app_handle: AppHandle,
     eventsub_manager_ref: State<'_, SharedEventSubManager>,
     badge_manager_ref: State<'_, SharedBadgeManager>,
+    emote_manager_ref: State<'_, SharedEmoteManager>,
     token_ref: State<'_, SharedTwitchToken>,
     client_ref: State<'_, HelixClient<'static, reqwest::Client>>,
 ) -> Result<types::ChannelInfo, String> {
@@ -89,6 +95,7 @@ async fn join_chat(
     let client = client_ref.inner();
     let eventsub_manager = eventsub_manager_ref.lock().await.clone();
     let badge_manager = badge_manager_ref.lock().await.clone();
+    let emote_manager = emote_manager_ref.lock().await.clone();
 
     let channel = client
         .get_channel_from_login(&channel_name, &token.clone())
@@ -99,6 +106,10 @@ async fn join_chat(
     debug!("join: got channel info - {:?}", channel.clone());
 
     badge_manager
+        .load_channel(channel.broadcaster_id.to_string(), client.clone())
+        .await;
+
+    emote_manager
         .load_channel(channel.broadcaster_id.to_string(), client.clone())
         .await;
 
@@ -260,6 +271,8 @@ async fn login(
     let badge_manager = BadgeManager::new(client_ref.clone(), twitch_token_ref.clone())
         .await
         .expect("unable to create badge manager");
+    let emote_manager = EmoteManager::new(client_ref.clone(), twitch_token_ref.clone())
+        .expect("unable to create emote manager");
 
     let events = eventsub_manager
         .clone()
@@ -268,9 +281,11 @@ async fn login(
 
     app_handle.manage::<SharedEventSubManager>(Mutex::new(eventsub_manager.clone()));
     app_handle.manage::<SharedBadgeManager>(Mutex::new(badge_manager.clone()));
+    app_handle.manage::<SharedEmoteManager>(Mutex::new(emote_manager.clone()));
 
     let app_ref = app_handle.clone();
     let badge_manager_ref = badge_manager.clone();
+    let emote_manager_ref = emote_manager.clone();
     std::thread::spawn(move || {
         use twitch_api::eventsub::{Message as M, Payload as P};
 
@@ -284,6 +299,7 @@ async fn login(
                         chat_message.clone(),
                         msg.ts.to_string(),
                         badge_manager_ref.clone(),
+                        emote_manager_ref.clone(),
                     );
                     let key = format!("chat_message:{}", chat_message.broadcaster_user_login);
                     trace!("chat message: id={} msg={:?}", key, channel_msg);
