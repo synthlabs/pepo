@@ -2,10 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use tracing::{debug, error, trace};
-use twitch_api::{
-    helix::chat::{get_channel_chat_badges, get_global_chat_badges},
-    HelixClient,
-};
+use twitch_api::helix::chat::{get_channel_chat_badges, get_global_chat_badges};
 
 type SharedMap<V> = Arc<Mutex<HashMap<String, V>>>;
 type Scope<T> = HashMap<String, T>;
@@ -29,25 +26,6 @@ impl BadgeSet {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Default)]
-pub struct Badge {
-    /// An ID that identifies this set of chat badges. For example, Bits or Subscriber.
-    pub set_id: String,
-    /// An ID that identifies this version of the badge. The ID can be any value.
-    /// For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
-    pub id: String,
-    /// URL to png of size 28x28
-    pub image_url_1x: String,
-    /// URL to png of size 56x56
-    pub image_url_2x: String,
-    /// URL to png of size 112x112
-    pub image_url_4x: String,
-    /// Title of the badge
-    pub title: String,
-    /// Descrition of the badge
-    pub description: String,
-}
-
 impl From<twitch_api::helix::chat::BadgeSet> for BadgeSet {
     fn from(value: twitch_api::helix::chat::BadgeSet) -> Self {
         BadgeSet {
@@ -69,6 +47,25 @@ impl From<twitch_api::helix::chat::BadgeSet> for BadgeSet {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Default)]
+pub struct Badge {
+    /// An ID that identifies this set of chat badges. For example, Bits or Subscriber.
+    pub set_id: String,
+    /// An ID that identifies this version of the badge. The ID can be any value.
+    /// For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
+    pub id: String,
+    /// URL to png of size 28x28
+    pub image_url_1x: String,
+    /// URL to png of size 56x56
+    pub image_url_2x: String,
+    /// URL to png of size 112x112
+    pub image_url_4x: String,
+    /// Title of the badge
+    pub title: String,
+    /// Descrition of the badge
+    pub description: String,
+}
+
 // TODO: use a self updating token from auth crate
 #[derive(Clone)]
 pub struct BadgeManager {
@@ -79,7 +76,7 @@ pub struct BadgeManager {
 
 impl BadgeManager {
     pub async fn new(
-        client: HelixClient<'static, reqwest::Client>,
+        client: twitch_api::HelixClient<'static, reqwest::Client>,
         token: twitch_oauth2::UserToken,
     ) -> Result<BadgeManager, String> {
         let mut global_badges: HashMap<String, BadgeSet> = Default::default();
@@ -112,7 +109,7 @@ impl BadgeManager {
     pub async fn load_channel(
         self,
         broadcaster_id: String,
-        client: HelixClient<'static, reqwest::Client>,
+        client: twitch_api::HelixClient<'static, reqwest::Client>,
     ) {
         debug!(broadcaster_id, "loading channel");
         let mut scoped_badges = self.scoped_badges.lock().await;

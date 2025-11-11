@@ -224,6 +224,10 @@ export type ChannelMessage = {
 	message_id: string;
 	text: string;
 	/**
+	 * The parsed fragments of the text field for rendering
+	 */
+	fragments: string[];
+	/**
 	 * The type of message.
 	 */
 	message_type: ChannelMessageType;
