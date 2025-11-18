@@ -1,10 +1,9 @@
 use core::time;
+use lazy_static::lazy_static;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-
-use tauri::async_runtime::block_on;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
 use twitch_api::HelixClient;
@@ -15,6 +14,17 @@ fn default_refresh_callback(token: UserToken) {
 }
 
 const CLIENT_ID: &str = "uyf8apz7jdx3ujc3pboj58vim8c8a6";
+
+lazy_static! {
+    static ref default_scopes: Vec<Scope> = vec![
+        Scope::UserReadChat,
+        Scope::UserWriteChat,
+        Scope::UserReadFollows,
+        Scope::UserReadEmotes,
+        Scope::UserReadBlockedUsers,
+        Scope::UserReadSubscriptions,
+    ];
+}
 
 #[derive(Clone)]
 pub struct TokenManager {
@@ -28,14 +38,7 @@ impl TokenManager {
     pub fn from_existing(token: UserToken, client: HelixClient<'static, reqwest::Client>) -> Self {
         let builder = twitch_oauth2::tokens::DeviceUserTokenBuilder::new(
             CLIENT_ID.to_string(),
-            vec![
-                Scope::UserReadChat,
-                Scope::UserWriteChat,
-                Scope::UserReadFollows,
-                Scope::UserReadEmotes,
-                Scope::UserReadBlockedUsers,
-                Scope::UserReadSubscriptions,
-            ],
+            default_scopes.clone(),
         );
 
         TokenManager {
@@ -49,14 +52,7 @@ impl TokenManager {
     pub fn new(client: HelixClient<'static, reqwest::Client>) -> Self {
         let builder = twitch_oauth2::tokens::DeviceUserTokenBuilder::new(
             CLIENT_ID.to_string(),
-            vec![
-                Scope::UserReadChat,
-                Scope::UserWriteChat,
-                Scope::UserReadFollows,
-                Scope::UserReadEmotes,
-                Scope::UserReadBlockedUsers,
-                Scope::UserReadSubscriptions,
-            ],
+            default_scopes.clone(),
         );
         TokenManager {
             user_token: None,
@@ -90,23 +86,21 @@ impl TokenManager {
         return token;
     }
 
-    // TODO: fix the this weird async/std bs
     pub fn manage(self) {
-        std::thread::spawn(move || {
+        tauri::async_runtime::spawn(async move {
             let mut last_validation_tick = Instant::now();
             loop {
                 if let Some(ref user_token) = self.user_token {
-                    let mut user_token_guard = tokio::task::block_in_place(|| {
-                        tokio::runtime::Handle::current()
-                            .block_on(async { user_token.lock().await })
-                    });
+                    let mut user_token_guard = user_token.lock().await;
                     debug!(
                         "last_validation_tick: since={:?}",
                         last_validation_tick.elapsed()
                     );
                     if last_validation_tick.elapsed() > Duration::from_secs(300) {
                         info!("validating token");
-                        let res = block_on(user_token_guard.validate_token(&self.client.clone()))
+                        let res = user_token_guard
+                            .validate_token(&self.client.clone())
+                            .await
                             .expect("failed to validate token");
 
                         debug!("validate: token={:?}", res);
@@ -116,13 +110,15 @@ impl TokenManager {
                     info!("token: expires_in={:?}", user_token_guard.expires_in());
                     if user_token_guard.expires_in() < std::time::Duration::from_secs(600) {
                         info!("refreshing token");
-                        block_on(user_token_guard.refresh_token(&self.client.clone()))
+                        user_token_guard
+                            .refresh_token(&self.client.clone())
+                            .await
                             .expect("failed to refresh token");
                         (self.on_refresh)(user_token_guard.clone())
                     }
                 }
                 debug!("sleeping");
-                std::thread::sleep(time::Duration::from_secs(30));
+                tokio::time::sleep(time::Duration::from_secs(30)).await;
             }
         });
     }
