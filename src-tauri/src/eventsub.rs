@@ -222,7 +222,7 @@ impl EventSubManager {
             let client = client.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    let chatters: Vec<twitch_api::eventsub::EventSubSubscription> = client
+                    let chatters: Vec<twitch_api::eventsub::EventSubSubscription> = match client
                         .get_eventsub_subscriptions(None, None, None, &token.clone())
                         .map_ok(|sub| {
                             stream::iter(
@@ -234,12 +234,17 @@ impl EventSubManager {
                         .try_flatten()
                         .try_collect()
                         .await
-                        .unwrap();
+                    {
+                        Ok(resp) => resp,
+                        Err(err) => {
+                            error!(
+                                "failed to get eventsub subscriptions: err={}",
+                                err.to_string()
+                            );
+                            Default::default()
+                        }
+                    };
 
-                    // pub condition: Value,
-                    // pub created_at: Timestamp,
-                    // pub id: EventSubId,
-                    // pub status: Status,
                     for sub in chatters.iter() {
                         debug!(
                             "EventSubSubscription: id={}, cost={}, condition={:?}, status={:?}",
