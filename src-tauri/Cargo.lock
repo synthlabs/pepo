@@ -2748,6 +2748,7 @@ dependencies = [
  "color-eyre",
  "eyre",
  "futures",
+ "lazy_static",
  "objc2 0.6.3",
  "objc2-app-kit",
  "reqwest",
