@@ -1,51 +1,68 @@
-[package]
-name = "pepo"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "pepo_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+[build-dependencies.tauri-build]
+features = []
+version = "2"
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
-serde = { version = "1", features = ["derive"] }
+color-eyre = "0.6.3"
+eyre = "0.6.12"
+futures = "0.3.31"
+lazy_static = "1.5.0"
+reqwest = "0.12.12"
 serde_json = "1"
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
-tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
-twitch_api = { version = "~0.7.0", features = ["eventsub", "helix", "reqwest"] }
-twitch_oauth2 = { version = "0.15.1", features = ["client"] }
-tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
-tokio-tungstenite = { version = "~0.28", features = ["native-tls", "url"] }
-reqwest = "0.12.12"
+tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
-futures = "0.3.31"
-eyre = "0.6.12"
-color-eyre = "0.6.3"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
-tauri-svelte-synced-store = { git = "https://github.com/synthlabs/tauri-svelte-synced-store.git" }
-lazy_static = "1.5.0"
+[dependencies.serde]
+features = ["derive"]
+version = "1"
+[dependencies.tauri]
+features = []
+version = "2"
+[dependencies.tauri-specta]
+features = ["derive", "typescript"]
+version = "=2.0.0-rc.21"
+[dependencies.tauri-svelte-synced-store]
+git = "https://github.com/synthlabs/tauri-svelte-synced-store.git"
+[dependencies.tokio]
+features = ["macros", "rt-multi-thread"]
+version = "1.43.0"
+[dependencies.tokio-tungstenite]
+features = ["native-tls", "url"]
+version = "~0.28"
+[dependencies.twitch_api]
+features = ["eventsub", "helix", "reqwest"]
+version = "~0.7.0"
+[dependencies.twitch_oauth2]
+features = ["client"]
+version = "0.15.1"
 
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-single-instance = "2"
-tauri-plugin-window-state = "2"
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+name = "pepo_lib"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6.2"
-objc2-app-kit = "0.3.1"
+[package]
+authors = ["you"]
+description = "A Tauri App"
+edition = "2021"
+name = "pepo"
+version = "0.2.0"
 
+[profile]
+[profile.dev]
+[profile.dev.package]
 [profile.dev.package.backtrace]
 opt-level = 3
+
+[target]
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))"]
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+[target."cfg(target_os = \"macos\")"]
+[target."cfg(target_os = \"macos\")".dependencies]
+objc2 = "0.6.2"
+objc2-app-kit = "0.3.1"
