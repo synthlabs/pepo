@@ -26,7 +26,7 @@
 	);
 	let forceAutoscrollDebounce: boolean = $state(true);
 	let showSeparator: boolean = $state(false);
-	let channel_name = $derived(page.params.id);
+	let channel_name: string = $derived(page.params.id ?? '');
 	let msgs: ChannelMessage[] = $state([]);
 	let chatInput = $state('');
 	let hasInput = $derived(chatInput.length > 0);
@@ -51,10 +51,6 @@
 
 		console.log('subbing to chat messages');
 		un_sub = await listen<ChannelMessage>(`chat_message:${channel_name}`, (event) => {
-			const msg = JSON.parse(event.payload.payload);
-			// msgs.push(
-			// 	`[${event.payload.ts.substring(11, 19)}] ${msg.chatter_user_name}: ${msg.message.text}`
-			// );
 			msgs.push(event.payload);
 			if (msgs.length > CHAT_MESSAGE_LIMIT) msgs.shift();
 			processAutoscroll();
@@ -162,7 +158,11 @@
 				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
 					>{msg.chatter_user_name}</span
 				>:
-				{msg.text}
+				{#each msg.fragments as fragment}
+					{#if 'Text' in fragment}
+						{fragment.Text.text}
+					{/if}
+				{/each}
 			</div>
 			{#if showSeparator}
 				<Separator class="" />

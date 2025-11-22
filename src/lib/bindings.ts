@@ -226,7 +226,7 @@ export type ChannelMessage = {
 	/**
 	 * The parsed fragments of the text field for rendering
 	 */
-	fragments: string[];
+	fragments: Fragment[];
 	/**
 	 * The type of message.
 	 */
@@ -276,6 +276,49 @@ export type ChannelMessageType =
 	 * A message sent with effects
 	 */
 	| 'power_ups_message_effect';
+export type CheerFragment = { index: number; text: string };
+export type Emote = {
+	/**
+	 * ID of the emote.
+	 */
+	id: string;
+	/**
+	 * Name of the emote a viewer types into Twitch chat for the image to appear.
+	 */
+	name: string;
+	tier: string;
+	/**
+	 * If the emote_type is "subscriptions", this indicates the subscriber tier at which the emote is unlocked. Set to an empty string otherwise.
+	 * The type of emote.
+	 *
+	 * The most common values for custom channel emotes are
+	 *
+	 * `subscriptions`: Indicates a custom subscriber emote.
+	 *
+	 * `bitstier`: Indicates a custom Bits tier emote.
+	 *
+	 * `follower`: Indicates a custom follower emote.
+	 */
+	emote_type: string;
+	/**
+	 * ID of the emote set the emote belongs to.
+	 */
+	emote_set_id: string;
+	/**
+	 * The formats that the emote is available in.
+	 */
+	format: string[];
+	/**
+	 * The sizes that the emote is available in.
+	 */
+	scale: string[];
+	/**
+	 * The background themes that the emote is available in.
+	 */
+	theme_mode: string[];
+};
+export type EmoteFragment = { index: number; emote: Emote };
+export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment };
 export type StateUpdate = { version: number | null; name: string; value: string };
 export type Stream = {
 	/**
@@ -328,6 +371,7 @@ export type Stream = {
 	 */
 	viewer_count: number;
 };
+export type TextFragment = { index: number; text: string };
 export type UserToken = {
 	/**
 	 * The access token used to authenticate requests with

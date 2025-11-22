@@ -35,7 +35,7 @@ impl EmoteProvider<EmoteCache> for TwitchProvider {
         client: twitch_api::HelixClient<'static, reqwest::Client>,
         token: twitch_oauth2::UserToken,
     ) {
-        let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned());
+        let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
 
         match tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current()
