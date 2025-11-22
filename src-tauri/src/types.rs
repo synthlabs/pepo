@@ -353,7 +353,7 @@ pub struct ChannelMessage {
     pub message_id: String,
     pub text: String,
     /// The parsed fragments of the text field for rendering
-    pub fragments: Vec<String>,
+    pub fragments: Vec<message::Fragment>,
     /// The type of message.
     pub message_type: ChannelMessageType,
     /// List of chat badges.

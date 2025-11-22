@@ -1,0 +1,178 @@
+[commit]: # 'bc17735c761882989ccb4ad76b33b06e357249b5'
+
+Features:
+
+- (build): use the sumry file for the release body
+- (sumry): support backing up and generating sumry file
+- (scripts): initial sumry generator skeleton
+- (chat:emotes): enable animated twitch emotes by default
+- (chat:emotes): support 7tv global and channel emotes
+- (chat): remount chat on navigation to simplify logic
+- (chat:emotes): support bttv and ffz channel emotes
+- (user): convert user store to the new runes format
+- (chat:emotes): support bttv global emotes (#26)
+- (build): initial skeleton of version management bin (#22)
+- (ui): auto refresh stream info on interval
+- (chat): persist msgs between tabs and fix badge bug
+- (emotes): support all native twitch emotes
+- (chat): support custom channel badges
+- (logger): add trace level
+- (ui:tabs): tabs are now closable and responsive (#20)
+- (ui:tabs): tabs now properly dedupe and improved navigation (#18)
+- (ui): remember the window state (#17)
+- (ui:tabs): going to a new chat automatically opens in a tab
+- (ui:layout): update layout to use real tabs (#15)
+- (keybindings): add channel switcher (#14)
+- (build): enable updater (#7)
+- (actions): basic test, and relase pipelines (#4) (#5)
+- (actions): basic test, and relase pipelines (#4)
+- (desktop): initial desktop functionality
+- (tabs): add ability to add new tabs, and they persist
+- (components): move the channel switcher input to its own component
+- (layout): implement tab interface
+- (build): disable a11y warnings while in initial dev phase
+- (settings): rename login to settings
+- (layout): add top nav bar
+- (landing): input to send you to a channel
+- (emotes): switch to an actual emote cache object
+- (emotes): add basic emote cache
+- (login): basic error handling for token validation
+- (deploy): add netlify toml for redirect
+- (a11y): add tooltips to new badges
+- (badges): add basic mod, partner, and vip badges
+- (badges): add basic sub badge
+
+Fixes:
+
+- (build): properly pass sumry file to releaseBody
+- (sumry): properly handle multiline string
+- (ui): adjust spacing and sizing of tabs when multi-line
+- (chat:emotes): fix bug where text would be duplicated around emotes
+- (emotes): fix third party global emotes
+- (build): fix broken emote imports
+- (build:gha): build universal mac bundle
+- (build:gha): install rust x86 target
+- (build:gha): properly pass matrix args to tauri build
+- (nav): fix unauthed pfp
+- (title): properly update the title when changing tabs (#25)
+- (build:gha): produce intel and apple mac packages (#24)
+- (build:gha): sync test and publish ghas
+- (chat): increase autoscroll buffer
+- (chat): alternating backgrounds now key off the message itself
+- (chat): convert nav debounce to autoscroll debounce
+- (chat): don&#39;t double render your own messages
+- (chat): set basic message limit
+- (tabs): use proper media queries
+- (settings): use the new token validation method
+- (auth): update token validation
+- (ui:tabs): tabs have a max width and properly close
+- (ui:tabs): tabs now properly resize and reflow (#19)
+- (build): short sha windows fix (#10)
+- (build): publish master as a per sha update for now (#9)
+- (chat): account for race conditions in chat client
+- (layout): move channel selector to the navbar
+- (chat): clean up some of the tab code
+- (deploy): add the necessary env files
+- (readme): transparent bg on screenshot
+
+Misc:
+
+- move vergo out of repo
+- move sumry out of repo
+- clean up subscription manager and start on the chat interface
+- scrollbar css
+- update deps
+- leave chat when changing channels
+- update deps
+- implement leave channel
+- dep updates
+- update readme
+- sub to user update on successful auth
+- working janky eventsub manager
+- kinda working eventsub manager
+- update colors
+- dep updates
+- initial eventsub manager
+- implement following sidebar
+- automatically get new token if invalid
+- update deps
+- token refreshing and store sync
+- persist token between launches
+- working more message scroll
+- fix build
+- update deps
+- basic active tab indicator
+- layout fixes
+- basic twitch auth, mock out more ui elements
+- update icons
+- support specta
+- linting
+- more mocking out of the new UI
+- working mobile version pog
+- fix mac only import
+- sidebar icons
+- working scroll area
+- fix layout
+- working sidebar
+- shadcn
+- reset tauri
+- Update README.md- Add files via upload- Update README.md- Add files via upload- (deps): update deps
+- try moving pepo to a library
+- Create LICENSE- version bump
+- (deps): update deps 10-20-2024
+- (deps): update deps 10-19-2024
+- (chat): convert chat component use unified channel state
+- (chat): first pass at converting to svelte 5
+- (build): version bump
+- (chat): first phase of transitioning to chat component unmount/remount
+- (deps): update deps 10-06-2024
+- (deps): update deps 10-05-2024 (#27)
+- (badges): convert the e badge cache to the new format
+- (deps): update deps 09-22-2024
+- (emotes): first pass refactor to help clean up the emote types
+- (svelte): update to svelte 5 and use new rune based client (#23)
+- (build): add ubuntu-0.22 to platform matrix
+- (deps): update deps 05-13-2024
+- (v): version bump
+- (deps): update deps 08-24-2023
+- Update README.md (#21)
+
+- new screenshot- (store): introduce encode/decode to the localstorage client
+- (chat): remove autofocus for chat input
+- (ui): 0.6.0 release
+- (chat): allow anon chat
+- (deps): bump openssl from 0.10.54 to 0.10.55 in /src-tauri (#16)
+- (ui:tabs): let tabs wrap for now
+- (version): v0.2.0
+- (deps): update deps 06-20-2023 (#12)
+- (deps): update deps 06-14-2023 (#11)
+- Merge branch &#39;release&#39; into main- update name
+- update readme
+- add &#39;login&#39; form which just accepts a chatterino string for now
+- update dockerfile
+- add simple dockerfile
+- enable code formatting for vscode
+- update deps
+- add basic logger
+- properly tie submit button to the form
+- add scroll to bottom
+- add super basic badges
+- clean up msg handling a little
+- generate uuid for own message
+- support username colors
+- move chat to its own component
+- you can send messages now poggers
+- update layout and add alternating msgs
+- update deps
+- add a little stream info bar
+- Merge pull request #2 from synthlabs/fresh-ui
+
+Fresh UI- super basic daisyui
+- (conf): remove config.ts
+- super basic poc
+- add twitch
+- super basic layout
+- create app
+- fresh start
+- first pass at basic ui
+- Initial poc of a runnable app
