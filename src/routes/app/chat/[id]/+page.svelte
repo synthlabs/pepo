@@ -13,6 +13,7 @@
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
 	import Badges from '$lib/components/chat/+badges.svelte';
+	import Logger from '$lib/logger/log';
 
 	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
 	const CHAT_MESSAGE_LIMIT = 10000;
@@ -39,17 +40,17 @@
 	$inspect(isScrolled);
 
 	onMount(async () => {
-		console.log('joining channel:', channel_name);
+		Logger.info('joining channel:', channel_name);
 		let result = await commands.joinChat(channel_name);
-		console.log(result);
+		Logger.debug(result);
 		if (result.status !== 'ok') {
-			console.log('RESULT NOT OK');
+			Logger.error('RESULT NOT OK');
 			return;
 		}
 
 		channelInfo = result.data;
 
-		console.log('subbing to chat messages');
+		Logger.debug('subbing to chat messages');
 		un_sub = await listen<ChannelMessage>(`chat_message:${channel_name}`, (event) => {
 			msgs.push(event.payload);
 			if (msgs.length > CHAT_MESSAGE_LIMIT) msgs.shift();
@@ -60,11 +61,11 @@
 	});
 
 	onDestroy(async () => {
-		console.log('unsubbing');
+		Logger.info('unsubbing from channel', channel_name);
 		if (un_sub) {
 			un_sub();
 		}
-		await commands.leaveChat(channel_name).then(console.log);
+		await commands.leaveChat(channel_name).then(Logger.debug);
 	});
 
 	const refreshScrollAmount = () => {
@@ -96,9 +97,9 @@
 
 	const forceAutoscrollDebounceFn = () => {
 		forceAutoscrollDebounce = true;
-		console.log('autoscroll debounce START');
+		Logger.debug('autoscroll debounce START');
 		setTimeout(() => {
-			console.log('autoscroll debounce FINISH');
+			Logger.debug('autoscroll debounce FINISH');
 			forceAutoscrollDebounce = false;
 		}, 2000);
 	};
@@ -115,8 +116,8 @@
 		if (hasInput) {
 			commands
 				.sendChatMessage(channelInfo.broadcaster_id, chatInput)
-				.then(() => console.log('message sent'))
-				.catch(console.log)
+				.then(() => Logger.debug('message sent'))
+				.catch(Logger.error)
 				.finally(() => {
 					chatInput = '';
 					if (event.target) {

@@ -1,9 +1,10 @@
 <script lang="ts">
+	import { SyncedState } from 'tauri-svelte-synced-store';
+	import { CircleCheckBig } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { commands, type AuthState } from '$lib/bindings';
 	import { cn } from '$lib/utils.js';
-	import { SyncedState } from 'tauri-svelte-synced-store';
-	import { CircleCheckBig } from '@lucide/svelte';
+	import Logger from '$lib/logger/log';
 
 	let authState = new SyncedState<AuthState>('auth_state', {
 		phase: 'unauthorized',
@@ -18,7 +19,7 @@
 	$inspect(loading);
 
 	async function login() {
-		console.log('login');
+		Logger.debug('login hook');
 		authState.obj.phase = 'waitingForDeviceCode';
 		await authState.sync();
 
@@ -26,7 +27,7 @@
 		if (result.status == 'ok') {
 			goto('/app');
 		} else {
-			console.log('failure', result.error);
+			Logger.error('failure', result.error);
 		}
 	}
 </script>

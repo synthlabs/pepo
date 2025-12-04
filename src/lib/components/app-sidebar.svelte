@@ -1,21 +1,22 @@
 <script lang="ts">
+	import { onMount, type ComponentProps } from 'svelte';
+	import { page } from '$app/state';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.ts';
 	import * as Avatar from '$lib/components/ui/avatar/index.ts';
 	import NavUser from '$lib/components/nav-user.svelte';
-	import { onMount, type ComponentProps } from 'svelte';
-	import { page } from '$app/state';
-	import { commands, type Broadcaster } from '$lib/bindings.ts';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
+	import { commands, type Broadcaster } from '$lib/bindings.ts';
+	import Logger from '$lib/logger/log';
 
 	let followed_channels: Broadcaster[] = $state([]);
 
 	onMount(async () => {
 		let channels = await commands.getFollowedChannels();
 		if (channels.status == 'ok') {
-			console.log(channels.data);
+			Logger.debug(channels.data);
 			followed_channels = channels.data;
 		} else {
-			console.log('failure', channels.error);
+			Logger.error('failure', channels.error);
 		}
 	});
 
