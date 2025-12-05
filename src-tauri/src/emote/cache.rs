@@ -16,8 +16,9 @@ pub struct EmoteCache {
 
 pub trait EmoteCacheTrait {
     fn name(&self) -> String;
-    fn set_emote(self, name: String, emote: Emote);
-    fn get_emote(self, name: String) -> Option<Emote>;
+    fn providers(&self) -> Vec<String>;
+    fn set_emote(&self, name: String, emote: Emote);
+    fn get_emote(&self, name: String) -> Option<Emote>;
 }
 
 impl EmoteCache {
@@ -35,7 +36,7 @@ impl EmoteCacheTrait for EmoteCache {
         format!("{}:{}", self.provider.clone(), self.scope.clone())
     }
 
-    fn set_emote(self, name: String, emote: Emote) {
+    fn set_emote(&self, name: String, emote: Emote) {
         let mut store = self.store.write().unwrap();
         debug!(
             scope = self.scope.clone(),
@@ -47,7 +48,7 @@ impl EmoteCacheTrait for EmoteCache {
         store.insert(name, emote);
     }
 
-    fn get_emote(self, name: String) -> Option<Emote> {
+    fn get_emote(&self, name: String) -> Option<Emote> {
         let store = self.store.read().unwrap();
         debug!(
             scope = self.scope.clone(),
@@ -56,5 +57,9 @@ impl EmoteCacheTrait for EmoteCache {
             "get_emote"
         );
         store.get(&name).cloned()
+    }
+
+    fn providers(&self) -> Vec<String> {
+        vec![self.provider.clone()]
     }
 }

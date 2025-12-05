@@ -1,4 +1,7 @@
+use std::time::SystemTime;
+
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 use crate::emote::{cache::EmoteCacheTrait, Emote};
 
@@ -31,9 +34,20 @@ pub struct Parser {}
 
 impl Parser {
     pub fn parse(message: String, cache: &dyn EmoteCacheTrait) -> Vec<Fragment> {
-        vec![Fragment::Text(TextFragment {
+        let _start_time = std::time::Instant::now();
+
+        let result = vec![Fragment::Text(TextFragment {
             index: 0,
             text: message.clone(),
-        })]
+        })];
+
+        debug!(
+            providers = ?cache.providers(),
+            fragments = result.len(),
+            duration = ?_start_time.elapsed(),
+            "parsed message into fragments",
+        );
+
+        return result;
     }
 }

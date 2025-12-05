@@ -185,12 +185,17 @@ fn get_followed_channels(
     let client = client.inner();
 
     let token_guard = tauri::async_runtime::block_on(token.lock()).clone();
-    let channels = tauri::async_runtime::block_on(
+    let channels = match tauri::async_runtime::block_on(
         client
             .get_followed_channels(token_guard.user_id.to_string(), &token_guard)
             .try_collect::<Vec<_>>(),
-    )
-    .unwrap();
+    ) {
+        Ok(channels) => channels,
+        Err(err) => {
+            error!("failed to get followed channels: err={}", err.to_string());
+            return Err(err.to_string());
+        }
+    };
 
     let mut users: Vec<twitch_api::helix::users::User> = Vec::new();
     for chunk in channels.chunks(100) {
