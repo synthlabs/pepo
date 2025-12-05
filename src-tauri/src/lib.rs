@@ -368,9 +368,7 @@ pub fn run() {
         // sets this to be the default, global collector for this application.
         .init();
 
-    let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_store::Builder::new().build());
+    let builder = tauri::Builder::default().plugin(tauri_plugin_store::Builder::new().build());
 
     let handlers = tauri_specta::Builder::<tauri::Wry>::new()
         .typ::<types::UserToken>()
@@ -406,11 +404,12 @@ pub fn run() {
             info!("{}, {argv:?}, {cwd}", app.package_info().name);
             app.emit("single-instance", argv).unwrap();
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::new().build());
 
     let _builder = builder
         .invoke_handler(handlers.invoke_handler())
-        .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             // This is also required if you want to use events
             handlers.mount_events(app);

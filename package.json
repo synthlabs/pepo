@@ -1,6 +1,6 @@
 {
     "name": "pepo",
-    "version": "0.2.4",
+    "version": "0.2.5",
     "private": false,
     "scripts": {
         "build": "pnpm run check && vite build",

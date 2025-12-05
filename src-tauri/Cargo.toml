@@ -49,7 +49,7 @@ authors = ["you"]
 description = "A Tauri App"
 edition = "2021"
 name = "pepo"
-version = "0.2.4"
+version = "0.2.5"
 
 [profile]
 [profile.dev]
