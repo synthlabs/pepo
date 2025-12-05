@@ -15,14 +15,14 @@ importers:
         specifier: ^2.5.2
         version: 2.5.2
       '@tauri-apps/plugin-store':
-        specifier: ~2.2.1
-        version: 2.2.1
+        specifier: ^2.4.1
+        version: 2.4.1
       '@tauri-apps/plugin-updater':
-        specifier: ~2.9.0
+        specifier: ^2.9.0
         version: 2.9.0
       '@tauri-apps/plugin-window-state':
-        specifier: ~2.2.3
-        version: 2.2.3
+        specifier: ^2.4.1
+        version: 2.4.1
       tauri-svelte-synced-store:
         specifier: github:synthlabs/tauri-svelte-synced-store
         version: https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/040a47ab38648867cb23de21206c8b1575fff958(@tauri-apps/api@2.9.1)(svelte@5.45.5)
@@ -712,14 +712,14 @@ packages:
   '@tauri-apps/plugin-opener@2.5.2':
     resolution: {integrity: sha512-ei/yRRoCklWHImwpCcDK3VhNXx+QXM9793aQ64YxpqVF0BDuuIlXhZgiAkc15wnPVav+IbkYhmDJIv5R326Mew==}
 
-  '@tauri-apps/plugin-store@2.2.1':
-    resolution: {integrity: sha512-/hPafeliMe0tMc8NB9tSlkAH+Ww3H7BGD8NycjfY6QBM//0jSoqCO1QGdngPxugeF5NgUNspsVkpvpTz1lLAVQ==}
+  '@tauri-apps/plugin-store@2.4.1':
+    resolution: {integrity: sha512-ckGSEzZ5Ii4Hf2D5x25Oqnm2Zf9MfDWAzR+volY0z/OOBz6aucPKEY0F649JvQ0Vupku6UJo7ugpGRDOFOunkA==}
 
   '@tauri-apps/plugin-updater@2.9.0':
     resolution: {integrity: sha512-j++sgY8XpeDvzImTrzWA08OqqGqgkNyxczLD7FjNJJx/uXxMZFz5nDcfkyoI/rCjYuj2101Tci/r/HFmOmoxCg==}
 
-  '@tauri-apps/plugin-window-state@2.2.3':
-    resolution: {integrity: sha512-Iqqzugs6lxpa9JPOe4O33lkCUyMGvh9dqnXof1tK4dP2wU7jKa7W3MLwVyo6c3oVl3dUCm73wkB3RJ0exR0SPg==}
+  '@tauri-apps/plugin-window-state@2.4.1':
+    resolution: {integrity: sha512-OuvdrzyY8Q5Dbzpj+GcrnV1iCeoZbcFdzMjanZMMcAEUNy/6PH5pxZPXpaZLOR7whlzXiuzx0L9EKZbH7zpdRw==}
 
   '@types/cookie@0.6.0':
     resolution: {integrity: sha512-4Kh9a6B2bQciAhf7FSuMRRkUWecJgJu9nPnx3yzpsfXX/c50REIqpHY4C82bXP90qrLtXtkDxTZosYO3UpOwlA==}
@@ -2086,7 +2086,7 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.9.1
 
-  '@tauri-apps/plugin-store@2.2.1':
+  '@tauri-apps/plugin-store@2.4.1':
     dependencies:
       '@tauri-apps/api': 2.9.1
 
@@ -2094,7 +2094,7 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.9.1
 
-  '@tauri-apps/plugin-window-state@2.2.3':
+  '@tauri-apps/plugin-window-state@2.4.1':
     dependencies:
       '@tauri-apps/api': 2.9.1
 
