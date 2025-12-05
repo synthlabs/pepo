@@ -1,45 +1,45 @@
 {
-    "$schema": "https://schema.tauri.app/config/2",
-    "app": {
-        "security": {
-            "csp": null
-        },
-        "windows": []
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "security": {
+      "csp": null
     },
-    "build": {
-        "beforeBuildCommand": "pnpm build",
-        "beforeDevCommand": "pnpm dev --host",
-        "devUrl": "http://localhost:1420",
-        "frontendDist": "../build"
-    },
-    "bundle": {
-        "active": true,
-        "icon": [
-            "icons/32x32.png",
-            "icons/128x128.png",
-            "icons/128x128@2x.png",
-            "icons/icon.icns",
-            "icons/icon.ico"
-        ],
-        "targets": [
-            "deb",
-            "rpm",
-            "appimage",
-            "nsis",
-            "app",
-            "dmg"
-        ],
-        "createUpdaterArtifacts": true
-    },
-    "identifier": "com.pepo.chat",
-    "productName": "Pepo",
-    "version": "0.2.2",
-    "plugins": {
-        "updater": {
-            "endpoints": [
-                "https://github.com/synthlabs/pepo/releases/latest/download/latest.json"
-            ],
-            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIxM0EyNDBGNTM2M0Y2QTYKUldTbTltTlREeVE2SVRhZGhDamlXeHNHc2lzTjNLWFZWNXlJVVZFUytURmtHb2pXYm5CT0syRDcK"
-        }
+    "windows": []
+  },
+  "build": {
+    "beforeBuildCommand": "pnpm build",
+    "beforeDevCommand": "pnpm dev --host",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../build"
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage",
+      "nsis",
+      "app",
+      "dmg"
+    ]
+  },
+  "identifier": "com.pepo.chat",
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/synthlabs/pepo/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIxM0EyNDBGNTM2M0Y2QTYKUldTbTltTlREeVE2SVRhZGhDamlXeHNHc2lzTjNLWFZWNXlJVVZFUytURmtHb2pXYm5CT0syRDcK"
     }
+  },
+  "productName": "Pepo",
+  "version": "0.2.3"
 }
