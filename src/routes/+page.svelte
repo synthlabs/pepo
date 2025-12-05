@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { commands, type AuthState } from '$lib/bindings';
 	import { cn } from '$lib/utils.js';
-	import Logger from '$lib/logger/log';
+	import Logger from '$utils/log';
 
 	let authState = new SyncedState<AuthState>('auth_state', {
 		phase: 'unauthorized',

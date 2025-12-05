@@ -13,7 +13,7 @@
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
 	import Badges from '$lib/components/chat/+badges.svelte';
-	import Logger from '$lib/logger/log';
+	import Logger from '$utils/log';
 
 	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
 	const CHAT_MESSAGE_LIMIT = 10000;

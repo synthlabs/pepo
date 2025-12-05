@@ -6,7 +6,7 @@
 	import NavUser from '$lib/components/nav-user.svelte';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { commands, type Broadcaster } from '$lib/bindings.ts';
-	import Logger from '$lib/logger/log';
+	import Logger from '$utils/log';
 
 	let followed_channels: Broadcaster[] = $state([]);
 

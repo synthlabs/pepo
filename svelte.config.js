@@ -17,7 +17,11 @@ const config = {
             fallback: "index.html",
             precompress: false,
             strict: true
-        })
+        }),
+        alias: {
+            '$utils': './utils/js',
+            '$utils/*': './utils/js/*',
+        }
     }
 };
 
