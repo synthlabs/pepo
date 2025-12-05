@@ -363,7 +363,9 @@ pub fn run() {
         // sets this to be the default, global collector for this application.
         .init();
 
-    let builder = tauri::Builder::default().plugin(tauri_plugin_store::Builder::new().build());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_store::Builder::new().build());
 
     let handlers = tauri_specta::Builder::<tauri::Wry>::new()
         .typ::<types::UserToken>()
