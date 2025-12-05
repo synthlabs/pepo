@@ -3,7 +3,7 @@
     "version": "0.2.2",
     "private": false,
     "scripts": {
-        "build": "vite build",
+        "build": "pnpm run check && vite build",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
         "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
         "dev": "vite dev",

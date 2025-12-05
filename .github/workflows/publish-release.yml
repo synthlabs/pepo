@@ -21,10 +21,12 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
+        with:
+          submodules: 'recursive'
 
       - name: setup node
-        uses: actions/checkout@v5
+        uses: actions/setup-node@v6
         with:
           node-version: latest
 
