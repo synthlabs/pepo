@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 use twitch_api::HelixClient;
 use twitch_oauth2::{Scope, TwitchToken, UserToken};
 
@@ -84,6 +84,27 @@ impl TokenManager {
         self.user_token = Some(Arc::new(Mutex::new(token.clone())));
 
         return token;
+    }
+
+    pub async fn is_token_valid(self) -> bool {
+        if let Some(token_guard) = self.user_token {
+            let token = token_guard.lock().await;
+            match token.validate_token(&self.client.clone()).await {
+                Ok(_) => return true,
+                Err(err) => {
+                    error!("token validation failed: {}", err.to_string());
+                    return false;
+                }
+            }
+        }
+        debug!("token isn't set");
+        false
+    }
+
+    pub async fn get_token(self) -> twitch_oauth2::UserToken {
+        let token_guard = self.user_token.expect("token to be set");
+        let token = token_guard.lock().await;
+        token.clone()
     }
 
     pub fn manage(self) {

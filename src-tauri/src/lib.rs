@@ -224,6 +224,7 @@ async fn login(
     let store = app_handle.store("account.json").unwrap();
 
     if let Some(binding) = store.get("token") {
+        debug!("loading token from file store");
         let token: types::UserToken = serde_json::from_value(binding.clone()).unwrap();
         token_manager = match token.to_twitch_token(client.clone()).await {
             Ok(token) => TokenManager::from_existing(token.clone(), client.clone()),
@@ -231,31 +232,39 @@ async fn login(
             Err(err) => panic!("{err}"),
         };
     } else {
+        debug!("no token found on disk, setting empty token");
         token_manager = TokenManager::new(client.clone());
     }
 
-    let device_code = token_manager.clone().start_device_code_flow().await;
+    let twitch_token: twitch_oauth2::UserToken;
+    let user_token: types::UserToken;
+    if token_manager.clone().is_token_valid().await {
+        debug!("token is already valid");
+        twitch_token = token_manager.clone().get_token().await;
+        user_token = types::UserToken::from_twitch_token(twitch_token.clone());
+    } else {
+        let device_code = token_manager.clone().start_device_code_flow().await;
 
-    {
-        let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
-        let mut auth_state = auth_state_ref.lock().unwrap();
+        {
+            let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
+            let mut auth_state = auth_state_ref.lock().unwrap();
 
-        auth_state.phase = types::AuthPhase::WaitingForAuth;
-        auth_state.device_code = device_code.user_code;
+            auth_state.phase = types::AuthPhase::WaitingForAuth;
+            auth_state.device_code = device_code.user_code;
+        }
+
+        debug!("pausing to show verification code");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        info!("login {}", device_code.verification_uri);
+        app_handle
+            .opener()
+            .open_url(device_code.verification_uri.clone(), None::<&str>)
+            .unwrap();
+
+        twitch_token = token_manager.clone().finish_device_code_flow().await;
+        user_token = types::UserToken::from_twitch_token(twitch_token.clone());
     }
-
-    debug!("pausing to show verification code");
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    info!("login {}", device_code.verification_uri);
-    app_handle
-        .opener()
-        .open_url(device_code.verification_uri.clone(), None::<&str>)
-        .unwrap();
-
-    let twitch_token: twitch_oauth2::UserToken =
-        token_manager.clone().finish_device_code_flow().await;
-    let user_token: types::UserToken = types::UserToken::from_twitch_token(twitch_token.clone());
 
     {
         let auth_state_ref = state_syncer.get::<AuthState>("auth_state");

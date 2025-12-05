@@ -1,6 +1,6 @@
 {
     "name": "pepo",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "private": false,
     "scripts": {
         "build": "vite build",
@@ -20,6 +20,7 @@
         "@tailwindcss/postcss": "^4.1.17",
         "@tailwindcss/vite": "^4.1.17",
         "@tauri-apps/cli": "^2.9.4",
+        "@types/node": "^24.10.1",
         "bits-ui": "1.8.0",
         "clsx": "^2.1.1",
         "eslint": "^9.39.1",
