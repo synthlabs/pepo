@@ -48,8 +48,13 @@ jobs:
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
         shell: bash
 
-      - name: Sha check
-        run: echo "${{ steps.short-sha.outputs.SHORT_SHA }}"
+      - name: Set version id
+        id: tauri-version
+        run: echo "VERSION=$(cat ./src-tauri/tauri.conf.json | grep version | cut -d\" -f 4)" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Var check
+        run: echo "SHORT_SHA=${{ steps.short-sha.outputs.SHORT_SHA }}, VERSION=${{ steps.tauri-version.outputs.VERSION }}"
         shell: bash
 
       - uses: tauri-apps/tauri-action@v0
