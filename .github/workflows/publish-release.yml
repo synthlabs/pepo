@@ -83,6 +83,7 @@ jobs:
           releaseName: 'Pepo v${{ steps.short-sha.outputs.SHORT_SHA }}'
           releaseBody: |
             ${{ steps.sumry.outputs.FILE }}
+          includeUpdaterJson: true
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

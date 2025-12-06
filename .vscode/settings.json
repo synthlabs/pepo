@@ -1,6 +1,6 @@
 {
 	"[svelte]": {
-		"editor.defaultFormatter": "svelte.svelte-vscode",
+		"editor.defaultFormatter": "esbenp.prettier-vscode",
 		"editor.formatOnSaveMode": "file"
 	},
 	"svelte.plugin.svelte.compilerWarnings": {
