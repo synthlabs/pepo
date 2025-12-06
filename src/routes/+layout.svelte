@@ -9,7 +9,7 @@
 	$inspect(page.params.id);
 
 	onMount(async () => {
-		await checkForAppUpdates();
+		await checkForAppUpdates('https://github.com/synthlabs/pepo/releases/latest');
 	});
 </script>
 

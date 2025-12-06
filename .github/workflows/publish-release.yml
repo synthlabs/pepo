@@ -60,8 +60,13 @@ jobs:
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
         shell: bash
 
-      - name: Sha check
-        run: echo "${{ steps.short-sha.outputs.SHORT_SHA }}"
+      - name: Set version id
+        id: version-id
+        run: echo "VERSION=$(cat ./src-tauri/tauri.conf.json | grep version | cut -d'"' -f 4)" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Var check
+        run: echo "SHORT_SHA=${{ steps.short-sha.outputs.SHORT_SHA }}, VERSION=${{ steps.short-sha.outputs.VERSION }}"
         shell: bash
 
       - name: Read SUMRY file
@@ -79,8 +84,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: app-${{ steps.short-sha.outputs.SHORT_SHA }}
-          releaseName: 'Pepo v${{ steps.short-sha.outputs.SHORT_SHA }}'
+          tagName: app-${{ steps.short-sha.outputs.VERSION }}-${{ steps.short-sha.outputs.SHORT_SHA }}
+          releaseName: 'Pepo v${{ steps.short-sha.outputs.VERSION }}-${{ steps.short-sha.outputs.SHORT_SHA }}'
           releaseBody: |
             ${{ steps.sumry.outputs.FILE }}
           includeUpdaterJson: true
