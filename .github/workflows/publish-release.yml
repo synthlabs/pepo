@@ -62,7 +62,7 @@ jobs:
 
       - name: Set version id
         id: version-id
-        run: echo "VERSION=$(cat ./src-tauri/tauri.conf.json | grep version | cut -d'"' -f 4)" >> "$GITHUB_OUTPUT"
+        run: echo "VERSION=$(cat ./src-tauri/tauri.conf.json | grep version | cut -d\" -f 4)" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Var check
