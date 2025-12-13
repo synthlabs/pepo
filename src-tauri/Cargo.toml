@@ -51,7 +51,7 @@ authors = ["you"]
 description = "A Tauri App"
 edition = "2021"
 name = "pepo"
-version = "0.2.7"
+version = "0.2.8"
 
 [profile]
 [profile.dev]

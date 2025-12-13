@@ -13,7 +13,7 @@ use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
 use tauri_specta::collect_commands;
-use tauri_svelte_synced_store::StateSyncer;
+use tauri_svelte_synced_store::{StateSyncer, StateSyncerConfig};
 use token::TokenManager;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, trace};
@@ -471,7 +471,7 @@ pub fn run() {
 
             info!("made client");
 
-            let state_syncer = StateSyncer::new(app.handle().clone());
+            let state_syncer = StateSyncer::new(StateSyncerConfig::default(), app.handle().clone());
 
             state_syncer.set("auth_state", AuthState::default());
             state_syncer.set("internal_state", internal_state);
