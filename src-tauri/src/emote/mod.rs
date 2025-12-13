@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 pub mod cache;
 pub mod providers;
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Default, PartialEq)]
 pub struct Emote {
     /// ID of the emote.
     pub id: String,
@@ -32,17 +32,33 @@ pub struct Emote {
     pub theme_mode: Vec<String>,
 }
 
+impl Emote {
+    pub fn from_emote_fragment(
+        name: String,
+        value: &twitch_api::eventsub::channel::chat::Emote,
+    ) -> Self {
+        Emote {
+            id: value.id.to_string(),
+            name: name.clone(),
+            emote_set_id: value.emote_set_id.to_string(),
+            format: value.format.iter().map(|v| v.to_string()).collect(),
+            theme_mode: vec!["light".to_string(), "dark".to_string()],
+            scale: vec!["1.0".to_string(), "2.0".to_string(), "3.0".to_string()],
+            ..Default::default()
+        }
+    }
+}
+
 impl From<&twitch_api::helix::chat::GlobalEmote> for Emote {
     fn from(value: &twitch_api::helix::chat::GlobalEmote) -> Self {
         Emote {
             id: value.id.to_string(),
             name: value.name.clone(),
-            tier: "".to_string(),
-            emote_type: "".to_string(),
             emote_set_id: providers::GLOBAL_SCOPE_KEY.to_owned(),
             format: value.format.iter().map(|v| v.to_string()).collect(),
             scale: value.scale.iter().map(|v| v.to_string()).collect(),
             theme_mode: value.theme_mode.iter().map(|v| v.to_string()).collect(),
+            ..Default::default()
         }
     }
 }

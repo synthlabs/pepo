@@ -19,6 +19,7 @@ pub trait EmoteCacheTrait {
     fn providers(&self) -> Vec<String>;
     fn set_emote(&self, name: String, emote: Emote);
     fn get_emote(&self, name: String) -> Option<Emote>;
+    fn has_emote(&self, name: String) -> bool;
 }
 
 impl EmoteCache {
@@ -51,8 +52,8 @@ impl EmoteCacheTrait for EmoteCache {
     fn get_emote(&self, name: String) -> Option<Emote> {
         let store = self.store.read().unwrap();
         debug!(
-            scope = self.scope.clone(),
-            name = self.name(),
+            scope = self.name(),
+            name = name.clone(),
             cache_size = store.len(),
             "get_emote"
         );
@@ -61,5 +62,17 @@ impl EmoteCacheTrait for EmoteCache {
 
     fn providers(&self) -> Vec<String> {
         vec![self.provider.clone()]
+    }
+
+    fn has_emote(&self, name: String) -> bool {
+        let store = self.store.read().unwrap();
+        debug!(
+            scope = self.name(),
+            name = name.clone(),
+            cache_size = store.len(),
+            "has_emote"
+        );
+
+        store.contains_key(&name)
     }
 }

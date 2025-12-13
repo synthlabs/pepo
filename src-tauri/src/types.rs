@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tracing::debug;
+use tracing::error;
 use twitch_api::{client::CompatError, HelixClient};
 use twitch_oauth2::TwitchToken;
 
 use crate::{
     badgemanager::{Badge, BadgeManager},
+    emote::{cache::EmoteCacheTrait, Emote},
     emotemanager::EmoteManager,
     message,
 };
@@ -385,6 +386,23 @@ impl ChannelMessage {
                 "TwitchProvider".to_owned(),
             )
             .expect("emote cache to exist");
+
+        let _: Vec<_> = value
+            .message
+            .fragments
+            .iter()
+            .map(|f| {
+                if let twitch_api::eventsub::channel::chat::Fragment::Emote { text, emote } = f {
+                    if !emote_cache.has_emote(text.to_string()) {
+                        emote_cache.set_emote(
+                            text.to_string(),
+                            Emote::from_emote_fragment(text.to_string(), emote),
+                        );
+                    }
+                }
+            })
+            .collect();
+
         ChannelMessage {
             ts: ts,
             payload: raw_msg.clone(),
@@ -413,7 +431,7 @@ impl ChannelMessage {
                     let b = match b {
                         Some(b) => b,
                         None => {
-                            debug!("failed to find badge: set_id={}, version={}, broadcaster_id={}, raw_msg={}", v.set_id.to_string(), v.id.to_string(), value.broadcaster_user_id.to_string(), raw_msg);
+                            error!("failed to find badge: set_id={}, version={}, broadcaster_id={}, raw_msg={}", v.set_id.to_string(), v.id.to_string(), value.broadcaster_user_id.to_string(), raw_msg);
                             Default::default()
                         },
                     };
