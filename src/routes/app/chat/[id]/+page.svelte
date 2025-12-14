@@ -16,8 +16,8 @@
 	import Logger from '$utils/log';
 	import Emote from '$lib/components/chat/+emote.svelte';
 
-	const AUTOSCROLL_BUFFER = 200; // the amount you can scroll up and still not disable auto scroll
-	const CHAT_MESSAGE_LIMIT = 10000;
+	const AUTOSCROLL_BUFFER = 300; // the amount you can scroll up and still not disable auto scroll
+	const CHAT_MESSAGE_LIMIT = 1000;
 
 	let banner = $state({} as UserToken);
 	let chatDIV = $state<HTMLDivElement>();
@@ -163,7 +163,7 @@
 				{#each msg.fragments as fragment}
 					{#if 'Text' in fragment}
 						{fragment.Text.text}
-					{:else if 'Emote' in fragment}
+					{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
 						<Emote emote={fragment.Emote.emote} />
 					{/if}
 				{/each}

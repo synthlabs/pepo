@@ -2805,7 +2805,7 @@ checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 
 [[package]]
 name = "pepo"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "color-eyre",
  "eyre",
@@ -3985,9 +3985,9 @@ dependencies = [
 
 [[package]]
 name = "softbuffer"
-version = "0.4.7"
+version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a9aaf83eaa648d1ed2500843c6983cd3731bbe7ef4765fd11997c7566196c08"
+checksum = "aac18da81ebbf05109ab275b157c22a653bb3c12cf884450179942f81bcbf6c3"
 dependencies = [
  "bytemuck",
  "js-sys",
