@@ -1,18 +1,25 @@
-[commit]: # '258c7a7fb4d32a2e569fec72da875af5fa714136'
+[commit]: # 'd7fcef7660ccb91b2600b8eda19acf002b9b4189'
 
 Features:
 
-- (account): dont go through login flow if we have valid token
-- (build): use shared util logger
-- (dev): use front end logger instead of console log
-- (chat): start using fragments to render message
+- (chat:emotes): initial limited support for native twitch emotes
 
 Fixes:
 
+- (chat): properly key chat lines so svelte can track them
+- (build): correctly tag release version
+- (build): try different escaping in action
+- (updater): include link in update notice
+- (updater): add back in the auto updater hook
+- (deps): fix dep version mismatch
 - (build): fix tauri signing env vars
-- (build): reenable updater
-- (build): update actions
-- (build): update actions
 
 Misc:
 
+- add gitattributes
+- (deps): update deps
+- (deps): update deps
+- (updater): version bump
+- (build): trying to get auto-updater working
+- (build): version bump
+- (deps): update deps
