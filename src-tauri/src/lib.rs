@@ -427,9 +427,6 @@ pub fn run() {
 
             let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default());
 
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            let win_builder = win_builder.title("").inner_size(1000.0, 600.0);
-
             // set transparent title bar only when building for macOS
             #[cfg(target_os = "macos")]
             let win_builder = win_builder.title_bar_style(TitleBarStyle::Transparent);
@@ -478,6 +475,9 @@ pub fn run() {
             app.manage::<StateSyncer>(state_syncer);
 
             app.manage(client);
+
+            #[cfg(debug_assertions)]
+            window.open_devtools();
 
             Ok(())
         })

@@ -3,413 +3,402 @@
 
 /** user-defined commands **/
 
+
 export const commands = {
-	async getFollowedStreams(): Promise<Result<Stream[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_followed_streams') };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getFollowedChannels(): Promise<Result<Broadcaster[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_followed_channels') };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async joinChat(channelName: string): Promise<Result<ChannelInfo, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('join_chat', { channelName }) };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async leaveChat(channelName: string): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('leave_chat', { channelName }) };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async login(): Promise<Result<UserToken, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('login') };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async sendChatMessage(broadcasterId: string, message: string): Promise<Result<null, string>> {
-		try {
-			return {
-				status: 'ok',
-				data: await TAURI_INVOKE('send_chat_message', { broadcasterId, message })
-			};
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async emitState(name: string): Promise<boolean> {
-		return await TAURI_INVOKE('emit_state', { name });
-	},
-	async updateState(state: StateUpdate): Promise<boolean> {
-		return await TAURI_INVOKE('update_state', { state });
-	}
-};
+async getFollowedStreams() : Promise<Result<Stream[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_followed_streams") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getFollowedChannels() : Promise<Result<Broadcaster[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_followed_channels") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async joinChat(channelName: string) : Promise<Result<ChannelInfo, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("join_chat", { channelName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async leaveChat(channelName: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("leave_chat", { channelName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async login() : Promise<Result<UserToken, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("login") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sendChatMessage(broadcasterId: string, message: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("send_chat_message", { broadcasterId, message }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async emitState(name: string) : Promise<boolean> {
+    return await TAURI_INVOKE("emit_state", { name });
+},
+async updateState(state: StateUpdate) : Promise<boolean> {
+    return await TAURI_INVOKE("update_state", { state });
+}
+}
 
 /** user-defined events **/
 
+
+
 /** user-defined constants **/
+
+
 
 /** user-defined types **/
 
-export type AuthPhase =
-	| 'unauthorized'
-	| 'waitingForDeviceCode'
-	| 'waitingForAuth'
-	| 'failedAuth'
-	| 'authorized';
-export type AuthState = { phase: AuthPhase; device_code: string; token: UserToken | null };
-export type Badge = {
-	/**
-	 * An ID that identifies this set of chat badges. For example, Bits or Subscriber.
-	 */
-	set_id: string;
-	/**
-	 * An ID that identifies this version of the badge. The ID can be any value.
-	 * For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
-	 */
-	id: string;
-	/**
-	 * URL to png of size 28x28
-	 */
-	image_url_1x: string;
-	/**
-	 * URL to png of size 56x56
-	 */
-	image_url_2x: string;
-	/**
-	 * URL to png of size 112x112
-	 */
-	image_url_4x: string;
-	/**
-	 * Title of the badge
-	 */
-	title: string;
-	/**
-	 * Descrition of the badge
-	 */
-	description: string;
-};
-export type BadgeRef = {
-	/**
-	 * An ID that identifies this set of chat badges. For example, Bits or Subscriber.
-	 */
-	set_id: string;
-	/**
-	 * An ID that identifies this version of the badge. The ID can be any value.
-	 * For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
-	 */
-	id: string;
-	/**
-	 * Contains metadata related to the chat badges in the badges tag.
-	 * Currently, this tag contains metadata only for subscriber badges, to indicate the number of months the user has been a subscriber.
-	 */
-	info: string;
-	/**
-	 * The info for displaying the badge
-	 */
-	badge: Badge;
-};
-export type Broadcaster = {
-	/**
-	 * An ID that uniquely identifies the broadcaster that this user is following.
-	 */
-	id: string;
-	/**
-	 * The broadcaster’s login name.
-	 */
-	login: string;
-	/**
-	 * The broadcaster’s display name.
-	 */
-	display_name: string;
-	profile_image_url: string;
-	offline_image_url: string;
-	description: string;
-	created_at: string;
-};
-export type ChannelInfo = {
-	/**
-	 * Twitch User ID of this channel owner
-	 */
-	broadcaster_id: string;
-	/**
-	 * Twitch User login of this channel owner
-	 */
-	broadcaster_login: string;
-	/**
-	 * Twitch user display name of this channel owner
-	 */
-	broadcaster_name: string;
-	/**
-	 * Current game ID being played on the channel
-	 */
-	game_id: string;
-	/**
-	 * Name of the game being played on the channel
-	 */
-	game_name: string;
-	/**
-	 * Language of the channel
-	 */
-	broadcaster_language: string;
-	/**
-	 * Title of the stream
-	 */
-	title: string;
-	/**
-	 * Description of the stream
-	 */
-	description?: string;
-	/**
-	 * Stream delay in seconds
-	 *
-	 * # Notes
-	 *
-	 * This value may not be accurate, it'll only be accurate when the token belongs to the broadcaster and they are partnered.
-	 */
-	delay?: number;
-	/**
-	 * The tags applied to the channel.
-	 */
-	tags: string[];
-	/**
-	 * Boolean flag indicating if the channel has branded content.
-	 */
-	is_branded_content: boolean;
-};
-export type ChannelMessage = {
-	ts: string;
-	payload: string;
-	/**
-	 * The broadcaster user ID.
-	 */
-	broadcaster_user_id: string;
-	/**
-	 * The broadcaster display name.
-	 */
-	broadcaster_user_name: string;
-	/**
-	 * The broadcaster login.
-	 */
-	broadcaster_user_login: string;
-	/**
-	 * The user ID of the user that sent the message.
-	 */
-	chatter_user_id: string;
-	/**
-	 * The user name of the user that sent the message.
-	 */
-	chatter_user_name: string;
-	/**
-	 * A UUID that identifies the message.
-	 */
-	message_id: string;
-	text: string;
-	/**
-	 * The parsed fragments of the text field for rendering
-	 */
-	fragments: Fragment[];
-	/**
-	 * The type of message.
-	 */
-	message_type: ChannelMessageType;
-	/**
-	 * List of chat badges.
-	 */
-	badges: BadgeRef[];
-	/**
-	 * Metadata if this message is a cheer.
-	 * The color of the user's name in the chat room.
-	 * This is a hexadecimal RGB color code in the form, `#<RGB>`.
-	 * This may be empty if it is never set.
-	 */
-	color: string;
-	/**
-	 * A stable message int that can be used by the UI
-	 */
-	index: number;
-};
-export type ChannelMessageType =
-	/**
-	 * An Unknown Message Type
-	 */
-	| 'unknown'
-	/**
-	 * A regular text message
-	 */
-	| 'text'
-	/**
-	 * A highlighted message with channel points
-	 */
-	| 'channel_points_highlighted'
-	/**
-	 * A message sent with channel points during sub-only mode
-	 */
-	| 'channel_points_sub_only'
-	/**
-	 * A first message from a user
-	 */
-	| 'user_intro'
-	/**
-	 * A gigantified emote
-	 */
-	| 'power_ups_gigantified_emote'
-	/**
-	 * A message sent with effects
-	 */
-	| 'power_ups_message_effect';
-export type CheerFragment = { index: number; text: string };
-export type Emote = {
-	/**
-	 * ID of the emote.
-	 */
-	id: string;
-	/**
-	 * Name of the emote a viewer types into Twitch chat for the image to appear.
-	 */
-	name: string;
-	tier: string;
-	/**
-	 * If the emote_type is "subscriptions", this indicates the subscriber tier at which the emote is unlocked. Set to an empty string otherwise.
-	 * The type of emote.
-	 *
-	 * The most common values for custom channel emotes are
-	 *
-	 * `subscriptions`: Indicates a custom subscriber emote.
-	 *
-	 * `bitstier`: Indicates a custom Bits tier emote.
-	 *
-	 * `follower`: Indicates a custom follower emote.
-	 */
-	emote_type: string;
-	/**
-	 * ID of the emote set the emote belongs to.
-	 */
-	emote_set_id: string;
-	/**
-	 * The formats that the emote is available in.
-	 */
-	format: string[];
-	/**
-	 * The sizes that the emote is available in.
-	 */
-	scale: string[];
-	/**
-	 * The background themes that the emote is available in.
-	 */
-	theme_mode: string[];
-};
-export type EmoteFragment = { index: number; emote: Emote };
-export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment };
-export type StateUpdate = { version: number | null; name: string; value: string };
-export type Stream = {
-	/**
-	 * ID of the game being played on the stream.
-	 */
-	game_id: string;
-	/**
-	 * Name of the game being played.
-	 */
-	game_name: string;
-	/**
-	 * Stream ID.
-	 */
-	id: string;
-	/**
-	 * Stream language.
-	 */
-	language: string;
-	/**
-	 * Indicates if the broadcaster has specified their channel contains mature content that may be inappropriate for younger audiences.
-	 */
-	is_mature: boolean;
-	/**
-	 * UTC timestamp.
-	 */
-	started_at: string;
-	tags: string[];
-	/**
-	 * Thumbnail URL of the stream. All image URLs have variable width and height. You can replace {width} and {height} with any values to get that size image
-	 */
-	thumbnail_url: string;
-	/**
-	 * Stream title.
-	 */
-	title: string;
-	/**
-	 * ID of the user who is streaming.
-	 */
-	user_id: string;
-	/**
-	 * Display name corresponding to user_id.
-	 */
-	user_name: string;
-	/**
-	 * Login of the user who is streaming.
-	 */
-	user_login: string;
-	/**
-	 * Number of viewers watching the stream at the time of the query.
-	 */
-	viewer_count: number;
-};
-export type TextFragment = { index: number; text: string };
-export type UserToken = {
-	/**
-	 * The access token used to authenticate requests with
-	 */
-	access_token: string;
-	client_id: string;
-	/**
-	 * Username of user associated with this token
-	 */
-	login: string;
-	/**
-	 * User ID of the user associated with this token
-	 */
-	user_id: string;
-	/**
-	 * The refresh token used to extend the life of this user token
-	 */
-	refresh_token: string | null;
-	expires_in: number;
-};
+export type AuthPhase = "unauthorized" | "waitingForDeviceCode" | "waitingForAuth" | "failedAuth" | "authorized"
+export type AuthState = { phase: AuthPhase; device_code: string; token: UserToken | null }
+export type Badge = { 
+/**
+ * An ID that identifies this set of chat badges. For example, Bits or Subscriber.
+ */
+set_id: string; 
+/**
+ * An ID that identifies this version of the badge. The ID can be any value.
+ * For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
+ */
+id: string; 
+/**
+ * URL to png of size 28x28
+ */
+image_url_1x: string; 
+/**
+ * URL to png of size 56x56
+ */
+image_url_2x: string; 
+/**
+ * URL to png of size 112x112
+ */
+image_url_4x: string; 
+/**
+ * Title of the badge
+ */
+title: string; 
+/**
+ * Descrition of the badge
+ */
+description: string }
+export type BadgeRef = { 
+/**
+ * An ID that identifies this set of chat badges. For example, Bits or Subscriber.
+ */
+set_id: string; 
+/**
+ * An ID that identifies this version of the badge. The ID can be any value.
+ * For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
+ */
+id: string; 
+/**
+ * Contains metadata related to the chat badges in the badges tag.
+ * Currently, this tag contains metadata only for subscriber badges, to indicate the number of months the user has been a subscriber.
+ */
+info: string; 
+/**
+ * The info for displaying the badge
+ */
+badge: Badge }
+export type Broadcaster = { 
+/**
+ * An ID that uniquely identifies the broadcaster that this user is following.
+ */
+id: string; 
+/**
+ * The broadcaster’s login name.
+ */
+login: string; 
+/**
+ * The broadcaster’s display name.
+ */
+display_name: string; profile_image_url: string; offline_image_url: string; description: string; created_at: string }
+export type ChannelInfo = { 
+/**
+ * Twitch User ID of this channel owner
+ */
+broadcaster_id: string; 
+/**
+ * Twitch User login of this channel owner
+ */
+broadcaster_login: string; 
+/**
+ * Twitch user display name of this channel owner
+ */
+broadcaster_name: string; 
+/**
+ * Current game ID being played on the channel
+ */
+game_id: string; 
+/**
+ * Name of the game being played on the channel
+ */
+game_name: string; 
+/**
+ * Language of the channel
+ */
+broadcaster_language: string; 
+/**
+ * Title of the stream
+ */
+title: string; 
+/**
+ * Description of the stream
+ */
+description?: string; 
+/**
+ * Stream delay in seconds
+ * 
+ * # Notes
+ * 
+ * This value may not be accurate, it'll only be accurate when the token belongs to the broadcaster and they are partnered.
+ */
+delay?: number; 
+/**
+ * The tags applied to the channel.
+ */
+tags: string[]; 
+/**
+ * Boolean flag indicating if the channel has branded content.
+ */
+is_branded_content: boolean }
+export type ChannelMessage = { ts: string; 
+/**
+ * The broadcaster user ID.
+ */
+broadcaster_user_id: string; 
+/**
+ * The broadcaster display name.
+ */
+broadcaster_user_name: string; 
+/**
+ * The broadcaster login.
+ */
+broadcaster_user_login: string; 
+/**
+ * The user ID of the user that sent the message.
+ */
+chatter_user_id: string; 
+/**
+ * The user name of the user that sent the message.
+ */
+chatter_user_name: string; 
+/**
+ * A UUID that identifies the message.
+ */
+message_id: string; text: string; 
+/**
+ * The parsed fragments of the text field for rendering
+ */
+fragments: Fragment[]; 
+/**
+ * The type of message.
+ */
+message_type: ChannelMessageType; 
+/**
+ * List of chat badges.
+ */
+badges: BadgeRef[]; 
+/**
+ * Metadata if this message is a cheer.
+ * The color of the user's name in the chat room.
+ * This is a hexadecimal RGB color code in the form, `#<RGB>`.
+ * This may be empty if it is never set.
+ */
+color: string; 
+/**
+ * A stable message int that can be used by the UI
+ */
+index: number }
+export type ChannelMessageType = 
+/**
+ * An Unknown Message Type
+ */
+"unknown" | 
+/**
+ * A regular text message
+ */
+"text" | 
+/**
+ * A highlighted message with channel points
+ */
+"channel_points_highlighted" | 
+/**
+ * A message sent with channel points during sub-only mode
+ */
+"channel_points_sub_only" | 
+/**
+ * A first message from a user
+ */
+"user_intro" | 
+/**
+ * A gigantified emote
+ */
+"power_ups_gigantified_emote" | 
+/**
+ * A message sent with effects
+ */
+"power_ups_message_effect"
+export type CheerFragment = { index: number; text: string }
+export type Emote = { 
+/**
+ * ID of the emote.
+ */
+id: string; 
+/**
+ * Name of the emote a viewer types into Twitch chat for the image to appear.
+ */
+name: string; tier: string; 
+/**
+ * If the emote_type is "subscriptions", this indicates the subscriber tier at which the emote is unlocked. Set to an empty string otherwise.
+ * The type of emote.
+ * 
+ * The most common values for custom channel emotes are
+ * 
+ * `subscriptions`: Indicates a custom subscriber emote.
+ * 
+ * `bitstier`: Indicates a custom Bits tier emote.
+ * 
+ * `follower`: Indicates a custom follower emote.
+ */
+emote_type: string; 
+/**
+ * ID of the emote set the emote belongs to.
+ */
+emote_set_id: string; 
+/**
+ * The formats that the emote is available in.
+ */
+format: string[]; 
+/**
+ * The sizes that the emote is available in.
+ */
+scale: string[]; 
+/**
+ * The background themes that the emote is available in.
+ */
+theme_mode: string[] }
+export type EmoteFragment = { index: number; emote: Emote }
+export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment }
+export type StateUpdate = { version: number | null; name: string; value: string }
+export type Stream = { 
+/**
+ * ID of the game being played on the stream.
+ */
+game_id: string; 
+/**
+ * Name of the game being played.
+ */
+game_name: string; 
+/**
+ * Stream ID.
+ */
+id: string; 
+/**
+ * Stream language.
+ */
+language: string; 
+/**
+ * Indicates if the broadcaster has specified their channel contains mature content that may be inappropriate for younger audiences.
+ */
+is_mature: boolean; 
+/**
+ * UTC timestamp.
+ */
+started_at: string; tags: string[]; 
+/**
+ * Thumbnail URL of the stream. All image URLs have variable width and height. You can replace {width} and {height} with any values to get that size image
+ */
+thumbnail_url: string; 
+/**
+ * Stream title.
+ */
+title: string; 
+/**
+ * ID of the user who is streaming.
+ */
+user_id: string; 
+/**
+ * Display name corresponding to user_id.
+ */
+user_name: string; 
+/**
+ * Login of the user who is streaming.
+ */
+user_login: string; 
+/**
+ * Number of viewers watching the stream at the time of the query.
+ */
+viewer_count: number }
+export type TextFragment = { index: number; text: string }
+export type UserToken = { 
+/**
+ * The access token used to authenticate requests with
+ */
+access_token: string; client_id: string; 
+/**
+ * Username of user associated with this token
+ */
+login: string; 
+/**
+ * User ID of the user associated with this token
+ */
+user_id: string; 
+/**
+ * The refresh token used to extend the life of this user token
+ */
+refresh_token: string | null; expires_in: number }
 
 /** tauri-specta globals **/
 
-import { invoke as TAURI_INVOKE, Channel as TAURI_CHANNEL } from '@tauri-apps/api/core';
-import * as TAURI_API_EVENT from '@tauri-apps/api/event';
-import { type WebviewWindow as __WebviewWindow__ } from '@tauri-apps/api/webviewWindow';
+import {
+	invoke as TAURI_INVOKE,
+	Channel as TAURI_CHANNEL,
+} from "@tauri-apps/api/core";
+import * as TAURI_API_EVENT from "@tauri-apps/api/event";
+import { type WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
 
 type __EventObj__<T> = {
-	listen: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
-	once: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
+	listen: (
+		cb: TAURI_API_EVENT.EventCallback<T>,
+	) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
+	once: (
+		cb: TAURI_API_EVENT.EventCallback<T>,
+	) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
 	emit: null extends T
 		? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
 		: (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
 };
 
-export type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error: E };
+export type Result<T, E> =
+	| { status: "ok"; data: T }
+	| { status: "error"; error: E };
 
-function __makeEvents__<T extends Record<string, any>>(mappings: Record<keyof T, string>) {
+function __makeEvents__<T extends Record<string, any>>(
+	mappings: Record<keyof T, string>,
+) {
 	return new Proxy(
 		{} as unknown as {
 			[K in keyof T]: __EventObj__<T[K]> & {
@@ -424,20 +413,20 @@ function __makeEvents__<T extends Record<string, any>>(mappings: Record<keyof T,
 					apply: (_, __, [window]: [__WebviewWindow__]) => ({
 						listen: (arg: any) => window.listen(name, arg),
 						once: (arg: any) => window.once(name, arg),
-						emit: (arg: any) => window.emit(name, arg)
+						emit: (arg: any) => window.emit(name, arg),
 					}),
 					get: (_, command: keyof __EventObj__<any>) => {
 						switch (command) {
-							case 'listen':
+							case "listen":
 								return (arg: any) => TAURI_API_EVENT.listen(name, arg);
-							case 'once':
+							case "once":
 								return (arg: any) => TAURI_API_EVENT.once(name, arg);
-							case 'emit':
+							case "emit":
 								return (arg: any) => TAURI_API_EVENT.emit(name, arg);
 						}
-					}
+					},
 				});
-			}
-		}
+			},
+		},
 	);
 }

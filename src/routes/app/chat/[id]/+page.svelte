@@ -17,7 +17,7 @@
 	import Emote from '$lib/components/chat/+emote.svelte';
 
 	const AUTOSCROLL_BUFFER = 300; // the amount you can scroll up and still not disable auto scroll
-	const CHAT_MESSAGE_LIMIT = 1000;
+	const CHAT_MESSAGE_LIMIT = 500;
 
 	let banner = $state({} as UserToken);
 	let chatDIV = $state<HTMLDivElement>();
@@ -146,7 +146,7 @@
 		bind:this={chatDIV}
 		onscroll={refreshScrollAmount}
 	>
-		{#each msgs as msg}
+		{#each msgs as msg (msg.index)}
 			<div
 				class={cn(
 					'inline-block w-full px-2 py-1 text-sm text-wrap',

@@ -339,7 +339,7 @@ impl From<twitch_api::eventsub::channel::chat::message::MessageType> for Channel
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 pub struct ChannelMessage {
     pub ts: String,
-    pub payload: String,
+    // pub payload: String,
     /// The broadcaster user ID.
     pub broadcaster_user_id: String,
     /// The broadcaster display name.
@@ -405,7 +405,6 @@ impl ChannelMessage {
 
         ChannelMessage {
             ts: ts,
-            payload: raw_msg.clone(),
             broadcaster_user_id: value.broadcaster_user_id.to_string(),
             broadcaster_user_name: value.broadcaster_user_name.to_string(),
             broadcaster_user_login: value.broadcaster_user_login.to_string(),
