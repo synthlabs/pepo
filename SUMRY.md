@@ -1,14 +1,15 @@
-[commit]: # 'ef6abc6256ad0e68c601819436c0799e3e7a7b9a'
+[commit]: # '6dcafdb2e46ec6cd72b9083d517b12924e707814'
 
 Features:
 
-- (core): enable disk syncing for state
+- (ui): support joining channels not on your follow list
+- (ui): add sidebar channel search
 
 Fixes:
 
-- (build): extend patch script
+- (build): fix patch script
 
 Misc:
 
+- (updater): version bump 0.2.12
 - (deps): update deps
-- (updater): version bump 0.2.11
