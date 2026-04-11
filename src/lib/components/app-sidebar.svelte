@@ -5,12 +5,19 @@
 	import * as Sidebar from '$lib/components/ui/sidebar/index.ts';
 	import * as Avatar from '$lib/components/ui/avatar/index.ts';
 	import NavUser from '$lib/components/nav-user.svelte';
+	import SearchForm from '$lib/components/search-form.svelte';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { commands, type AuthState, type Broadcaster } from '$lib/bindings.ts';
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import Logger from '$utils/log';
 
 	let followed_channels: Broadcaster[] = $state([]);
+	let search = $state('');
+	let filtered_channels = $derived(
+		search
+			? followed_channels.filter((c) => c.login.includes(search.toLowerCase()))
+			: followed_channels
+	);
 
 	let authState = new SyncedState<AuthState>('auth_state', {
 		phase: 'unauthorized',
@@ -53,12 +60,15 @@
 </script>
 
 <Sidebar.Root bind:ref {collapsible} {...restProps}>
+	<Sidebar.Header>
+		<SearchForm bind:value={search} />
+	</Sidebar.Header>
 	<Sidebar.Content class="overscroll-none">
 		<Sidebar.Group>
 			<Sidebar.GroupLabel>Following</Sidebar.GroupLabel>
 			<Sidebar.GroupContent>
-				<Sidebar.Menu>
-					{#each followed_channels as item (item.id)}
+				<Sidebar.Menu class="px-2 py-1 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0">
+					{#each filtered_channels as item (item.id)}
 						<Sidebar.MenuItem
 							isActive={`/app/chat/${item.login}` == page.url.pathname}
 							class={`/app/chat/${item.login}` == page.url.pathname ? '' : ''}

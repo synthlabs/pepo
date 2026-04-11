@@ -17,7 +17,7 @@
 	const sidebar = useSidebar();
 </script>
 
-<Sidebar.Menu>
+<Sidebar.Menu class="px-2 py-1 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0">
 	<Sidebar.MenuItem>
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>

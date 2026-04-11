@@ -29,6 +29,9 @@ export default ts.config(
 			parserOptions: {
 				parser: ts.parser
 			}
+		},
+		rules: {
+			'svelte/valid-compile': ['error', { ignoreWarnings: true }]
 		}
 	}
 );
