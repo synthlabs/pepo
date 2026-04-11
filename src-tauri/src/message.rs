@@ -71,7 +71,7 @@ impl Parser {
                     break;
                 }
             }
-            println!("{}", word);
+            debug!("{}", word);
 
             if let None = chars.peek() {
                 if let Some(emote) = cache.get_emote(word.clone()) {

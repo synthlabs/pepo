@@ -362,13 +362,14 @@ async fn login(
 pub fn run() {
     color_eyre::install().expect("failed to install color_eyre");
 
-    tracing_subscriber::fmt()
-        // enable everything
-        .with_max_level(tracing::Level::DEBUG)
-        // sets this to be the default, global collector for this application.
-        .init();
-
     let builder = tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .max_file_size(50_000) // 50 KB per log file
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                .level(log::LevelFilter::Debug)
+                .build(),
+        )
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build());
