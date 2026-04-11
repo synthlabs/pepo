@@ -54,6 +54,7 @@ description = "A Tauri App"
 edition = "2021"
 name = "pepo"
 version = "0.2.10"
+default-run = "pepo"
 
 [profile]
 [profile.dev]

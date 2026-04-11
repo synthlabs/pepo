@@ -49,6 +49,25 @@ tauri_svelte_synced_store::state_handlers!(
     InternalState = "internal_state"
 );
 
+pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .typ::<types::UserToken>()
+        .typ::<types::ChannelMessage>()
+        .typ::<types::AuthState>()
+        .typ::<types::AuthPhase>()
+        .commands(collect_commands![
+            get_followed_streams,
+            get_followed_channels,
+            join_chat,
+            leave_chat,
+            login,
+            logout,
+            send_chat_message,
+            emit_state,
+            update_state,
+        ])
+}
+
 #[tauri::command]
 #[specta::specta]
 fn send_chat_message(
@@ -374,22 +393,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build());
 
-    let handlers = tauri_specta::Builder::<tauri::Wry>::new()
-        .typ::<types::UserToken>()
-        .typ::<types::ChannelMessage>()
-        .typ::<types::AuthState>()
-        .typ::<types::AuthPhase>()
-        // Then register them (separated by a comma)
-        .commands(collect_commands![
-            get_followed_streams,
-            get_followed_channels,
-            join_chat,
-            leave_chat,
-            login,
-            send_chat_message,
-            emit_state,
-            update_state,
-        ]);
+    let handlers = specta_builder();
 
     #[cfg(debug_assertions)] // <- Only export on non-release builds
     handlers
