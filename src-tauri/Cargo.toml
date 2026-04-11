@@ -1,3 +1,12 @@
+[[bin]]
+name = "pepo"
+path = "src/main.rs"
+
+[[bin]]
+name = "gen_bindings"
+path = "src/bin/gen_bindings.rs"
+required-features = ["gen_bindings"]
+
 [build-dependencies]
 [build-dependencies.tauri-build]
 features = []
@@ -48,17 +57,21 @@ version = "~0.7.0"
 features = ["client"]
 version = "0.15.1"
 
+[features]
+gen_bindings = []
+
 [lib]
 crate-type = ["staticlib", "cdylib", "rlib"]
 name = "pepo_lib"
 
 [package]
 authors = ["you"]
+autobins = false
 default-run = "pepo"
 description = "A Tauri App"
 edition = "2021"
 name = "pepo"
-version = "0.2.13"
+version = "0.2.14"
 
 [profile]
 [profile.dev]
