@@ -10,14 +10,18 @@
 	import LogOut from 'lucide-svelte/icons/log-out';
 	import Sparkles from 'lucide-svelte/icons/sparkles';
 
-	let {
-		user,
-		onlogout
-	}: { user: { name: string; provider: string; avatar: string }; onlogout: () => void } = $props();
+	interface Props {
+		user: { name: string; provider: string; avatar: string };
+		onlogout: () => void;
+	}
+
+	let { user, onlogout }: Props = $props();
 	const sidebar = useSidebar();
 </script>
 
-<Sidebar.Menu class="px-2 py-1 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0">
+<Sidebar.Menu
+	class="px-2 py-1 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
+>
 	<Sidebar.MenuItem>
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>

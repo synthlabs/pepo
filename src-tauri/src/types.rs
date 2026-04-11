@@ -255,6 +255,9 @@ pub struct ChannelInfo {
     pub tags: Vec<String>,
     /// Boolean flag indicating if the channel has branded content.
     pub is_branded_content: bool,
+    /// Profile image URL of the broadcaster
+    #[serde(default)]
+    pub profile_image_url: String,
 }
 
 impl From<twitch_api::helix::channels::ChannelInformation> for ChannelInfo {
@@ -271,6 +274,7 @@ impl From<twitch_api::helix::channels::ChannelInformation> for ChannelInfo {
             delay: value.delay,
             tags: value.tags.clone(),
             is_branded_content: value.is_branded_content,
+            profile_image_url: String::new(),
         }
     }
 }

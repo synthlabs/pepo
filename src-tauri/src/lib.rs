@@ -58,6 +58,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .commands(collect_commands![
             get_followed_streams,
             get_followed_channels,
+            get_channel_info,
             join_chat,
             leave_chat,
             login,
@@ -95,6 +96,36 @@ fn send_chat_message(
         Ok(_) => Ok(()),
         Err(e) => Err(format!("request failed: {:?}", e)),
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_channel_info(
+    channel_name: String,
+    token_ref: State<'_, SharedTwitchToken>,
+    client_ref: State<'_, HelixClient<'static, reqwest::Client>>,
+) -> Result<types::ChannelInfo, String> {
+    debug!("get_channel_info: channel={}", channel_name);
+
+    let token = token_ref.lock().await;
+    let client = client_ref.inner();
+
+    let channel = client
+        .get_channel_from_login(&channel_name, &token.clone())
+        .await
+        .map_err(|e| format!("failed to get channel: {:?}", e))?
+        .ok_or_else(|| format!("channel not found: {}", channel_name))?;
+
+    let mut channel_info = types::ChannelInfo::from(channel);
+
+    if let Ok(Some(user)) = client
+        .get_user_from_id(channel_info.broadcaster_id.as_str(), &token.clone())
+        .await
+    {
+        channel_info.profile_image_url = user.profile_image_url.unwrap_or_default();
+    }
+
+    Ok(channel_info)
 }
 
 #[tauri::command]
@@ -145,7 +176,16 @@ async fn join_chat(
         Err(e) => error!("join_chat - {:?}", e),
     };
 
-    Ok(types::ChannelInfo::from(channel))
+    let mut channel_info = types::ChannelInfo::from(channel);
+
+    if let Ok(Some(user)) = client
+        .get_user_from_id(channel_info.broadcaster_id.as_str(), &token.clone())
+        .await
+    {
+        channel_info.profile_image_url = user.profile_image_url.unwrap_or_default();
+    }
+
+    Ok(channel_info)
 }
 
 #[tauri::command]

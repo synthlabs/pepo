@@ -20,6 +20,14 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
+	async getChannelInfo(channelName: string): Promise<Result<ChannelInfo, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('get_channel_info', { channelName }) };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
 	async joinChat(channelName: string): Promise<Result<ChannelInfo, string>> {
 		try {
 			return { status: 'ok', data: await TAURI_INVOKE('join_chat', { channelName }) };
@@ -202,6 +210,10 @@ export type ChannelInfo = {
 	 * Boolean flag indicating if the channel has branded content.
 	 */
 	is_branded_content: boolean;
+	/**
+	 * Profile image URL of the broadcaster
+	 */
+	profile_image_url?: string;
 };
 export type ChannelMessage = {
 	ts: string;
