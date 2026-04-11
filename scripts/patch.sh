@@ -8,6 +8,8 @@ vergo -project-root "${ROOT}" -debug -update
 VERSION=$(jq -r '.version' "${ROOT}/package.json")
 sumry -project-root "${ROOT}" -debug -update
 
+pnpm tauri build --no-sign
+
 git add \
   "${ROOT}/package.json" \
   "${ROOT}/src-tauri/Cargo.toml" \
