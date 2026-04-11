@@ -110,7 +110,7 @@ async fn join_chat(
         .await;
 
     emote_manager
-        .load_channel(channel.broadcaster_id.to_string(), client.clone())
+        .load_channel(channel.broadcaster_id.to_string())
         .await;
 
     match eventsub_manager

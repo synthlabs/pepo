@@ -380,12 +380,7 @@ impl ChannelMessage {
     ) -> Self {
         let raw_msg = serde_json::to_string(&value).unwrap();
         let bm_ref = bm.clone();
-        let emote_cache = em
-            .get_emote_cache(
-                value.broadcaster_user_login.to_string(),
-                "TwitchProvider".to_owned(),
-            )
-            .expect("emote cache to exist");
+        let emote_cache = em.get_emote_cache(value.broadcaster_user_id.to_string());
 
         let _: Vec<_> = value
             .message

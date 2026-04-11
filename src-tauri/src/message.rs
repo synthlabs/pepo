@@ -71,7 +71,6 @@ impl Parser {
                     break;
                 }
             }
-            debug!("{}", word);
 
             if let None = chars.peek() {
                 if let Some(emote) = cache.get_emote(word.clone()) {
@@ -108,9 +107,10 @@ impl Parser {
         }
 
         debug!(
+            msg = message,
+            msg_len = message.len(),
             providers = ?cache.providers(),
             fragments = result.len(),
-            msg_len = message.len(),
             duration = ?_start_time.elapsed(),
             "parsed message into fragments",
         );

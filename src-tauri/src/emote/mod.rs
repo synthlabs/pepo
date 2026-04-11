@@ -30,6 +30,8 @@ pub struct Emote {
     pub scale: Vec<String>,
     /// The background themes that the emote is available in.
     pub theme_mode: Vec<String>,
+    /// Fully constructed URL for the emote image.
+    pub url: String,
 }
 
 impl Emote {
@@ -37,13 +39,21 @@ impl Emote {
         name: String,
         value: &twitch_api::eventsub::channel::chat::Emote,
     ) -> Self {
+        let id = value.id.to_string();
+        let format: Vec<String> = value.format.iter().map(|v| v.to_string()).collect();
+        let fmt = format.last().cloned().unwrap_or_else(|| "static".to_string());
+        let url = format!(
+            "https://static-cdn.jtvnw.net/emoticons/v2/{}/{}/dark/3.0",
+            id, fmt
+        );
         Emote {
-            id: value.id.to_string(),
+            id,
             name: name.clone(),
             emote_set_id: value.emote_set_id.to_string(),
-            format: value.format.iter().map(|v| v.to_string()).collect(),
+            format,
             theme_mode: vec!["light".to_string(), "dark".to_string()],
             scale: vec!["1.0".to_string(), "2.0".to_string(), "3.0".to_string()],
+            url,
             ..Default::default()
         }
     }
@@ -51,13 +61,25 @@ impl Emote {
 
 impl From<&twitch_api::helix::chat::GlobalEmote> for Emote {
     fn from(value: &twitch_api::helix::chat::GlobalEmote) -> Self {
+        let id = value.id.to_string();
+        let format: Vec<String> = value.format.iter().map(|v| v.to_string()).collect();
+        let scale: Vec<String> = value.scale.iter().map(|v| v.to_string()).collect();
+        let theme_mode: Vec<String> = value.theme_mode.iter().map(|v| v.to_string()).collect();
+        let fmt = format.last().cloned().unwrap_or_else(|| "static".to_string());
+        let tm = theme_mode.last().cloned().unwrap_or_else(|| "dark".to_string());
+        let sc = scale.last().cloned().unwrap_or_else(|| "1.0".to_string());
+        let url = format!(
+            "https://static-cdn.jtvnw.net/emoticons/v2/{}/{}/{}/{}",
+            id, fmt, tm, sc
+        );
         Emote {
-            id: value.id.to_string(),
+            id,
             name: value.name.clone(),
             emote_set_id: providers::GLOBAL_SCOPE_KEY.to_owned(),
-            format: value.format.iter().map(|v| v.to_string()).collect(),
-            scale: value.scale.iter().map(|v| v.to_string()).collect(),
-            theme_mode: value.theme_mode.iter().map(|v| v.to_string()).collect(),
+            format,
+            scale,
+            theme_mode,
+            url,
             ..Default::default()
         }
     }

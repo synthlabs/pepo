@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use tracing::debug;
+use tracing::{debug, trace};
 
 use crate::emote::Emote;
 
@@ -51,7 +51,7 @@ impl EmoteCacheTrait for EmoteCache {
 
     fn get_emote(&self, name: String) -> Option<Emote> {
         let store = self.store.read().unwrap();
-        debug!(
+        trace!(
             scope = self.name(),
             name = name.clone(),
             cache_size = store.len(),
@@ -66,7 +66,7 @@ impl EmoteCacheTrait for EmoteCache {
 
     fn has_emote(&self, name: String) -> bool {
         let store = self.store.read().unwrap();
-        debug!(
+        trace!(
             scope = self.name(),
             name = name.clone(),
             cache_size = store.len(),
@@ -74,5 +74,50 @@ impl EmoteCacheTrait for EmoteCache {
         );
 
         store.contains_key(&name)
+    }
+}
+
+/// A cache that checks an ordered list of caches, returning the first match.
+pub struct MultiCache {
+    caches: Vec<EmoteCache>,
+}
+
+impl MultiCache {
+    pub fn new(caches: Vec<EmoteCache>) -> Self {
+        MultiCache { caches }
+    }
+
+    pub fn into_caches(self) -> Vec<EmoteCache> {
+        self.caches
+    }
+}
+
+impl EmoteCacheTrait for MultiCache {
+    fn name(&self) -> String {
+        let names: Vec<String> = self.caches.iter().map(|c| c.name()).collect();
+        format!("multi:[{}]", names.join(", "))
+    }
+
+    fn providers(&self) -> Vec<String> {
+        self.caches.iter().flat_map(|c| c.providers()).collect()
+    }
+
+    fn set_emote(&self, name: String, emote: Emote) {
+        if let Some(first) = self.caches.first() {
+            first.set_emote(name, emote);
+        }
+    }
+
+    fn get_emote(&self, name: String) -> Option<Emote> {
+        for cache in &self.caches {
+            if let Some(emote) = cache.get_emote(name.clone()) {
+                return Some(emote);
+            }
+        }
+        None
+    }
+
+    fn has_emote(&self, name: String) -> bool {
+        self.caches.iter().any(|c| c.has_emote(name.clone()))
     }
 }
