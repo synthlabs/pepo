@@ -10,7 +10,10 @@
 	import LogOut from 'lucide-svelte/icons/log-out';
 	import Sparkles from 'lucide-svelte/icons/sparkles';
 
-	let { user }: { user: { name: string; provider: string; avatar: string } } = $props();
+	let {
+		user,
+		onlogout
+	}: { user: { name: string; provider: string; avatar: string }; onlogout: () => void } = $props();
 	const sidebar = useSidebar();
 </script>
 
@@ -77,7 +80,7 @@
 					</DropdownMenu.Item>
 				</DropdownMenu.Group>
 				<DropdownMenu.Separator />
-				<DropdownMenu.Item>
+				<DropdownMenu.Item onclick={onlogout}>
 					<LogOut />
 					Log out
 				</DropdownMenu.Item>

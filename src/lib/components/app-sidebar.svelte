@@ -1,14 +1,37 @@
 <script lang="ts">
 	import { onMount, type ComponentProps } from 'svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.ts';
 	import * as Avatar from '$lib/components/ui/avatar/index.ts';
 	import NavUser from '$lib/components/nav-user.svelte';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
-	import { commands, type Broadcaster } from '$lib/bindings.ts';
+	import { commands, type AuthState, type Broadcaster } from '$lib/bindings.ts';
+	import { SyncedState } from 'tauri-svelte-synced-store';
 	import Logger from '$utils/log';
 
 	let followed_channels: Broadcaster[] = $state([]);
+
+	let authState = new SyncedState<AuthState>('auth_state', {
+		phase: 'unauthorized',
+		device_code: '',
+		token: null
+	});
+
+	let user = $derived({
+		name: authState.obj.token?.login ?? '',
+		provider: 'Twitch',
+		avatar: authState.obj.token?.profile_image_url ?? ''
+	});
+
+	async function logout() {
+		let result = await commands.logout();
+		if (result.status == 'ok') {
+			goto('/');
+		} else {
+			Logger.error('logout failed', result.error);
+		}
+	}
 
 	onMount(async () => {
 		let channels = await commands.getFollowedChannels();
@@ -21,13 +44,6 @@
 	});
 
 	$inspect(page.url.pathname);
-
-	const user = {
-		name: 'sir_xin',
-		provider: 'Twitch',
-		avatar:
-			'https://static-cdn.jtvnw.net/jtv_user_pictures/07cc2a6a-b550-4ae3-abf3-c13d4f5c2d74-profile_image-300x300.png'
-	};
 
 	let {
 		ref = $bindable(null),
@@ -66,7 +82,7 @@
 	</Sidebar.Content>
 	<Sidebar.Footer>
 		<Separator class="" />
-		<NavUser {user} />
+		<NavUser {user} onlogout={logout} />
 	</Sidebar.Footer>
 	<Sidebar.Rail />
 </Sidebar.Root>

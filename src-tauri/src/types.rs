@@ -47,6 +47,8 @@ pub struct UserToken {
     /// The refresh token used to extend the life of this user token
     pub refresh_token: Option<String>,
     pub expires_in: u64,
+    #[serde(default)]
+    pub profile_image_url: String,
 }
 
 impl core::fmt::Debug for UserToken {
@@ -59,6 +61,7 @@ impl core::fmt::Debug for UserToken {
                 user_id,
                 refresh_token: _,
                 expires_in,
+                profile_image_url,
             } => f
                 .debug_struct("UserToken")
                 .field("access_token", &"********")
@@ -67,6 +70,7 @@ impl core::fmt::Debug for UserToken {
                 .field("user_id", &user_id)
                 .field("refresh_token", &"********")
                 .field("expires_in", &expires_in)
+                .field("profile_image_url", &profile_image_url)
                 .finish(),
         }
     }
@@ -88,6 +92,7 @@ impl UserToken {
                     .to_string(),
             ),
             expires_in: token.expires_in().as_secs(),
+            profile_image_url: String::new(),
         }
     }
 
@@ -124,6 +129,7 @@ impl From<twitch_oauth2::UserToken> for UserToken {
                     .secret()
                     .to_string(),
             ),
+            profile_image_url: String::new(),
         }
     }
 }

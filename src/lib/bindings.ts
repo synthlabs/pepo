@@ -44,6 +44,14 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
+	async logout(): Promise<Result<null, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('logout') };
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
 	async sendChatMessage(broadcasterId: string, message: string): Promise<Result<null, string>> {
 		try {
 			return {
@@ -394,6 +402,7 @@ export type UserToken = {
 	 */
 	refresh_token: string | null;
 	expires_in: number;
+	profile_image_url?: string;
 };
 
 /** tauri-specta globals **/

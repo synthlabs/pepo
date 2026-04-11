@@ -261,7 +261,7 @@ async fn login(
     }
 
     let twitch_token: twitch_oauth2::UserToken;
-    let user_token: types::UserToken;
+    let mut user_token: types::UserToken;
     if token_manager.clone().is_token_valid().await {
         debug!("token is already valid");
         twitch_token = token_manager.clone().get_token().await;
@@ -288,6 +288,14 @@ async fn login(
 
         twitch_token = token_manager.clone().finish_device_code_flow().await;
         user_token = types::UserToken::from_twitch_token(twitch_token.clone());
+    }
+
+    // Fetch the user's profile image
+    if let Ok(Some(user_info)) = client
+        .get_user_from_id(&twitch_token.user_id, &twitch_token)
+        .await
+    {
+        user_token.profile_image_url = user_info.profile_image_url.unwrap_or_default();
     }
 
     {
@@ -375,6 +383,23 @@ async fn login(
     token_manager.manage();
 
     Ok(user_token)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn logout(app_handle: AppHandle, state_syncer: State<'_, StateSyncer>) -> Result<(), String> {
+    info!("logout");
+
+    {
+        let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
+        let mut auth_state = auth_state_ref.lock().unwrap();
+        *auth_state = AuthState::default();
+    }
+
+    let store = app_handle.store("account.json").unwrap();
+    store.delete("token");
+
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
