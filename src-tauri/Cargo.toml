@@ -18,7 +18,6 @@ tauri-plugin-log = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 tauri-plugin-store = "2"
-tracing = { version = "0.1.41", features = ["log"] }
 tracing-subscriber = "0.3.19"
 [dependencies.serde]
 features = ["derive"]
@@ -37,6 +36,9 @@ version = "1.43.0"
 [dependencies.tokio-tungstenite]
 features = ["native-tls", "url"]
 version = "~0.28"
+[dependencies.tracing]
+features = ["log"]
+version = "0.1.41"
 [dependencies.twitch_api]
 features = ["eventsub", "helix", "reqwest"]
 version = "~0.7.0"
@@ -50,11 +52,11 @@ name = "pepo_lib"
 
 [package]
 authors = ["you"]
+default-run = "pepo"
 description = "A Tauri App"
 edition = "2021"
 name = "pepo"
-version = "0.2.10"
-default-run = "pepo"
+version = "0.2.11"
 
 [profile]
 [profile.dev]

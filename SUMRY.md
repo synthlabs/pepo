@@ -1,25 +1,17 @@
-[commit]: # 'd7fcef7660ccb91b2600b8eda19acf002b9b4189'
+[commit]: # '3978feb0fe919d764b1c28a62886c50c4c4a5697'
 
 Features:
 
-- (chat:emotes): initial limited support for native twitch emotes
+- (core): enable disk syncing for state
+- (auth): support explicitly logging out
+- (build): add dedicated binding generation bin
+- (chat:emotes): add basic bttv emote support
+- (dev): support tauri log plugin for persisting logs
 
 Fixes:
 
-- (chat): properly key chat lines so svelte can track them
-- (build): correctly tag release version
-- (build): try different escaping in action
-- (updater): include link in update notice
-- (updater): add back in the auto updater hook
-- (deps): fix dep version mismatch
-- (build): fix tauri signing env vars
 
 Misc:
 
+- (deps): update deps
 - add gitattributes
-- (deps): update deps
-- (deps): update deps
-- (updater): version bump
-- (build): trying to get auto-updater working
-- (build): version bump
-- (deps): update deps
