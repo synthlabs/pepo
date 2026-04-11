@@ -498,7 +498,9 @@ pub fn run() {
 
             info!("made client");
 
-            let state_syncer = StateSyncer::new(StateSyncerConfig::default(), app.handle().clone());
+            let mut sync_cfg = StateSyncerConfig::default();
+            sync_cfg.sync_to_disk = true;
+            let state_syncer = StateSyncer::new(sync_cfg, app.handle().clone());
 
             state_syncer.set("auth_state", AuthState::default());
             state_syncer.set("internal_state", internal_state);
