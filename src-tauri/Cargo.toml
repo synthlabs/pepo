@@ -2,9 +2,8 @@
 name = "pepo"
 path = "src/main.rs"
 
-[[bin]]
+[[example]]
 name = "gen_bindings"
-path = "src/bin/gen_bindings.rs"
 required-features = ["gen_bindings"]
 
 [build-dependencies]
