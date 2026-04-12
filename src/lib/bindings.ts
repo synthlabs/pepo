@@ -339,6 +339,14 @@ export type Emote = {
 	 * Fully constructed URL for the emote image.
 	 */
 	url: string;
+	/**
+	 * The provider this emote comes from (e.g. "Twitch", "BTTV").
+	 */
+	provider: string;
+	/**
+	 * The scope of the emote (e.g. "Global", "Channel").
+	 */
+	scope: string;
 };
 export type EmoteFragment = { index: number; emote: Emote };
 export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment };

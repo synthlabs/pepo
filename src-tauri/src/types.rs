@@ -399,9 +399,12 @@ impl ChannelMessage {
             .map(|f| {
                 if let twitch_api::eventsub::channel::chat::Fragment::Emote { text, emote } = f {
                     if !emote_cache.has_emote(text.to_string()) {
+                        let scope = em
+                            .resolve_user_name(&emote.owner_id.to_string())
+                            .unwrap_or_else(|| "Channel".to_string());
                         emote_cache.set_emote(
                             text.to_string(),
-                            Emote::from_emote_fragment(text.to_string(), emote),
+                            Emote::from_emote_fragment(text.to_string(), emote, scope),
                         );
                     }
                 }

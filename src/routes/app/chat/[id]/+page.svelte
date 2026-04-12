@@ -15,6 +15,7 @@
 	import Badges from '$lib/components/chat/+badges.svelte';
 	import Logger from '$utils/log';
 	import Emote from '$lib/components/chat/+emote.svelte';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 
 	const AUTOSCROLL_BUFFER = 300; // the amount you can scroll up and still not disable auto scroll
 	const CHAT_MESSAGE_LIMIT = 500;
@@ -140,6 +141,7 @@
 	};
 </script>
 
+<Tooltip.Provider delayDuration={200}>
 <div class="flex h-full w-full flex-col flex-nowrap">
 	<div
 		class="grow overflow-x-hidden overflow-y-auto"
@@ -216,3 +218,4 @@
 		</form>
 	</div>
 </div>
+</Tooltip.Provider>

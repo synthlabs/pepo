@@ -32,12 +32,17 @@ pub struct Emote {
     pub theme_mode: Vec<String>,
     /// Fully constructed URL for the emote image.
     pub url: String,
+    /// The provider this emote comes from (e.g. "Twitch", "BTTV").
+    pub provider: String,
+    /// The scope of the emote (e.g. "Global", "Channel").
+    pub scope: String,
 }
 
 impl Emote {
     pub fn from_emote_fragment(
         name: String,
         value: &twitch_api::eventsub::channel::chat::Emote,
+        scope: String,
     ) -> Self {
         let id = value.id.to_string();
         let format: Vec<String> = value.format.iter().map(|v| v.to_string()).collect();
@@ -54,6 +59,8 @@ impl Emote {
             theme_mode: vec!["light".to_string(), "dark".to_string()],
             scale: vec!["1.0".to_string(), "2.0".to_string(), "3.0".to_string()],
             url,
+            provider: "Twitch".to_string(),
+            scope,
             ..Default::default()
         }
     }
@@ -80,6 +87,8 @@ impl From<&twitch_api::helix::chat::GlobalEmote> for Emote {
             scale,
             theme_mode,
             url,
+            provider: "Twitch".to_string(),
+            scope: "Global".to_string(),
             ..Default::default()
         }
     }

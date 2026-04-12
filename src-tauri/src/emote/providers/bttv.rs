@@ -34,7 +34,7 @@ struct BttvChannelResponse {
     shared_emotes: Vec<BttvEmote>,
 }
 
-fn bttv_to_emote(bttv: &BttvEmote) -> Emote {
+fn bttv_to_emote(bttv: &BttvEmote, scope: &str) -> Emote {
     let format = if bttv.animated {
         "animated".to_string()
     } else {
@@ -46,6 +46,8 @@ fn bttv_to_emote(bttv: &BttvEmote) -> Emote {
         url: format!("{}/{}/3x", BTTV_CDN_BASE, bttv.id),
         format: vec![format],
         scale: vec!["1x".to_string(), "2x".to_string(), "3x".to_string()],
+        provider: "BTTV".to_string(),
+        scope: scope.to_string(),
         ..Default::default()
     }
 }
@@ -79,7 +81,7 @@ impl EmoteProvider<MultiCache> for BttvProvider {
             Ok(emotes) => {
                 debug!(count = emotes.len(), "loaded bttv global emotes");
                 for bttv in &emotes {
-                    cache.set_emote(bttv.code.clone(), bttv_to_emote(bttv));
+                    cache.set_emote(bttv.code.clone(), bttv_to_emote(bttv, "Global"));
                 }
             }
             Err(err) => error!("failed to load bttv global emotes: err={}", err),
@@ -111,7 +113,7 @@ impl EmoteProvider<MultiCache> for BttvProvider {
                     "loaded bttv channel emotes"
                 );
                 for bttv in resp.channel_emotes.iter().chain(resp.shared_emotes.iter()) {
-                    cache.set_emote(bttv.code.clone(), bttv_to_emote(bttv));
+                    cache.set_emote(bttv.code.clone(), bttv_to_emote(bttv, "Channel"));
                 }
             }
             Err(err) => error!(
