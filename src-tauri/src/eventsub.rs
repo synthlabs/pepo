@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tokio_tungstenite::tungstenite;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 use twitch_api::types::UserId;
 use twitch_api::{
     eventsub::{self, Event, EventsubWebsocketData, ReconnectPayload, SessionData, WelcomePayload},
@@ -316,7 +316,14 @@ impl EventSubManager {
             tungstenite::Message::Text(s) => {
                 trace!("process_message: {:?}", s);
                 // Parse the message into a [twitch_api::eventsub::EventsubWebsocketData]
-                match Event::parse_websocket(&s)? {
+                let parsed = match Event::parse_websocket(&s) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        warn!("process_message - skipping unparseable message: {e}");
+                        return Ok(());
+                    }
+                };
+                match parsed {
                     EventsubWebsocketData::Welcome {
                         payload: WelcomePayload { session },
                         ..
