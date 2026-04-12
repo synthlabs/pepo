@@ -7,17 +7,36 @@
 	import NavUser from '$lib/components/nav-user.svelte';
 	import SearchForm from '$lib/components/search-form.svelte';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
-	import { commands, type AuthState, type Broadcaster, type ChannelInfo } from '$lib/bindings.ts';
+	import {
+		commands,
+		type AuthState,
+		type Broadcaster,
+		type ChannelCache,
+		type ChannelInfo,
+		type ChannelStatus
+	} from '$lib/bindings.ts';
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import Logger from '$utils/log';
+	import Users from '@lucide/svelte/icons/users';
 
 	let followed_channels: Broadcaster[] = $state([]);
 	let extra_channel: ChannelInfo | null = $state(null);
 	let search = $state('');
+	let channelCache = new SyncedState<ChannelCache>('channel_cache', { channels: {} });
 	let filtered_channels = $derived(
-		search
+		(search
 			? followed_channels.filter((c) => c.login.includes(search.toLowerCase()))
 			: followed_channels
+		).toSorted((a, b) => {
+			const aStatus = channelCache.obj.channels[a.login];
+			const bStatus = channelCache.obj.channels[b.login];
+			const aLive = aStatus?.is_live ? 1 : 0;
+			const bLive = bStatus?.is_live ? 1 : 0;
+			if (aLive !== bLive) return bLive - aLive;
+			const aViewers = aStatus?.stream?.viewer_count ?? 0;
+			const bViewers = bStatus?.stream?.viewer_count ?? 0;
+			return bViewers - aViewers;
+		})
 	);
 	let current_channel = $derived(page.url.pathname.match(/^\/app\/chat\/(.+)$/)?.[1] ?? null);
 	let is_extra = $derived(
@@ -74,16 +93,42 @@
 	}: ComponentProps<typeof Sidebar.Root> = $props();
 </script>
 
-{#snippet channelItem(login: string, displayName: string, imageUrl: string | undefined)}
+{#snippet channelItem(
+	login: string,
+	displayName: string,
+	imageUrl: string | undefined,
+	status: ChannelStatus | null
+)}
 	<Sidebar.MenuItem isActive={`/app/chat/${login}` === page.url.pathname}>
 		<Sidebar.MenuButton size="lg" class="p-2">
 			{#snippet child({ props })}
 				<a href={`/app/chat/${login}`} {...props}>
-					<Avatar.Root class="size-8">
-						<Avatar.Image src={imageUrl} alt={displayName} />
-						<Avatar.Fallback>{displayName}</Avatar.Fallback>
-					</Avatar.Root>
-					<span>{displayName}</span>
+					<div class="relative">
+						<Avatar.Root class="size-8">
+							<Avatar.Image src={imageUrl} alt={displayName} />
+							<Avatar.Fallback>{displayName}</Avatar.Fallback>
+						</Avatar.Root>
+						{#if status?.is_live}
+							<span
+								class="bg-primary ring-sidebar absolute -top-0.5 -right-0.5 size-2 rounded-full ring-2"
+							></span>
+						{/if}
+					</div>
+					<div class="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+						<span>{displayName}</span>
+						{#if status?.stream}
+							<span class="text-muted-foreground block truncate text-xs">{status.stream.title}</span
+							>
+						{/if}
+					</div>
+					{#if status?.stream}
+						<div
+							class="text-muted-foreground flex shrink-0 items-center gap-1 text-xs group-data-[collapsible=icon]:hidden"
+						>
+							<Users class="size-3" />
+							{status.stream.viewer_count.toLocaleString()}
+						</div>
+					{/if}
 				</a>
 			{/snippet}
 		</Sidebar.MenuButton>
@@ -101,7 +146,12 @@
 					<Sidebar.Menu
 						class="px-2 py-1 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
 					>
-						{@render channelItem(extra_channel.broadcaster_login, extra_channel.broadcaster_name, extra_channel.profile_image_url)}
+						{@render channelItem(
+							extra_channel.broadcaster_login,
+							extra_channel.broadcaster_name,
+							extra_channel.profile_image_url,
+							channelCache.obj.channels[extra_channel.broadcaster_login] ?? null
+						)}
 					</Sidebar.Menu>
 				</Sidebar.GroupContent>
 			</Sidebar.Group>
@@ -113,7 +163,12 @@
 					class="px-2 py-1 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
 				>
 					{#each filtered_channels as item (item.id)}
-						{@render channelItem(item.login, item.display_name, item.profile_image_url)}
+						{@render channelItem(
+							item.login,
+							item.display_name,
+							item.profile_image_url,
+							channelCache.obj.channels[item.login] ?? null
+						)}
 					{/each}
 				</Sidebar.Menu>
 			</Sidebar.GroupContent>

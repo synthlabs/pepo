@@ -19,7 +19,7 @@
 
 <Sidebar.Provider>
 	<AppSidebar collapsible="icon"></AppSidebar>
-	<main class="flex min-w-0 max-h-dvh w-full max-w-full flex-col flex-nowrap">
+	<main class="flex max-h-dvh w-full max-w-full min-w-0 flex-col flex-nowrap">
 		<header class="flex h-12 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b px-4">
 			<Sidebar.Trigger class="-ml-1" />
 
