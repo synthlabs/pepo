@@ -1,15 +1,17 @@
-[commit]: # '3911ca4290c62c2aefd4a27df9f4aa845fb22d4a'
+[commit]: # 'fb37df74cf8176eec5614eca09f670476ca567c0'
 
 Features:
 
+- (ui): add title tooltip
+- (ui): add loading state to post-login
+- (ui): show channel status and info in sidebar and header
+- (core): add channel status cache for the ui to use
 - (chat:emotes): support 7tv emotes
-- (chat:emotes): support ffz emotes
-- (chat:emotes): tooltip on hover showing name and source
 
 Fixes:
 
-- (build): move gen_bindings out of a bin
+- (core): gracefully handle new evensub notifcation types
 
 Misc:
 
-- (updater): version bump 0.2.16
+- (updater): version bump 0.2.17

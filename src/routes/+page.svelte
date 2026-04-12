@@ -45,8 +45,6 @@
 </script>
 
 <div class="bg-sidebar flex h-screen w-full flex-col items-center justify-center">
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<button
 		class={cn(
 			'text-muted-foreground flex flex-col items-center justify-center gap-2 rounded-lg px-8 py-2 text-center hover:underline',
