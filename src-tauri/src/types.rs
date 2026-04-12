@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::error;
 use twitch_api::{client::CompatError, HelixClient};
@@ -161,6 +162,21 @@ pub struct Stream {
     pub user_login: String,
     /// Number of viewers watching the stream at the time of the query.
     pub viewer_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type, Default)]
+pub struct ChannelCache {
+    pub channels: HashMap<String, ChannelStatus>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type, Default)]
+pub struct ChannelStatus {
+    pub broadcaster_id: String,
+    pub login: String,
+    pub display_name: String,
+    pub profile_image_url: String,
+    pub is_live: bool,
+    pub stream: Option<Stream>,
 }
 
 impl From<twitch_api::helix::streams::Stream> for Stream {

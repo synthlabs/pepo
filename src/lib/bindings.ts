@@ -161,6 +161,7 @@ export type Broadcaster = {
 	description: string;
 	created_at: string;
 };
+export type ChannelCache = { channels: Partial<{ [key in string]: ChannelStatus }> };
 export type ChannelInfo = {
 	/**
 	 * Twitch User ID of this channel owner
@@ -295,6 +296,14 @@ export type ChannelMessageType =
 	 * A message sent with effects
 	 */
 	| 'power_ups_message_effect';
+export type ChannelStatus = {
+	broadcaster_id: string;
+	login: string;
+	display_name: string;
+	profile_image_url: string;
+	is_live: boolean;
+	stream: Stream | null;
+};
 export type CheerFragment = { index: number; text: string };
 export type Emote = {
 	/**

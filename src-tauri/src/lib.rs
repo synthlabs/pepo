@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 #[cfg(debug_assertions)]
 use specta_typescript::Typescript;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 #[cfg(target_os = "macos")]
@@ -22,7 +23,7 @@ use twitch_oauth2::tokens::errors::ValidationError;
 
 use crate::badgemanager::BadgeManager;
 use crate::emotemanager::EmoteManager;
-use crate::types::AuthState;
+use crate::types::{AuthState, ChannelCache};
 
 mod badgemanager;
 mod emote;
@@ -43,10 +44,12 @@ type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
 type SharedEventSubManager = Mutex<EventSubManager>;
 type SharedBadgeManager = Mutex<BadgeManager>;
 type SharedEmoteManager = Mutex<EmoteManager>;
+type SharedPollHandle = Mutex<Option<tauri::async_runtime::JoinHandle<()>>>;
 
 tauri_svelte_synced_store::state_handlers!(
     AuthState = "auth_state",
-    InternalState = "internal_state"
+    InternalState = "internal_state",
+    ChannelCache = "channel_cache"
 );
 
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
@@ -55,6 +58,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .typ::<types::ChannelMessage>()
         .typ::<types::AuthState>()
         .typ::<types::AuthPhase>()
+        .typ::<types::ChannelCache>()
+        .typ::<types::ChannelStatus>()
         .commands(collect_commands![
             get_followed_streams,
             get_followed_channels,
@@ -274,6 +279,80 @@ fn get_followed_channels(
     Ok(users.into_iter().map(types::Broadcaster::from).collect())
 }
 
+async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), String> {
+    let token = {
+        let token_state = app_handle.state::<SharedTwitchToken>();
+        let guard = token_state.lock().await;
+        guard.clone()
+    };
+    let client = app_handle.state::<HelixClient<'static, reqwest::Client>>();
+    let state_syncer = app_handle.state::<StateSyncer>();
+
+    info!("polling channel cache");
+
+    let channels: Vec<twitch_api::helix::channels::FollowedBroadcaster> = client
+        .get_followed_channels(token.user_id.to_string(), &token)
+        .try_collect()
+        .await
+        .map_err(|e| format!("failed to get followed channels: {}", e))?;
+
+    let mut users: HashMap<String, twitch_api::helix::users::User> = HashMap::new();
+    for chunk in channels.chunks(100) {
+        let ids: Vec<twitch_api::types::UserId> =
+            chunk.iter().map(|b| b.broadcaster_id.clone()).collect();
+        let chunk_users: Vec<twitch_api::helix::users::User> = client
+            .get_users_from_ids(&twitch_api::types::Collection::from(ids), &token)
+            .try_collect()
+            .await
+            .map_err(|e| format!("failed to get users: {}", e))?;
+        for user in chunk_users {
+            users.insert(user.login.to_string(), user);
+        }
+    }
+
+    let streams: Vec<twitch_api::helix::streams::Stream> = client
+        .get_followed_streams(&token)
+        .try_collect()
+        .await
+        .map_err(|e| format!("failed to get followed streams: {}", e))?;
+
+    let live_streams: HashMap<String, types::Stream> = streams
+        .into_iter()
+        .map(|s| (s.user_login.to_string(), types::Stream::from(s)))
+        .collect();
+
+    let mut cache = types::ChannelCache::default();
+    for channel in &channels {
+        let login = channel.broadcaster_login.to_string();
+        let user = users.get(&login);
+        let stream = live_streams.get(&login).cloned();
+        let is_live = stream.is_some();
+
+        cache.channels.insert(
+            login.clone(),
+            types::ChannelStatus {
+                broadcaster_id: channel.broadcaster_id.to_string(),
+                login: login.clone(),
+                display_name: channel.broadcaster_name.to_string(),
+                profile_image_url: user
+                    .and_then(|u| u.profile_image_url.clone())
+                    .unwrap_or_default(),
+                is_live,
+                stream,
+            },
+        );
+    }
+
+    info!(
+        "channel cache updated: {} channels, {} live",
+        cache.channels.len(),
+        cache.channels.values().filter(|c| c.is_live).count()
+    );
+    state_syncer.update::<types::ChannelCache>("channel_cache", cache, true);
+
+    Ok(())
+}
+
 #[tauri::command]
 #[specta::specta]
 async fn login(
@@ -422,6 +501,32 @@ async fn login(
     store.set("token", json!(user_token));
     token_manager.manage();
 
+    // Initial channel cache poll
+    if let Err(e) = poll_channel_cache(&app_handle).await {
+        error!("initial channel cache poll failed: {}", e);
+    }
+
+    // Spawn recurring poll loop
+    let poll_app = app_handle.clone();
+    let handle = tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            if let Err(e) = poll_channel_cache(&poll_app).await {
+                error!("channel cache poll failed: {}", e);
+            }
+        }
+    });
+
+    // Store handle, aborting any existing poll task
+    {
+        let poll_handle_state = app_handle.state::<SharedPollHandle>();
+        let mut poll_handle = poll_handle_state.lock().await;
+        if let Some(existing) = poll_handle.take() {
+            existing.abort();
+        }
+        *poll_handle = Some(handle);
+    }
+
     Ok(user_token)
 }
 
@@ -430,11 +535,22 @@ async fn login(
 fn logout(app_handle: AppHandle, state_syncer: State<'_, StateSyncer>) -> Result<(), String> {
     info!("logout");
 
+    // Abort poll task
+    {
+        let poll_handle_state = app_handle.state::<SharedPollHandle>();
+        let mut poll_handle = tauri::async_runtime::block_on(poll_handle_state.lock());
+        if let Some(handle) = poll_handle.take() {
+            handle.abort();
+        }
+    }
+
     {
         let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
         let mut auth_state = auth_state_ref.lock().unwrap();
         *auth_state = AuthState::default();
     }
+
+    state_syncer.update::<types::ChannelCache>("channel_cache", types::ChannelCache::default(), true);
 
     let store = app_handle.store("account.json").unwrap();
     store.delete("token");
@@ -539,12 +655,20 @@ pub fn run() {
             info!("made client");
 
             let mut sync_cfg = StateSyncerConfig::default();
-            sync_cfg.sync_to_disk = true;
+            sync_cfg.persist_keys.insert("auth_state".to_owned(), true);
+            sync_cfg
+                .persist_keys
+                .insert("internal_state".to_owned(), true);
+            sync_cfg
+                .persist_keys
+                .insert("channel_cache".to_owned(), true);
             let state_syncer = StateSyncer::new(sync_cfg, app.handle().clone());
 
             state_syncer.set("auth_state", AuthState::default());
             state_syncer.set("internal_state", internal_state);
+            state_syncer.set("channel_cache", ChannelCache::default());
             app.manage::<StateSyncer>(state_syncer);
+            app.manage::<SharedPollHandle>(Mutex::new(None));
 
             app.manage(client);
 
