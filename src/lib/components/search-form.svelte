@@ -51,7 +51,7 @@
 	</div>
 {/snippet}
 
-{#if sidebar.state === 'collapsed'}
+{#if sidebar.state === 'collapsed' && !sidebar.isMobile}
 	<Sidebar.Group class="py-0">
 		<Sidebar.GroupContent class="flex justify-center">
 			<Popover.Root bind:open={popoverOpen}>

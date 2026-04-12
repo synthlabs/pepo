@@ -142,80 +142,63 @@
 </script>
 
 <Tooltip.Provider delayDuration={200}>
-<div class="flex h-full w-full flex-col flex-nowrap">
-	<div
-		class="grow overflow-x-hidden overflow-y-auto"
-		bind:this={chatDIV}
-		onscroll={refreshScrollAmount}
-	>
-		{#each msgs as msg (msg.index)}
-			<div
-				class={cn(
-					'inline-block w-full px-2 py-1 text-sm text-wrap',
-					msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary'
-				)}
-			>
-				<span class="text-xs whitespace-nowrap text-gray-500"
-					>{new Date(msg.ts).toLocaleTimeString('en', { timeStyle: 'short' })}</span
-				>
-				<Badges badges={msg.badges} />
-				<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
-					>{msg.chatter_user_name}</span
-				>:
-				{#each msg.fragments as fragment}
-					{#if 'Text' in fragment}
-						{fragment.Text.text}
-					{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
-						<Emote emote={fragment.Emote.emote} />
-					{/if}
-				{/each}
-			</div>
-			{#if showSeparator}
-				<Separator class="" />
-			{/if}
-		{/each}
-	</div>
-	{#if isScrolled}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="bg-primary cursor-pointer text-center" onclick={scrollToBottom}>
-			More Messages Below
-		</div>
-	{/if}
-	{#if errorState.active}
+	<div class="flex h-full w-full flex-col flex-nowrap">
 		<div
-			transition:slide={{ easing: quadInOut, duration: 250 }}
-			class="cursor-none bg-red-950 text-center"
+			class="grow overflow-x-hidden overflow-y-auto"
+			bind:this={chatDIV}
+			onscroll={refreshScrollAmount}
 		>
-			{errorState.msg}
-		</div>
-	{/if}
-	<div class="relative border-t">
-		<form onsubmit={submitForm}>
-			<input
-				bind:value={chatInput}
-				type="text"
-				class="bg-background placeholder:text-muted-foreground h-full w-full p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
-				placeholder="Send message as sir_xin"
-			/>
-			<!-- svelte-ignore a11y_consider_explicit_label -->
-			<button type="submit" class="absolute inset-y-0 right-0 flex cursor-pointer items-center p-3">
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke-width="1.5"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					class="h-5 w-5 fill-none stroke-slate-100"
+			{#each msgs as msg (msg.index)}
+				<div
+					class={cn(
+						'inline-block w-full px-2 py-1 text-sm text-wrap',
+						msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary'
+					)}
 				>
-					<circle cx="12" cy="12" r="10" />
-					<path d="M8 14s1.5 2 4 2 4-2 4-2" />
-					<line x1="9" x2="9.01" y1="9" y2="9" />
-					<line x1="15" x2="15.01" y1="9" y2="9" />
-				</svg>
-			</button>
-		</form>
+					<span class="text-xs whitespace-nowrap text-gray-500"
+						>{new Date(msg.ts).toLocaleTimeString('en', { timeStyle: 'short' })}</span
+					>
+					<Badges badges={msg.badges} />
+					<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
+						>{msg.chatter_user_name}</span
+					>:
+					{#each msg.fragments as fragment}
+						{#if 'Text' in fragment}
+							{fragment.Text.text}
+						{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
+							<Emote emote={fragment.Emote.emote} />
+						{/if}
+					{/each}
+				</div>
+				{#if showSeparator}
+					<Separator class="" />
+				{/if}
+			{/each}
+		</div>
+		{#if isScrolled}
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="bg-primary cursor-pointer text-center" onclick={scrollToBottom}>
+				More Messages Below
+			</div>
+		{/if}
+		{#if errorState.active}
+			<div
+				transition:slide={{ easing: quadInOut, duration: 250 }}
+				class=" cursor-not-allowed bg-red-950 text-center"
+			>
+				{errorState.msg}
+			</div>
+		{/if}
+		<div class="relative border-t">
+			<form onsubmit={submitForm}>
+				<input
+					bind:value={chatInput}
+					type="text"
+					class="bg-background placeholder:text-muted-foreground h-full w-full p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+					placeholder="Send message as sir_xin"
+				/>
+			</form>
+		</div>
 	</div>
-</div>
 </Tooltip.Provider>
