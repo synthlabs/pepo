@@ -8,4 +8,4 @@
 	let { emote }: Props = $props();
 </script>
 
-<img class="inline size-6" src={emote.url} alt={emote.name} />
+<img class="inline h-7 min-w-7" src={emote.url} alt={emote.name} />
