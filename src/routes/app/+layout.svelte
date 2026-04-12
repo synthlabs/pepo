@@ -8,6 +8,7 @@
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import type { ChannelCache } from '$lib/bindings.ts';
 	import Users from '@lucide/svelte/icons/users';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.ts';
 
 	let { children } = $props();
 
@@ -28,9 +29,18 @@
 			{/if}
 
 			{#if channelStatus?.stream}
-				<span class="text-muted-foreground min-w-0 flex-1 truncate text-sm">
-					{channelStatus.stream.title}
-				</span>
+				<Tooltip.Provider>
+					<Tooltip.Root>
+						<Tooltip.Trigger
+							class="text-muted-foreground min-w-0 flex-1 cursor-default truncate text-left text-sm"
+						>
+							{channelStatus.stream.title}
+						</Tooltip.Trigger>
+						<Tooltip.Content>
+							{channelStatus.stream.title}
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</Tooltip.Provider>
 				<span class="text-muted-foreground flex shrink-0 items-center gap-1 text-sm">
 					<Users class="size-3.5" />
 					{channelStatus.stream.viewer_count.toLocaleString()}
