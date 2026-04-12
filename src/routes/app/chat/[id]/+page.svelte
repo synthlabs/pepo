@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
-	import { cubicOut, quadInOut } from 'svelte/easing';
+	import { quadInOut } from 'svelte/easing';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import {
