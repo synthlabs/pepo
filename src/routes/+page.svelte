@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { SyncedState } from 'tauri-svelte-synced-store';
-	import { CircleCheckBig } from '@lucide/svelte';
+	import { CircleCheckBig, LoaderCircle } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { commands, type AuthState } from '$lib/bindings';
 	import { cn } from '$lib/utils.js';
@@ -16,7 +16,19 @@
 		authState.obj.phase === 'waitingForDeviceCode' || authState.obj.phase === 'waitingForAuth'
 	);
 
-	$inspect(loading);
+	let showPostAuthSpinner = $state(false);
+	let postAuthTimer: ReturnType<typeof setTimeout> | undefined;
+
+	$effect(() => {
+		if (authState.obj.phase === 'authorized') {
+			postAuthTimer = setTimeout(() => {
+				showPostAuthSpinner = true;
+			}, 2000);
+		} else {
+			showPostAuthSpinner = false;
+			clearTimeout(postAuthTimer);
+		}
+	});
 
 	async function login() {
 		Logger.debug('login hook');
@@ -53,7 +65,11 @@
 					>{authState.obj.device_code}</span
 				>
 			{:else if authState.obj.phase === 'authorized'}
-				<CircleCheckBig class="text-primary" />
+				{#if showPostAuthSpinner}
+					<LoaderCircle class="text-primary animate-spin" />
+				{:else}
+					<CircleCheckBig class="text-primary" />
+				{/if}
 			{:else}
 				<span class="pb-2"> Login </span>
 			{/if}
