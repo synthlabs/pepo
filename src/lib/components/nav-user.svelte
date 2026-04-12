@@ -3,12 +3,9 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
-	import BadgeCheck from 'lucide-svelte/icons/badge-check';
 	import Bell from 'lucide-svelte/icons/bell';
 	import ChevronsUpDown from 'lucide-svelte/icons/chevrons-up-down';
-	import CreditCard from 'lucide-svelte/icons/credit-card';
 	import LogOut from 'lucide-svelte/icons/log-out';
-	import Sparkles from 'lucide-svelte/icons/sparkles';
 
 	interface Props {
 		user: { name: string; provider: string; avatar: string };
@@ -61,7 +58,6 @@
 						</div>
 					</div>
 				</DropdownMenu.Label>
-				<DropdownMenu.Separator />
 				<DropdownMenu.Separator />
 				<DropdownMenu.Group>
 					<DropdownMenu.Item>

@@ -517,7 +517,7 @@ async fn login(
     // Global emotes (providers use block_in_place internally)
     {
         let emote_manager = emote_manager.clone();
-        std::thread::spawn(move || {
+        tauri::async_runtime::spawn(async move {
             emote_manager.load_global();
         });
     }
