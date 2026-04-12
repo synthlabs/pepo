@@ -44,9 +44,9 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async login(): Promise<Result<UserToken, string>> {
+	async login(quick: boolean): Promise<Result<UserToken, string>> {
 		try {
-			return { status: 'ok', data: await TAURI_INVOKE('login') };
+			return { status: 'ok', data: await TAURI_INVOKE('login', { quick }) };
 		} catch (e) {
 			if (e instanceof Error) throw e;
 			else return { status: 'error', error: e as any };

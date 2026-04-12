@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import { CircleCheckBig, LoaderCircle } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
@@ -30,12 +31,19 @@
 		}
 	});
 
+	onMount(async () => {
+		let result = await commands.login(true);
+		if (result.status == 'ok') {
+			goto('/app');
+		}
+	});
+
 	async function login() {
 		Logger.debug('login hook');
 		authState.obj.phase = 'waitingForDeviceCode';
 		await authState.sync();
 
-		let result = await commands.login();
+		let result = await commands.login(false);
 		if (result.status == 'ok') {
 			goto('/app');
 		} else {

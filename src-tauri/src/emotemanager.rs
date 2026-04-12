@@ -26,30 +26,34 @@ pub struct EmoteManager {
 }
 
 impl EmoteManager {
-    pub fn new(
+    pub fn empty(
         client: twitch_api::HelixClient<'static, reqwest::Client>,
         token: twitch_oauth2::UserToken,
-    ) -> Result<EmoteManager, String> {
+    ) -> EmoteManager {
+        EmoteManager {
+            providers: Arc::new(Mutex::new(Vec::new())),
+            client,
+            token,
+            name_cache: Default::default(),
+        }
+    }
+
+    pub fn load_global(&self) {
         let http_client = reqwest::Client::new();
 
         let providers: Vec<Box<dyn EmoteProvider<MultiCache> + Send>> = vec![
-            Box::new(TwitchProvider::new(client.clone(), token.clone())),
+            Box::new(TwitchProvider::new(self.client.clone(), self.token.clone())),
             Box::new(BttvProvider::new()),
             Box::new(FfzProvider::new()),
             Box::new(SeventvProvider::new()),
         ];
 
-        let _: Vec<_> = providers
-            .iter()
-            .map(|p| p.load_global_emotes(&http_client))
-            .collect();
+        for p in &providers {
+            p.load_global_emotes(&http_client);
+        }
 
-        Ok(EmoteManager {
-            providers: Arc::new(Mutex::new(providers)),
-            client,
-            token,
-            name_cache: Default::default(),
-        })
+        let mut store = self.providers.lock().unwrap();
+        *store = providers;
     }
 
     pub async fn load_channel(self, broadcaster_id: String) {

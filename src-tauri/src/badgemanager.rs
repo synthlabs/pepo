@@ -75,35 +75,35 @@ pub struct BadgeManager {
 }
 
 impl BadgeManager {
-    pub async fn new(
-        client: twitch_api::HelixClient<'static, reqwest::Client>,
-        token: twitch_oauth2::UserToken,
-    ) -> Result<BadgeManager, String> {
-        let mut global_badges: HashMap<String, BadgeSet> = Default::default();
+    pub fn empty(token: twitch_oauth2::UserToken) -> BadgeManager {
+        BadgeManager {
+            token,
+            global_badges: Arc::new(Mutex::new(HashMap::new())),
+            scoped_badges: Default::default(),
+        }
+    }
 
+    pub async fn load_global(
+        &self,
+        client: twitch_api::HelixClient<'static, reqwest::Client>,
+    ) -> Result<(), String> {
         let req = get_global_chat_badges::GetGlobalChatBadgesRequest::new();
 
         debug!("getting global badges");
         let response: Vec<twitch_api::helix::chat::BadgeSet> =
-            match client.req_get(req, &token).await {
+            match client.req_get(req, &self.token).await {
                 Ok(resp) => resp.data,
                 Err(err) => return Err(err.to_string()),
             };
 
-        let _: Vec<_> = response
-            .iter()
-            .map(|b| {
-                let new_b = BadgeSet::from(b.clone());
-                debug!("adding badgeset: badgeset={:?}", b);
-                global_badges.insert(b.set_id.to_string(), new_b.clone());
-            })
-            .collect();
+        let mut global_badges = self.global_badges.lock().await;
+        for b in &response {
+            let new_b = BadgeSet::from(b.clone());
+            debug!("adding badgeset: badgeset={:?}", b);
+            global_badges.insert(b.set_id.to_string(), new_b);
+        }
 
-        Ok(BadgeManager {
-            token: token.clone(),
-            global_badges: Arc::new(Mutex::new(global_badges)),
-            scoped_badges: Default::default(),
-        })
+        Ok(())
     }
 
     pub async fn load_channel(
