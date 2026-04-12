@@ -7,7 +7,7 @@ use tracing::{debug, error};
 
 use crate::emote::{
     cache::{EmoteCacheTrait, MultiCache},
-    providers::{bttv::BttvProvider, twitch::TwitchProvider, EmoteProvider},
+    providers::{bttv::BttvProvider, ffz::FfzProvider, twitch::TwitchProvider, EmoteProvider},
 };
 
 // TODO: switch to a RWLock instead of Mutex
@@ -32,6 +32,7 @@ impl EmoteManager {
         let providers: Vec<Box<dyn EmoteProvider<MultiCache> + Send>> = vec![
             Box::new(TwitchProvider::new(client.clone(), token.clone())),
             Box::new(BttvProvider::new()),
+            Box::new(FfzProvider::new()),
         ];
 
         let _: Vec<_> = providers

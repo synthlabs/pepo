@@ -1,6 +1,7 @@
 use crate::emote::cache::EmoteCacheTrait;
 
 pub mod bttv;
+pub mod ffz;
 pub mod twitch;
 
 pub const GLOBAL_SCOPE_KEY: &str = "_global";
