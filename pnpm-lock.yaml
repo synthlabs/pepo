@@ -34,7 +34,7 @@ importers:
         version: 2.4.1
       tauri-svelte-synced-store:
         specifier: github:synthlabs/tauri-svelte-synced-store
-        version: https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/1a990a43eafb42b54de2dde4d26c325f906d6477(@tauri-apps/api@2.10.1)(svelte@5.55.3(@typescript-eslint/types@8.58.1))
+        version: https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/92ae40be15cb0729e529e526ea80f0f2abdf1e09(@tauri-apps/api@2.10.1)(svelte@5.55.3(@typescript-eslint/types@8.58.1))
     devDependencies:
       '@eslint/compat':
         specifier: ^1.4.1
@@ -1591,8 +1591,8 @@ packages:
     resolution: {integrity: sha512-1MOpMXuhGzGL5TTCZFItxCc0AARf1EZFQkGqMm7ERKj8+Hgr5oLvJOVFcC+lRmR8hCe2S3jC4T5D7Vg/d7/fhA==}
     engines: {node: '>=6'}
 
-  tauri-svelte-synced-store@https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/1a990a43eafb42b54de2dde4d26c325f906d6477:
-    resolution: {tarball: https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/1a990a43eafb42b54de2dde4d26c325f906d6477}
+  tauri-svelte-synced-store@https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/92ae40be15cb0729e529e526ea80f0f2abdf1e09:
+    resolution: {tarball: https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/92ae40be15cb0729e529e526ea80f0f2abdf1e09}
     version: 0.0.2
     peerDependencies:
       '@tauri-apps/api': ^2.7.0
@@ -2986,7 +2986,7 @@ snapshots:
 
   tapable@2.3.2: {}
 
-  tauri-svelte-synced-store@https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/1a990a43eafb42b54de2dde4d26c325f906d6477(@tauri-apps/api@2.10.1)(svelte@5.55.3(@typescript-eslint/types@8.58.1)):
+  tauri-svelte-synced-store@https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/92ae40be15cb0729e529e526ea80f0f2abdf1e09(@tauri-apps/api@2.10.1)(svelte@5.55.3(@typescript-eslint/types@8.58.1)):
     dependencies:
       '@tauri-apps/api': 2.10.1
       svelte: 5.55.3(@typescript-eslint/types@8.58.1)

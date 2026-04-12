@@ -359,6 +359,7 @@ export type Emote = {
 };
 export type EmoteFragment = { index: number; emote: Emote };
 export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment };
+export type InternalState = { version: string; name: string; sidebar_open: boolean };
 export type StateUpdate = { version: number | null; name: string; value: string };
 export type Stream = {
 	/**

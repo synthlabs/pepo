@@ -6,19 +6,27 @@
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
 	import { SyncedState } from 'tauri-svelte-synced-store';
-	import type { ChannelCache } from '$lib/bindings.ts';
+	import type { ChannelCache, InternalState } from '$lib/bindings.ts';
 	import Users from '@lucide/svelte/icons/users';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.ts';
 
 	let { children } = $props();
 
 	let channelCache = new SyncedState<ChannelCache>('channel_cache', { channels: {} });
+	let internalState = new SyncedState<InternalState>('internal_state', {
+		version: '',
+		name: '',
+		sidebar_open: true
+	});
 	let channelStatus = $derived(
 		page.params.id ? (channelCache.obj.channels[page.params.id] ?? null) : null
 	);
 </script>
 
-<Sidebar.Provider>
+<Sidebar.Provider
+	bind:open={internalState.obj.sidebar_open}
+	onOpenChange={() => internalState.sync()}
+>
 	<AppSidebar collapsible="icon"></AppSidebar>
 	<main class="flex max-h-dvh w-full max-w-full min-w-0 flex-col flex-nowrap">
 		<header class="flex h-12 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b px-4">

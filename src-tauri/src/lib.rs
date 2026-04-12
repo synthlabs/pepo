@@ -33,10 +33,21 @@ mod message;
 mod token;
 mod types;
 
-#[derive(Clone, Debug, Deserialize, Serialize, specta::Type, Default)]
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 struct InternalState {
     version: String,
     name: String,
+    sidebar_open: bool,
+}
+
+impl Default for InternalState {
+    fn default() -> Self {
+        Self {
+            version: String::new(),
+            name: String::new(),
+            sidebar_open: true,
+        }
+    }
 }
 
 type SharedUserToken = Mutex<types::UserToken>;
@@ -60,6 +71,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .typ::<types::AuthPhase>()
         .typ::<types::ChannelCache>()
         .typ::<types::ChannelStatus>()
+        .typ::<InternalState>()
         .commands(collect_commands![
             get_followed_streams,
             get_followed_channels,
@@ -607,7 +619,17 @@ pub fn run() {
             // This is also required if you want to use events
             handlers.mount_events(app);
 
-            let mut internal_state = InternalState::default();
+            let mut sync_cfg = StateSyncerConfig::default();
+            sync_cfg.persist_keys.insert("auth_state".to_owned(), true);
+            sync_cfg
+                .persist_keys
+                .insert("internal_state".to_owned(), true);
+            sync_cfg
+                .persist_keys
+                .insert("channel_cache".to_owned(), true);
+            let state_syncer = StateSyncer::new(sync_cfg, app.handle().clone());
+
+            let mut internal_state: InternalState = state_syncer.load("internal_state");
             internal_state.version = app.package_info().version.to_string();
             internal_state.name = app.package_info().name.to_string();
 
@@ -653,16 +675,6 @@ pub fn run() {
                 );
 
             info!("made client");
-
-            let mut sync_cfg = StateSyncerConfig::default();
-            sync_cfg.persist_keys.insert("auth_state".to_owned(), true);
-            sync_cfg
-                .persist_keys
-                .insert("internal_state".to_owned(), true);
-            sync_cfg
-                .persist_keys
-                .insert("channel_cache".to_owned(), true);
-            let state_syncer = StateSyncer::new(sync_cfg, app.handle().clone());
 
             state_syncer.set("auth_state", AuthState::default());
             state_syncer.set("internal_state", internal_state);
