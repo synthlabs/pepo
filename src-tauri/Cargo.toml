@@ -2,10 +2,6 @@
 name = "pepo"
 path = "src/main.rs"
 
-[[example]]
-name = "gen_bindings"
-required-features = ["gen_bindings"]
-
 [build-dependencies]
 [build-dependencies.tauri-build]
 features = []
@@ -56,6 +52,10 @@ version = "~0.7.0"
 features = ["client"]
 version = "0.15.1"
 
+[[example]]
+name = "gen_bindings"
+required-features = ["gen_bindings"]
+
 [features]
 gen_bindings = []
 
@@ -70,7 +70,7 @@ default-run = "pepo"
 description = "A Tauri App"
 edition = "2021"
 name = "pepo"
-version = "0.2.16"
+version = "0.2.17"
 
 [profile]
 [profile.dev]
