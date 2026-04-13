@@ -1,16 +1,16 @@
-[commit]: # 'b9851696b767f772e01103d6636ec397f0061275'
+[commit]: # '4a42cb25303e0caa1e63d3e1345292d27c2720d7'
 
 Features:
 
-- (ui): remember sidebar state
-- (ui): add title tooltip
+- (ui): add basic emote menu and colon search
 
 Fixes:
 
 - (core): properly spawn background task for emotes
-- (ui): show search bar on menu in portrait mode
-- (core): login is now much quicker
 
 Misc:
 
-- (updater): version bump 0.2.18
+- (misc): update readme
+- (misc): random cleanup
+- (misc): update readme
+- (updater): version bump 0.2.19
