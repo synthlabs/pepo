@@ -76,6 +76,21 @@ export const commands = {
 	},
 	async updateState(state: StateUpdate): Promise<boolean> {
 		return await TAURI_INVOKE('update_state', { state });
+	},
+	async searchEmotes(
+		query: string,
+		broadcasterId: string,
+		limit: number | null
+	): Promise<Result<Emote[], string>> {
+		try {
+			return {
+				status: 'ok',
+				data: await TAURI_INVOKE('search_emotes', { query, broadcasterId, limit })
+			};
+		} catch (e) {
+			if (e instanceof Error) throw e;
+			else return { status: 'error', error: e as any };
+		}
 	}
 };
 

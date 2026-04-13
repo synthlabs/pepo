@@ -22,6 +22,7 @@ use twitch_api::{client::ClientDefault, HelixClient};
 use twitch_oauth2::tokens::errors::ValidationError;
 
 use crate::badgemanager::BadgeManager;
+use crate::emote::cache::EmoteCacheTrait;
 use crate::emotemanager::EmoteManager;
 use crate::types::{AuthState, ChannelCache};
 
@@ -83,6 +84,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             send_chat_message,
             emit_state,
             update_state,
+            search_emotes,
         ])
 }
 
@@ -113,6 +115,19 @@ fn send_chat_message(
         Ok(_) => Ok(()),
         Err(e) => Err(format!("request failed: {:?}", e)),
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn search_emotes(
+    query: String,
+    broadcaster_id: String,
+    limit: Option<usize>,
+    emote_manager_ref: State<'_, SharedEmoteManager>,
+) -> Result<Vec<emote::Emote>, String> {
+    let emote_manager = emote_manager_ref.lock().await.clone();
+    let cache = emote_manager.get_emote_cache(broadcaster_id);
+    Ok(cache.search_emotes(&query, limit.unwrap_or(25)))
 }
 
 #[tauri::command]
@@ -482,7 +497,7 @@ async fn login(
     store.set("token", json!(user_token.clone()));
     token_manager.manage();
 
-    // --- Background tasks: everything below runs after login returns ---
+    // --- Background tasks ---
 
     // Profile image fetch
     {
@@ -514,11 +529,12 @@ async fn login(
         });
     }
 
-    // Global emotes (providers use block_in_place internally)
+    // Global + user emotes
     {
         let emote_manager = emote_manager.clone();
         tauri::async_runtime::spawn(async move {
             emote_manager.load_global();
+            emote_manager.load_user_emotes();
         });
     }
 

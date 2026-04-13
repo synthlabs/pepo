@@ -20,6 +20,7 @@ pub trait EmoteCacheTrait {
     fn set_emote(&self, name: String, emote: Emote);
     fn get_emote(&self, name: String) -> Option<Emote>;
     fn has_emote(&self, name: String) -> bool;
+    fn search_emotes(&self, query: &str, limit: usize) -> Vec<Emote>;
 }
 
 impl EmoteCache {
@@ -75,6 +76,17 @@ impl EmoteCacheTrait for EmoteCache {
 
         store.contains_key(&name)
     }
+
+    fn search_emotes(&self, query: &str, limit: usize) -> Vec<Emote> {
+        let store = self.store.read().unwrap();
+        let query_lower = query.to_lowercase();
+        store
+            .iter()
+            .filter(|(name, _)| name.to_lowercase().contains(&query_lower))
+            .take(limit)
+            .map(|(_, emote)| emote.clone())
+            .collect()
+    }
 }
 
 /// A cache that checks an ordered list of caches, returning the first match.
@@ -119,5 +131,16 @@ impl EmoteCacheTrait for MultiCache {
 
     fn has_emote(&self, name: String) -> bool {
         self.caches.iter().any(|c| c.has_emote(name.clone()))
+    }
+
+    fn search_emotes(&self, query: &str, limit: usize) -> Vec<Emote> {
+        let mut results: Vec<Emote> = self
+            .caches
+            .iter()
+            .flat_map(|c| c.search_emotes(query, limit))
+            .collect();
+        results.dedup_by(|a, b| a.name == b.name);
+        results.truncate(limit);
+        results
     }
 }

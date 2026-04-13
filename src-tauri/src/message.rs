@@ -162,6 +162,10 @@ mod tests {
         fn has_emote(&self, _name: String) -> bool {
             false
         }
+
+        fn search_emotes(&self, _query: &str, _limit: usize) -> Vec<Emote> {
+            vec![]
+        }
     }
 
     #[test]

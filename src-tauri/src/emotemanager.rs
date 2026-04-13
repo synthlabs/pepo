@@ -66,6 +66,13 @@ impl EmoteManager {
             .collect();
     }
 
+    pub fn load_user_emotes(&self) {
+        let providers = self.providers.lock().unwrap();
+        for p in providers.iter() {
+            p.load_user_emotes();
+        }
+    }
+
     pub fn get_emote_cache(&self, scope: String) -> MultiCache {
         let providers = self.providers.lock().unwrap();
         let caches: Vec<_> = providers

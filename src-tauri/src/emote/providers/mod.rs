@@ -11,5 +11,6 @@ pub trait EmoteProvider<T: EmoteCacheTrait> {
     fn get_name(&self) -> String;
     fn load_global_emotes(&self, client: &reqwest::Client);
     fn load_channel_emotes(&self, broadcaster_id: String, client: &reqwest::Client);
+    fn load_user_emotes(&self) {}
     fn get_emote_cache(&self, scope: String) -> T;
 }

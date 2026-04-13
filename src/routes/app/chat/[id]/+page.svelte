@@ -15,7 +15,10 @@
 	import Badges from '$lib/components/chat/+badges.svelte';
 	import Logger from '$utils/log';
 	import Emote from '$lib/components/chat/+emote.svelte';
+	import EmotePicker from '$lib/components/chat/+emote-picker.svelte';
+	import Smile from '@lucide/svelte/icons/smile';
 	import * as Tooltip from '$lib/components/ui/tooltip';
+	import type { Emote as EmoteType } from '$lib/bindings.ts';
 
 	const AUTOSCROLL_BUFFER = 300; // the amount you can scroll up and still not disable auto scroll
 	const CHAT_MESSAGE_LIMIT = 500;
@@ -35,6 +38,14 @@
 	let hasInput = $derived(chatInput.length > 0);
 	let errorState = $state({ active: false, msg: '' });
 	let channelInfo = $state({} as ChannelInfo);
+
+	// Emote picker state
+	let emotePickerVisible = $state(false);
+	let emoteResults: EmoteType[] = $state([]);
+	let selectedEmoteIndex = $state(0);
+	let pickerOpenedByButton = $state(false);
+	let dismissedQuery = $state('');
+	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 	let un_sub: UnlistenFn;
 
@@ -139,6 +150,91 @@
 			errorState.msg = '';
 		}, timeout);
 	};
+
+	// Colon macro: extract ":query" from end of input
+	let colonMatch = $derived.by(() => {
+		const match = chatInput.match(/(^|\s):(\w{2,})$/);
+		if (match) return match[2];
+		return null;
+	});
+
+	// React to colon match changes
+	$effect(() => {
+		if (pickerOpenedByButton) return;
+		// only run the search if it's not an input that was dismissed by the user
+		if (colonMatch && colonMatch !== dismissedQuery) {
+			clearTimeout(searchDebounceTimer);
+			const query = colonMatch;
+			searchDebounceTimer = setTimeout(async () => {
+				const result = await commands.searchEmotes(query, channelInfo.broadcaster_id, null);
+				if (result.status === 'ok' && colonMatch === query) {
+					emoteResults = result.data;
+					selectedEmoteIndex = 0;
+					emotePickerVisible = emoteResults.length > 0;
+				}
+			}, 75);
+		} else if (!colonMatch) {
+			emotePickerVisible = false;
+			emoteResults = [];
+		}
+	});
+
+	// Reset dismissed query when user types past it
+	$effect(() => {
+		if (!colonMatch || (dismissedQuery && !colonMatch.startsWith(dismissedQuery))) {
+			dismissedQuery = '';
+		}
+	});
+
+	const insertEmote = (emote: EmoteType) => {
+		if (!pickerOpenedByButton && colonMatch) {
+			const colonIndex = chatInput.lastIndexOf(':');
+			chatInput = chatInput.substring(0, colonIndex) + emote.name + ' ';
+		} else {
+			chatInput =
+				chatInput + (chatInput.endsWith(' ') || chatInput === '' ? '' : ' ') + emote.name + ' ';
+		}
+		emotePickerVisible = false;
+		pickerOpenedByButton = false;
+		selectedEmoteIndex = 0;
+	};
+
+	const toggleEmotePicker = async () => {
+		if (emotePickerVisible && pickerOpenedByButton) {
+			emotePickerVisible = false;
+			pickerOpenedByButton = false;
+			return;
+		}
+
+		pickerOpenedByButton = true;
+		const result = await commands.searchEmotes('', channelInfo.broadcaster_id, 50);
+		if (result.status === 'ok') {
+			emoteResults = result.data;
+			selectedEmoteIndex = 0;
+			emotePickerVisible = emoteResults.length > 0;
+		}
+	};
+
+	const handleKeydown = (event: KeyboardEvent) => {
+		if (!emotePickerVisible) return;
+
+		if (event.key === 'Tab') {
+			event.preventDefault();
+			if (event.shiftKey) {
+				selectedEmoteIndex = (selectedEmoteIndex - 1 + emoteResults.length) % emoteResults.length;
+			} else {
+				selectedEmoteIndex = (selectedEmoteIndex + 1) % emoteResults.length;
+			}
+		} else if (event.key === 'Enter') {
+			event.preventDefault();
+			insertEmote(emoteResults[selectedEmoteIndex]);
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			if (colonMatch) dismissedQuery = colonMatch;
+			emotePickerVisible = false;
+			pickerOpenedByButton = false;
+		}
+	};
 </script>
 
 <Tooltip.Provider delayDuration={200}>
@@ -191,13 +287,27 @@
 			</div>
 		{/if}
 		<div class="relative border-t">
-			<form onsubmit={submitForm}>
+			<EmotePicker
+				emotes={emoteResults}
+				selectedIndex={selectedEmoteIndex}
+				onselect={insertEmote}
+				visible={emotePickerVisible}
+			/>
+			<form onsubmit={submitForm} class="flex items-center">
 				<input
 					bind:value={chatInput}
+					onkeydown={handleKeydown}
 					type="text"
-					class="bg-background placeholder:text-muted-foreground h-full w-full p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+					class="bg-background placeholder:text-muted-foreground h-full flex-1 p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
 					placeholder="Send message as sir_xin"
 				/>
+				<button
+					type="button"
+					class="text-muted-foreground hover:text-foreground p-2"
+					onclick={toggleEmotePicker}
+				>
+					<Smile class="h-5 w-5" />
+				</button>
 			</form>
 		</div>
 	</div>

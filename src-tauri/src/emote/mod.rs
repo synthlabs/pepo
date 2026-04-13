@@ -66,6 +66,33 @@ impl Emote {
     }
 }
 
+impl From<&twitch_api::helix::chat::UserEmote> for Emote {
+    fn from(value: &twitch_api::helix::chat::UserEmote) -> Self {
+        let id = value.id.to_string();
+        let format: Vec<String> = value.format.iter().map(|v| v.to_string()).collect();
+        let scale: Vec<String> = value.scale.iter().map(|v| v.to_string()).collect();
+        let theme_mode: Vec<String> = value.theme_mode.iter().map(|v| v.to_string()).collect();
+        let fmt = format.last().cloned().unwrap_or_else(|| "static".to_string());
+        let url = format!(
+            "https://static-cdn.jtvnw.net/emoticons/v2/{}/{}/dark/3.0",
+            id, fmt
+        );
+        Emote {
+            id,
+            name: value.name.clone(),
+            emote_type: value.emote_type.clone(),
+            emote_set_id: value.emote_set_id.to_string(),
+            format,
+            scale,
+            theme_mode,
+            url,
+            provider: "Twitch".to_string(),
+            scope: "Subscription".to_string(),
+            ..Default::default()
+        }
+    }
+}
+
 impl From<&twitch_api::helix::chat::GlobalEmote> for Emote {
     fn from(value: &twitch_api::helix::chat::GlobalEmote) -> Self {
         let id = value.id.to_string();
