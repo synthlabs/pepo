@@ -1,17 +1,16 @@
-[commit]: # 'fb37df74cf8176eec5614eca09f670476ca567c0'
+[commit]: # 'b9851696b767f772e01103d6636ec397f0061275'
 
 Features:
 
+- (ui): remember sidebar state
 - (ui): add title tooltip
-- (ui): add loading state to post-login
-- (ui): show channel status and info in sidebar and header
-- (core): add channel status cache for the ui to use
-- (chat:emotes): support 7tv emotes
 
 Fixes:
 
-- (core): gracefully handle new evensub notifcation types
+- (core): properly spawn background task for emotes
+- (ui): show search bar on menu in portrait mode
+- (core): login is now much quicker
 
 Misc:
 
-- (updater): version bump 0.2.17
+- (updater): version bump 0.2.18
