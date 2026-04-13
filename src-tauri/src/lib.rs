@@ -636,9 +636,15 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
-                .max_file_size(50_000) // 50 KB per log file
+                .max_file_size(1_000_000) // 1 MB per log file
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
                 .level(log::LevelFilter::Debug)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                        file_name: None,
+                    }),
+                ])
                 .build(),
         )
         .plugin(tauri_plugin_process::init())
