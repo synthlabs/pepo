@@ -6,11 +6,20 @@
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
 	import { SyncedState } from 'tauri-svelte-synced-store';
-	import type { ChannelCache, InternalState } from '$lib/bindings.ts';
+	import type { AuthState, ChannelCache, InternalState } from '$lib/bindings.ts';
 	import Users from '@lucide/svelte/icons/users';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.ts';
+	import { goto } from '$app/navigation';
 
 	let { children } = $props();
+
+	let authState = new SyncedState<AuthState>('auth_state');
+
+	$effect(() => {
+		if (authState.ready && authState.obj.phase === 'unauthorized') {
+			goto('/');
+		}
+	});
 
 	let channelCache = new SyncedState<ChannelCache>('channel_cache', { channels: {} });
 	let internalState = new SyncedState<InternalState>('internal_state', {
