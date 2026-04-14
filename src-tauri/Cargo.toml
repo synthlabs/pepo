@@ -70,7 +70,7 @@ default-run = "pepo"
 description = "A Tauri App"
 edition = "2021"
 name = "pepo"
-version = "0.2.20"
+version = "0.2.21"
 
 [profile]
 [profile.dev]
@@ -88,5 +88,8 @@ tauri-plugin-window-state = "2"
 [target."cfg(target_os = \"macos\")".dependencies]
 objc2 = "0.6.2"
 objc2-app-kit = "0.3.1"
+[target."cfg(target_os = \"windows\")"]
 [target."cfg(target_os = \"windows\")".dependencies]
-windows = { version = "0.61", features = ["Win32_Graphics_Dwm"] }
+[target."cfg(target_os = \"windows\")".dependencies.windows]
+features = ["Win32_Graphics_Dwm"]
+version = "0.61"

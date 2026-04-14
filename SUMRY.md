@@ -1,16 +1,14 @@
-[commit]: # '4a42cb25303e0caa1e63d3e1345292d27c2720d7'
+[commit]: # 'e7a45717398c7784ceab009ddab132c9b49b6ba9'
 
 Features:
 
+- (ui): style title bar on windows
 - (ui): add basic emote menu and colon search
 
 Fixes:
 
-- (core): properly spawn background task for emotes
+- (core): better handle auth token expiration
 
 Misc:
 
-- (misc): update readme
-- (misc): random cleanup
-- (misc): update readme
-- (updater): version bump 0.2.19
+- (updater): version bump 0.2.20
