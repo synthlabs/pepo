@@ -119,23 +119,36 @@ impl TokenManager {
                     );
                     if last_validation_tick.elapsed() > Duration::from_secs(300) {
                         info!("validating token");
-                        let res = user_token_guard
+                        match user_token_guard
                             .validate_token(&self.client.clone())
                             .await
-                            .expect("failed to validate token");
-
-                        debug!("validate: token={:?}", res);
-                        last_validation_tick = Instant::now();
+                        {
+                            Ok(res) => {
+                                debug!("validate: token={:?}", res);
+                                last_validation_tick = Instant::now();
+                            }
+                            Err(e) => {
+                                error!("token validation failed: {}", e);
+                                return;
+                            }
+                        }
                     }
 
                     info!("token: expires_in={:?}", user_token_guard.expires_in());
                     if user_token_guard.expires_in() < std::time::Duration::from_secs(600) {
                         info!("refreshing token");
-                        user_token_guard
+                        match user_token_guard
                             .refresh_token(&self.client.clone())
                             .await
-                            .expect("failed to refresh token");
-                        (self.on_refresh)(user_token_guard.clone())
+                        {
+                            Ok(_) => {
+                                (self.on_refresh)(user_token_guard.clone());
+                            }
+                            Err(e) => {
+                                error!("token refresh failed: {}", e);
+                                return;
+                            }
+                        }
                     }
                 }
                 debug!("sleeping");

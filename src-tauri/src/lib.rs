@@ -559,25 +559,36 @@ async fn login(
                 use twitch_api::eventsub::{Message as M, Payload as P};
 
                 for msg in events {
-                    match msg.event {
-                        twitch_api::eventsub::Event::ChannelChatMessageV1(P {
-                            message: M::Notification(chat_message),
-                            ..
-                        }) => {
-                            let channel_msg = types::ChannelMessage::new(
-                                chat_message.clone(),
-                                msg.ts.to_string(),
-                                badge_manager_ref.clone(),
-                                emote_manager_ref.clone(),
-                            );
-                            let key =
-                                format!("chat_message:{}", chat_message.broadcaster_user_login);
-                            trace!("chat message: id={} msg={:?}", key, channel_msg);
-                            app_ref
-                                .emit(&key, channel_msg)
-                                .expect("unable to emit state")
+                    match msg {
+                        eventsub::EventSubMessage::AuthFailed(reason) => {
+                            error!("EventSub auth failed: {}", reason);
+                            clear_auth(&app_ref);
+                            break;
                         }
-                        _ => debug!("event notification: {:?}", msg.event),
+                        eventsub::EventSubMessage::Notification(notification) => {
+                            match notification.event {
+                                twitch_api::eventsub::Event::ChannelChatMessageV1(P {
+                                    message: M::Notification(chat_message),
+                                    ..
+                                }) => {
+                                    let channel_msg = types::ChannelMessage::new(
+                                        chat_message.clone(),
+                                        notification.ts.to_string(),
+                                        badge_manager_ref.clone(),
+                                        emote_manager_ref.clone(),
+                                    );
+                                    let key = format!(
+                                        "chat_message:{}",
+                                        chat_message.broadcaster_user_login
+                                    );
+                                    trace!("chat message: id={} msg={:?}", key, channel_msg);
+                                    app_ref
+                                        .emit(&key, channel_msg)
+                                        .expect("unable to emit state")
+                                }
+                                _ => debug!("event notification: {:?}", notification.event),
+                            }
+                        }
                     }
                 }
             });
@@ -613,10 +624,10 @@ async fn login(
     Ok(user_token)
 }
 
-#[tauri::command]
-#[specta::specta]
-fn logout(app_handle: AppHandle, state_syncer: State<'_, StateSyncer>) -> Result<(), String> {
-    info!("logout");
+/// Clears auth state, channel cache, stored token, and aborts the poll task.
+/// Used by both explicit logout and automatic auth expiration handling.
+fn clear_auth(app_handle: &AppHandle) {
+    let state_syncer = app_handle.state::<StateSyncer>();
 
     // Abort poll task
     {
@@ -627,21 +638,23 @@ fn logout(app_handle: AppHandle, state_syncer: State<'_, StateSyncer>) -> Result
         }
     }
 
-    {
-        let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
-        let mut auth_state = auth_state_ref.lock().unwrap();
-        *auth_state = AuthState::default();
-    }
-
+    state_syncer.update::<AuthState>("auth_state", AuthState::default(), true);
     state_syncer.update::<types::ChannelCache>(
         "channel_cache",
         types::ChannelCache::default(),
         true,
     );
 
-    let store = app_handle.store("account.json").unwrap();
-    store.delete("token");
+    if let Ok(store) = app_handle.store("account.json") {
+        store.delete("token");
+    }
+}
 
+#[tauri::command]
+#[specta::specta]
+fn logout(app_handle: AppHandle, _state_syncer: State<'_, StateSyncer>) -> Result<(), String> {
+    info!("logout");
+    clear_auth(&app_handle);
     Ok(())
 }
 

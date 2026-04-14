@@ -25,6 +25,12 @@ pub struct EventNotification {
     pub event: Event,
 }
 
+#[derive(Debug)]
+pub enum EventSubMessage {
+    Notification(EventNotification),
+    AuthFailed(String),
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EventSubSubscription {
     pub channel_name: String,
@@ -211,10 +217,10 @@ impl EventSubManager {
         self,
         client: HelixClient<'static, reqwest::Client>,
         token: UserToken,
-    ) -> Result<std::sync::mpsc::Receiver<EventNotification>, Report> {
+    ) -> Result<std::sync::mpsc::Receiver<EventSubMessage>, Report> {
         let connect_url_ref = self.connect_url.clone();
 
-        let (std_tx, std_rx) = std::sync::mpsc::sync_channel::<EventNotification>(32);
+        let (std_tx, std_rx) = std::sync::mpsc::sync_channel::<EventSubMessage>(32);
 
         #[cfg(debug_assertions)]
         {
@@ -271,6 +277,8 @@ impl EventSubManager {
                     .context("when establishing connection")
                     .unwrap();
 
+                let mut auth_failed = false;
+
                 while let Some(msg) = futures::StreamExt::next(&mut s).await {
                     trace!("message received: {:?}", msg);
                     let msg = match msg {
@@ -291,10 +299,22 @@ impl EventSubManager {
                     {
                         Ok(_) => {}
                         Err(e) => {
-                            error!("process_message - {:?}", e);
+                            let err_msg = format!("{:?}", e);
+                            error!("process_message - {}", err_msg);
+                            if err_msg.contains("AUTH_EXPIRED") {
+                                auth_failed = true;
+                            }
                             break;
                         }
                     };
+                }
+
+                if auth_failed {
+                    warn!("auth failure detected, stopping EventSub reconnect loop");
+                    let _ = std_tx.send(EventSubMessage::AuthFailed(
+                        "token expired or revoked".into(),
+                    ));
+                    return;
                 }
 
                 debug!("EventSubManger::run - tick=10s");
@@ -308,7 +328,7 @@ impl EventSubManager {
     async fn process_message(
         self,
         msg: tungstenite::Message,
-        ts: SyncSender<EventNotification>,
+        ts: SyncSender<EventSubMessage>,
         client: &HelixClient<'static, reqwest::Client>,
         token: UserToken,
     ) -> Result<(), Report> {
@@ -338,14 +358,14 @@ impl EventSubManager {
                         Ok(())
                     }
                     EventsubWebsocketData::Notification { metadata, payload } => {
-                        ts.send(EventNotification {
+                        ts.send(EventSubMessage::Notification(EventNotification {
                             ts: metadata.message_timestamp.into_owned(),
                             event: payload,
-                        })?;
+                        }))?;
                         Ok(())
                     }
                     re @ EventsubWebsocketData::Revocation { .. } => {
-                        Err(eyre!("got revocation event: {re:?}"))
+                        Err(eyre!("AUTH_EXPIRED: subscription revoked: {re:?}"))
                     }
                     EventsubWebsocketData::Keepalive {
                         metadata: _,
@@ -354,7 +374,14 @@ impl EventSubManager {
                     _ => Ok(()),
                 }
             }
-            tungstenite::Message::Close(_) => Err(eyre!("connection closed")),
+            tungstenite::Message::Close(frame) => {
+                let reason = frame
+                    .as_ref()
+                    .map(|f| format!("code={}, reason={}", f.code, f.reason))
+                    .unwrap_or_else(|| "no frame data".to_string());
+                warn!("websocket closed: {}", reason);
+                Err(eyre!("connection closed: {}", reason))
+            }
             _ => Ok(()),
         }
     }
@@ -382,7 +409,15 @@ impl EventSubManager {
                 transport.clone(),
                 &token,
             )
-            .await?;
+            .await
+            .map_err(|e| {
+                let err_str = e.to_string();
+                if err_str.contains("401") || err_str.to_lowercase().contains("unauthorized") {
+                    eyre!("AUTH_EXPIRED: {}", err_str)
+                } else {
+                    eyre!(e)
+                }
+            })?;
 
         Ok(())
     }
