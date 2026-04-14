@@ -747,6 +747,38 @@ pub fn run() {
                 }
             }
 
+            // set title bar color only when building for Windows
+            #[cfg(target_os = "windows")]
+            {
+                use windows::Win32::Foundation::COLORREF;
+                use windows::Win32::Graphics::Dwm::{
+                    DwmSetWindowAttribute, DWMWA_CAPTION_COLOR,
+                    DWMWA_USE_IMMERSIVE_DARK_MODE,
+                };
+
+                let hwnd = window.hwnd().unwrap();
+
+                unsafe {
+                    // enable dark mode for title bar text/buttons
+                    let use_dark_mode: i32 = 1;
+                    let _ = DwmSetWindowAttribute(
+                        hwnd,
+                        DWMWA_USE_IMMERSIVE_DARK_MODE,
+                        &use_dark_mode as *const i32 as *const std::ffi::c_void,
+                        std::mem::size_of::<i32>() as u32,
+                    );
+
+                    // RGB(20, 26, 39) -> COLORREF 0x00BBGGRR = 0x00271A14
+                    let caption_color = COLORREF(0x00271A14);
+                    let _ = DwmSetWindowAttribute(
+                        hwnd,
+                        DWMWA_CAPTION_COLOR,
+                        &caption_color as *const COLORREF as *const std::ffi::c_void,
+                        std::mem::size_of::<COLORREF>() as u32,
+                    );
+                }
+            }
+
             let client: HelixClient<'static, reqwest::Client> =
                 twitch_api::HelixClient::with_client(
                     ClientDefault::default_client_with_name(Some(
