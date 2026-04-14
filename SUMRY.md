@@ -1,14 +1,13 @@
-[commit]: # 'e7a45717398c7784ceab009ddab132c9b49b6ba9'
+[commit]: # 'bc0d591b6c77cce25d14dce6f2a7abe6dcdb0cec'
 
 Features:
 
-- (ui): style title bar on windows
-- (ui): add basic emote menu and colon search
 
 Fixes:
 
+- (ui): redirect to login when auth expires
 - (core): better handle auth token expiration
 
 Misc:
 
-- (updater): version bump 0.2.20
+- (updater): version bump 0.2.21
