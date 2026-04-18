@@ -45,6 +45,7 @@
 	let selectedEmoteIndex = $state(0);
 	let pickerOpenedByButton = $state(false);
 	let dismissedQuery = $state('');
+	let emoteSearchQuery = $state('');
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 	let un_sub: UnlistenFn;
@@ -186,6 +187,20 @@
 		}
 	});
 
+	// Button-mode search: debounced query into searchEmotes
+	$effect(() => {
+		if (!pickerOpenedByButton) return;
+		const query = emoteSearchQuery;
+		clearTimeout(searchDebounceTimer);
+		searchDebounceTimer = setTimeout(async () => {
+			const result = await commands.searchEmotes(query, channelInfo.broadcaster_id, 50);
+			if (result.status === 'ok' && emoteSearchQuery === query && pickerOpenedByButton) {
+				emoteResults = result.data;
+				selectedEmoteIndex = 0;
+			}
+		}, 75);
+	});
+
 	const insertEmote = (emote: EmoteType) => {
 		if (!pickerOpenedByButton && colonMatch) {
 			const colonIndex = chatInput.lastIndexOf(':');
@@ -196,6 +211,7 @@
 		}
 		emotePickerVisible = false;
 		pickerOpenedByButton = false;
+		emoteSearchQuery = '';
 		selectedEmoteIndex = 0;
 	};
 
@@ -203,15 +219,17 @@
 		if (emotePickerVisible && pickerOpenedByButton) {
 			emotePickerVisible = false;
 			pickerOpenedByButton = false;
+			emoteSearchQuery = '';
 			return;
 		}
 
 		pickerOpenedByButton = true;
+		emoteSearchQuery = '';
 		const result = await commands.searchEmotes('', channelInfo.broadcaster_id, 50);
 		if (result.status === 'ok') {
 			emoteResults = result.data;
 			selectedEmoteIndex = 0;
-			emotePickerVisible = emoteResults.length > 0;
+			emotePickerVisible = true;
 		}
 	};
 
@@ -233,6 +251,7 @@
 			if (colonMatch) dismissedQuery = colonMatch;
 			emotePickerVisible = false;
 			pickerOpenedByButton = false;
+			emoteSearchQuery = '';
 		}
 	};
 </script>
@@ -292,6 +311,9 @@
 				selectedIndex={selectedEmoteIndex}
 				onselect={insertEmote}
 				visible={emotePickerVisible}
+				showSearch={pickerOpenedByButton}
+				bind:searchQuery={emoteSearchQuery}
+				onSearchKeydown={handleKeydown}
 			/>
 			<form onsubmit={submitForm} class="flex items-center">
 				<input
