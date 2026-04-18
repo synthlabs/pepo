@@ -21,7 +21,7 @@ tauri-plugin-log = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 tauri-plugin-store = "2"
-tracing-subscriber = "0.3.19"
+tracing-subscriber = "0.3.23"
 [dependencies.reqwest]
 features = ["json"]
 version = "0.12.12"
@@ -38,16 +38,16 @@ version = "=2.0.0-rc.21"
 git = "https://github.com/synthlabs/tauri-svelte-synced-store.git"
 [dependencies.tokio]
 features = ["macros", "rt-multi-thread"]
-version = "1.43.0"
+version = "1.52"
 [dependencies.tokio-tungstenite]
 features = ["native-tls", "url"]
 version = "~0.28"
 [dependencies.tracing]
 features = ["log"]
-version = "0.1.41"
+version = "0.1.44"
 [dependencies.twitch_api]
 features = ["eventsub", "helix", "reqwest"]
-version = "~0.7.0"
+version = "~0.7.2"
 [dependencies.twitch_oauth2]
 features = ["client"]
 version = "0.15.1"
@@ -86,8 +86,8 @@ tauri-plugin-updater = "2"
 tauri-plugin-window-state = "2"
 [target."cfg(target_os = \"macos\")"]
 [target."cfg(target_os = \"macos\")".dependencies]
-objc2 = "0.6.2"
-objc2-app-kit = "0.3.1"
+objc2 = "0.6.4"
+objc2-app-kit = "0.3.2"
 [target."cfg(target_os = \"windows\")"]
 [target."cfg(target_os = \"windows\")".dependencies]
 [target."cfg(target_os = \"windows\")".dependencies.windows]

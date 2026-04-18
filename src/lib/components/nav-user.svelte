@@ -3,9 +3,9 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
-	import Bell from 'lucide-svelte/icons/bell';
-	import ChevronsUpDown from 'lucide-svelte/icons/chevrons-up-down';
-	import LogOut from 'lucide-svelte/icons/log-out';
+	import Bell from '@lucide/svelte/icons/bell';
+	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+	import LogOut from '@lucide/svelte/icons/log-out';
 
 	interface Props {
 		user: { name: string; provider: string; avatar: string };
