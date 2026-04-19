@@ -37,7 +37,6 @@
 		class="absolute bottom-full left-0 right-0 z-50 max-h-48 overflow-y-auto border rounded-lg bg-popover p-2 shadow-md"
 	>
 		{#if showSearch}
-			<!-- svelte-ignore a11y_autofocus -->
 			<Input
 				bind:value={searchQuery}
 				onkeydown={onSearchKeydown}
@@ -48,7 +47,7 @@
 		{/if}
 		{#if emotes.length > 0}
 			<div class="grid grid-cols-8 gap-1">
-				{#each emotes as emote, i}
+				{#each emotes as emote, i (emote.name)}
 					<Tooltip.Root>
 						<Tooltip.Trigger>
 							<button

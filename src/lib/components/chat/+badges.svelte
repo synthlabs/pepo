@@ -10,7 +10,7 @@
 </script>
 
 <span class="inline-flex items-center gap-1 align-middle whitespace-nowrap">
-	{#each badges as badge}
+	{#each badges as badge (`${badge.set_id}:${badge.id}`)}
 		<Badge badge_ref={badge} />
 	{/each}
 </span>

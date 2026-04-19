@@ -2,6 +2,7 @@
 	import { onMount, type ComponentProps } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.ts';
 	import * as Avatar from '$lib/components/ui/avatar/index.ts';
 	import NavUser from '$lib/components/nav-user.svelte';
@@ -50,7 +51,7 @@
 				extra_channel = result.data;
 			}
 		}
-		goto(`/app/chat/${login}`);
+		goto(resolve(`/app/chat/${login}`));
 	}
 
 	let authState = new SyncedState<AuthState>('auth_state', {
@@ -68,7 +69,7 @@
 	async function logout() {
 		let result = await commands.logout();
 		if (result.status == 'ok') {
-			goto('/');
+			goto(resolve('/'));
 		} else {
 			Logger.error('logout failed', result.error);
 		}
@@ -83,8 +84,6 @@
 			Logger.error('failure', channels.error);
 		}
 	});
-
-	$inspect(page.url.pathname);
 
 	let {
 		ref = $bindable(null),
@@ -102,7 +101,7 @@
 	<Sidebar.MenuItem isActive={`/app/chat/${login}` === page.url.pathname}>
 		<Sidebar.MenuButton size="lg" class="p-2">
 			{#snippet child({ props })}
-				<a href={`/app/chat/${login}`} {...props}>
+				<a href={resolve(`/app/chat/${login}`)} {...props}>
 					<div class="relative">
 						<Avatar.Root class="size-8">
 							<Avatar.Image src={imageUrl} alt={displayName} />

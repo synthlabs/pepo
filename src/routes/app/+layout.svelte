@@ -10,6 +10,7 @@
 	import Users from '@lucide/svelte/icons/users';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.ts';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 
 	let { children } = $props();
 
@@ -17,7 +18,7 @@
 
 	$effect(() => {
 		if (authState.ready && authState.obj.phase === 'unauthorized') {
-			goto('/');
+			goto(resolve('/'));
 		}
 	});
 

@@ -3,12 +3,7 @@
 	import { quadInOut } from 'svelte/easing';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { onDestroy, onMount, tick } from 'svelte';
-	import {
-		commands,
-		type ChannelInfo,
-		type ChannelMessage,
-		type UserToken
-	} from '$lib/bindings.ts';
+	import { commands, type ChannelInfo, type ChannelMessage } from '$lib/bindings.ts';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
@@ -23,7 +18,6 @@
 	const AUTOSCROLL_BUFFER = 300; // the amount you can scroll up and still not disable auto scroll
 	const CHAT_MESSAGE_LIMIT = 500;
 
-	let banner = $state({} as UserToken);
 	let chatDIV = $state<HTMLDivElement>();
 	let scrolledAmount = $state(window.innerHeight);
 	let autoscroll: boolean = $state(true);
@@ -49,9 +43,6 @@
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 	let un_sub: UnlistenFn;
-
-	$inspect(banner);
-	$inspect(isScrolled);
 
 	onMount(async () => {
 		Logger.info('joining channel:', channel_name);
@@ -277,7 +268,7 @@
 					<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
 						>{msg.chatter_user_name}</span
 					>:
-					{#each msg.fragments as fragment}
+					{#each msg.fragments as fragment, i (i)}
 						{#if 'Text' in fragment}
 							{fragment.Text.text}
 						{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}

@@ -3,6 +3,7 @@
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import { CircleCheckBig, LoaderCircle } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { commands, type AuthState } from '$lib/bindings';
 	import { cn } from '$lib/utils.js';
 	import Logger from '$utils/log';
@@ -34,7 +35,7 @@
 	onMount(async () => {
 		let result = await commands.login(true);
 		if (result.status == 'ok') {
-			goto('/app');
+			goto(resolve('/app'));
 		}
 	});
 
@@ -45,7 +46,7 @@
 
 		let result = await commands.login(false);
 		if (result.status == 'ok') {
-			goto('/app');
+			goto(resolve('/app'));
 		} else {
 			Logger.error('failure', result.error);
 		}

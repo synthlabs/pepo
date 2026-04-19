@@ -5,6 +5,7 @@
 	import broadcasterBadge from '$lib/resources/broadcaster.svelte';
 	import vipBadge from '$lib/resources/vip.svelte';
 	import type { BadgeRef } from '$lib/bindings';
+	import type { Component } from 'svelte';
 
 	interface Props {
 		badge_ref: BadgeRef;
@@ -16,9 +17,7 @@
 		badge_ref.set_id !== badge_ref.badge.set_id && badge_ref.id !== badge_ref.badge.id
 	);
 
-	$inspect(badge_ref);
-
-	const badgeMap: Map<string, any> = new Map<string, any>([
+	const badgeMap: Map<string, Component> = new Map<string, Component>([
 		['subscriber', subBadge],
 		['moderator', moderatorBadge],
 		['partner', partnerBadge],

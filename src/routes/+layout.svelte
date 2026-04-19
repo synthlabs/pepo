@@ -1,12 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import '../app.css';
-	import { page } from '$app/state';
 	import { checkForAppUpdates } from '$utils/updater';
 
 	let { children } = $props();
-
-	$inspect(page.params.id);
 
 	onMount(async () => {
 		await checkForAppUpdates('https://github.com/synthlabs/pepo/releases/latest');
