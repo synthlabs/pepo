@@ -9,6 +9,7 @@ const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url));
 
 export default ts.config(
 	includeIgnoreFile(gitignorePath),
+	{ ignores: ['src-tauri/target/**', 'src-tauri/gen/schemas/**'] },
 	js.configs.recommended,
 	...ts.configs.recommended,
 	...svelte.configs['flat/recommended'],
@@ -23,7 +24,7 @@ export default ts.config(
 		}
 	},
 	{
-		files: ['**/*.svelte'],
+		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
 
 		languageOptions: {
 			parserOptions: {
