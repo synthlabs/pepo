@@ -689,7 +689,10 @@ pub fn run() {
                 .formatter(specta_typescript::formatter::prettier)
                 .bigint(specta_typescript::BigIntExportBehavior::Number)
                 .header("/* eslint-disable */"),
-            "../src/lib/bindings.ts",
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("src-tauri has no parent directory")
+                .join("src/lib/bindings.ts"),
         )
         .expect("Failed to export typescript bindings");
 

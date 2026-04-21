@@ -17,7 +17,7 @@ popd
 git add \
   "${ROOT}/package.json" \
   "${ROOT}/src-tauri/Cargo.toml" \
-  "${ROOT}/src-tauri/Cargo.lock" \
+  "${ROOT}/Cargo.lock" \
   "${ROOT}/src-tauri/tauri.conf.json" \
   "${ROOT}/SUMRY.md" \
   "${ROOT}/archive/"
