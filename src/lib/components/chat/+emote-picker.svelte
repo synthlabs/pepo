@@ -47,7 +47,7 @@
 		{/if}
 		{#if emotes.length > 0}
 			<div class="grid grid-cols-8 gap-1">
-				{#each emotes as emote, i (emote.name)}
+				{#each emotes as emote, i (`${emote.provider}:${emote.id}`)}
 					<Tooltip.Root>
 						<Tooltip.Trigger>
 							<button
