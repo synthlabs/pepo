@@ -92,4 +92,4 @@ objc2-app-kit = "0.3.2"
 [target."cfg(target_os = \"windows\")".dependencies]
 [target."cfg(target_os = \"windows\")".dependencies.windows]
 features = ["Win32_Graphics_Dwm"]
-version = "0.62"
+version = "0.61"

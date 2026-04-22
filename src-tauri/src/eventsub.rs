@@ -1,6 +1,7 @@
 use color_eyre::Report;
 use eyre::eyre;
 use eyre::WrapErr;
+#[cfg(debug_assertions)]
 use futures::{stream, TryStreamExt};
 use std::collections::HashMap;
 use std::collections::HashSet;
