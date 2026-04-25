@@ -31,78 +31,57 @@ pub struct CheerFragment {
 pub struct Parser {}
 
 impl Parser {
-    // TODO: clean this up, maybe with an insert_emote_fragment! macro?
     pub fn parse(message: String, cache: &dyn EmoteCacheTrait) -> Vec<Fragment> {
         let _start_time = std::time::Instant::now();
 
-        let mut result: Vec<Fragment> = vec![];
+        let mut result: Vec<Fragment> = Vec::new();
         let mut current = String::new();
-        let mut chars = message.chars().peekable();
-        let mut index = 0;
+        let mut word = String::new();
+        let mut index: u64 = 0;
 
-        loop {
-            let mut word = String::new();
-            while let Some(c) = chars.next() {
-                if !c.is_alphanumeric() {
-                    if let Some(emote) = cache.get_emote(word.clone()) {
-                        debug!("found emote: {}", word);
-                        if !current.is_empty() {
-                            // terminate the currently building text fragment
-                            result.push(Fragment::Text(TextFragment {
-                                index: index,
-                                text: current.clone(),
-                            }));
-                            current.clear();
-                            index = index + 1;
-                        }
-                        word.clear();
-
-                        // insert emote fragment
-                        result.push(Fragment::Emote(EmoteFragment {
-                            index: index,
-                            emote: emote,
-                        }));
-                        index = index + 1;
-                    }
-                }
-                word.push(c);
-                if !c.is_alphanumeric() {
-                    current.push_str(&word);
-                    break;
-                }
+        let resolve_word = |word: &mut String,
+                            current: &mut String,
+                            result: &mut Vec<Fragment>,
+                            index: &mut u64| {
+            if word.is_empty() {
+                return;
             }
-
-            if let None = chars.peek() {
-                if let Some(emote) = cache.get_emote(word.clone()) {
-                    debug!("found emote: {}", word);
-                    if !current.is_empty() {
-                        // terminate the currently building text fragment
-                        result.push(Fragment::Text(TextFragment {
-                            index: index,
-                            text: current.clone(),
-                        }));
-                        current.clear();
-                        index = index + 1;
-                    }
-                    word.clear();
-
-                    // insert emote fragment
-                    result.push(Fragment::Emote(EmoteFragment {
-                        index: index,
-                        emote: emote,
+            if let Some(emote) = cache.get_emote(word.clone()) {
+                debug!("found emote: {}", word);
+                if !current.is_empty() {
+                    result.push(Fragment::Text(TextFragment {
+                        index: *index,
+                        text: std::mem::take(current),
                     }));
-                    index = index + 1;
-                } else {
-                    current.push_str(&word);
+                    *index += 1;
                 }
-                break;
+                result.push(Fragment::Emote(EmoteFragment {
+                    index: *index,
+                    emote,
+                }));
+                *index += 1;
+            } else {
+                current.push_str(word);
             }
+            word.clear();
+        };
+
+        for c in message.chars() {
+            if c.is_alphanumeric() {
+                word.push(c);
+                continue;
+            }
+            // word boundary
+            resolve_word(&mut word, &mut current, &mut result, &mut index);
+            current.push(c);
         }
+        // trailing word at end-of-input
+        resolve_word(&mut word, &mut current, &mut result, &mut index);
 
         if !current.is_empty() {
             result.push(Fragment::Text(TextFragment {
-                index: index,
-                text: current.clone(),
+                index,
+                text: current,
             }));
         }
 
@@ -115,7 +94,7 @@ impl Parser {
             "parsed message into fragments",
         );
 
-        return result;
+        result
     }
 }
 
@@ -253,6 +232,77 @@ mod tests {
                     text: " with only twitch emotes".to_string(),
                 })
             ]
+        );
+    }
+
+    fn cache_with(name: &str) -> (EmoteCache, Emote) {
+        let cache = EmoteCache::new("test".to_string(), "TestProvider".to_string());
+        let emote = Emote {
+            id: format!("id-{}", name),
+            name: name.to_string(),
+            ..Default::default()
+        };
+        cache.set_emote(emote.name.clone(), emote.clone());
+        (cache, emote)
+    }
+
+    #[test]
+    fn test_parse_empty_message() {
+        let cache = NoneCache::new("test".to_string());
+        assert_eq!(Parser::parse(String::new(), &cache), vec![]);
+    }
+
+    #[test]
+    fn test_parse_emote_followed_by_punctuation() {
+        let (cache, emote) = cache_with("LUL");
+        assert_eq!(
+            Parser::parse("LUL!".to_string(), &cache),
+            vec![
+                Fragment::Emote(EmoteFragment {
+                    index: 0,
+                    emote: emote.clone(),
+                }),
+                Fragment::Text(TextFragment {
+                    index: 1,
+                    text: "!".to_string(),
+                }),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_two_adjacent_emotes() {
+        let (cache, emote) = cache_with("LUL");
+        assert_eq!(
+            Parser::parse("LUL LUL".to_string(), &cache),
+            vec![
+                Fragment::Emote(EmoteFragment {
+                    index: 0,
+                    emote: emote.clone(),
+                }),
+                Fragment::Text(TextFragment {
+                    index: 1,
+                    text: " ".to_string(),
+                }),
+                Fragment::Emote(EmoteFragment {
+                    index: 2,
+                    emote: emote.clone(),
+                }),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_unicode_message_without_emotes() {
+        // is_alphanumeric is Unicode-aware in Rust; CJK + accents stay in the text fragment.
+        let cache = NoneCache::new("test".to_string());
+        let msg = "你好 héllo wörld".to_string();
+        assert_eq!(
+            Parser::parse(msg.clone(), &cache),
+            vec![Fragment::Text(TextFragment {
+                index: 0,
+                text: msg,
+            })]
         );
     }
 }

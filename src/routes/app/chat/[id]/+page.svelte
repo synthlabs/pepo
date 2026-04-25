@@ -14,6 +14,7 @@
 	import Smile from '@lucide/svelte/icons/smile';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
+	import { parseColonMacro } from '$lib/chat/colon-macro';
 
 	const AUTOSCROLL_BUFFER = 300; // the amount you can scroll up and still not disable auto scroll
 	const CHAT_MESSAGE_LIMIT = 500;
@@ -143,12 +144,7 @@
 		}, timeout);
 	};
 
-	// Colon macro: extract ":query" from end of input
-	let colonMatch = $derived.by(() => {
-		const match = chatInput.match(/(^|\s):(\w{2,})$/);
-		if (match) return match[2];
-		return null;
-	});
+	let colonMatch = $derived(parseColonMacro(chatInput));
 
 	// React to colon match changes
 	$effect(() => {

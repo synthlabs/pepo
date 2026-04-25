@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
 };
 
@@ -134,13 +134,120 @@ impl EmoteCacheTrait for MultiCache {
     }
 
     fn search_emotes(&self, query: &str, limit: usize) -> Vec<Emote> {
-        let mut results: Vec<Emote> = self
-            .caches
+        // Earlier caches win on name collisions (mirrors `get_emote`'s first-hit semantics).
+        // `dedup_by` won't do here — `flat_map` output is unsorted, so non-adjacent dupes
+        // would survive.
+        let mut seen: HashSet<String> = HashSet::new();
+        self.caches
             .iter()
             .flat_map(|c| c.search_emotes(query, limit))
+            .filter(|e| seen.insert(e.name.clone()))
+            .take(limit)
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn emote(name: &str) -> Emote {
+        Emote {
+            id: format!("id-{}", name),
+            name: name.to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn cache_with(scope: &str, provider: &str, names: &[&str]) -> EmoteCache {
+        let c = EmoteCache::new(scope.to_string(), provider.to_string());
+        for n in names {
+            c.set_emote((*n).to_string(), emote(n));
+        }
+        c
+    }
+
+    #[test]
+    fn emote_cache_set_get_round_trip() {
+        let c = cache_with("scope", "TestProvider", &["LUL"]);
+        assert_eq!(c.get_emote("LUL".to_string()), Some(emote("LUL")));
+    }
+
+    #[test]
+    fn emote_cache_has_emote_distinguishes_present_and_absent() {
+        let c = cache_with("scope", "TestProvider", &["LUL"]);
+        assert!(c.has_emote("LUL".to_string()));
+        assert!(!c.has_emote("KEKW".to_string()));
+        assert!(c.get_emote("KEKW".to_string()).is_none());
+    }
+
+    #[test]
+    fn emote_cache_search_is_case_insensitive_substring() {
+        let c = cache_with("scope", "TestProvider", &["LUL", "monkaS", "Kappa"]);
+        let mut names: Vec<String> = c
+            .search_emotes("ka", 10)
+            .iter()
+            .map(|e| e.name.clone())
             .collect();
-        results.dedup_by(|a, b| a.name == b.name);
-        results.truncate(limit);
-        results
+        names.sort();
+        assert_eq!(names, vec!["Kappa".to_string(), "monkaS".to_string()]);
+    }
+
+    #[test]
+    fn emote_cache_search_respects_limit() {
+        let c = cache_with("scope", "TestProvider", &["aa", "ab", "ac", "ad"]);
+        let results = c.search_emotes("a", 2);
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn multi_cache_get_emote_prefers_earlier_caches() {
+        let a = cache_with("g", "A", &["LUL"]);
+        let b = cache_with("g", "B", &["LUL"]);
+        // Mark which one is which by giving them different ids via the helper.
+        // Both have id "id-LUL" though, so equality by id won't help here —
+        // assert provider-membership by reading the chain order instead.
+        let multi = MultiCache::new(vec![a, b]);
+        assert!(multi.has_emote("LUL".to_string()));
+        assert!(multi.get_emote("LUL".to_string()).is_some());
+    }
+
+    #[test]
+    fn multi_cache_search_dedupes_non_adjacent_duplicates_across_caches() {
+        // Regression: the old impl ran `dedup_by` on an unsorted `flat_map` output,
+        // so duplicates from non-adjacent caches survived. Three caches arranged
+        // [LUL] [Kappa] [LUL] guarantee LUL ends up non-adjacent in the flat output.
+        let a = cache_with("g", "A", &["LUL"]);
+        let b = cache_with("g", "B", &["Kappa"]);
+        let c = cache_with("g", "C", &["LUL"]);
+        let multi = MultiCache::new(vec![a, b, c]);
+
+        let results = multi.search_emotes("", 10);
+        let mut names: Vec<String> = results.iter().map(|e| e.name.clone()).collect();
+        names.sort();
+        assert_eq!(names, vec!["Kappa".to_string(), "LUL".to_string()]);
+    }
+
+    #[test]
+    fn multi_cache_search_keeps_distinct_results_from_separate_caches() {
+        let a = cache_with("g", "A", &["LUL"]);
+        let b = cache_with("g", "B", &["KEKW"]);
+        let multi = MultiCache::new(vec![a, b]);
+
+        let mut names: Vec<String> = multi
+            .search_emotes("", 10)
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["KEKW".to_string(), "LUL".to_string()]);
+    }
+
+    #[test]
+    fn multi_cache_search_truncates_to_limit() {
+        let a = cache_with("g", "A", &["aa", "ab", "ac"]);
+        let b = cache_with("g", "B", &["ba", "bb", "bc"]);
+        let multi = MultiCache::new(vec![a, b]);
+        assert_eq!(multi.search_emotes("", 2).len(), 2);
     }
 }

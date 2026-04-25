@@ -59,3 +59,7 @@ pnpm tauri build
 ```
 
 The built application will be in `src-tauri/target/release/bundle/`.
+
+### Disclosure
+
+Due to my essentially zero experience with front end testing, the tests for this project were generated with claude
