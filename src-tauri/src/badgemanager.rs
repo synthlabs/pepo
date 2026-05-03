@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use tracing::{debug, error, trace};
+
+use crate::SharedTwitchToken;
 use twitch_api::helix::chat::{get_channel_chat_badges, get_global_chat_badges};
 
 type SharedMap<V> = Arc<Mutex<HashMap<String, V>>>;
@@ -66,16 +68,15 @@ pub struct Badge {
     pub description: String,
 }
 
-// TODO: use a self updating token from auth crate
 #[derive(Clone)]
 pub struct BadgeManager {
-    token: twitch_oauth2::UserToken,
+    token: SharedTwitchToken,
     pub global_badges: SharedMap<BadgeSet>,
     pub scoped_badges: SharedMap<Scope<BadgeSet>>,
 }
 
 impl BadgeManager {
-    pub fn empty(token: twitch_oauth2::UserToken) -> BadgeManager {
+    pub fn empty(token: SharedTwitchToken) -> BadgeManager {
         BadgeManager {
             token,
             global_badges: Arc::new(Mutex::new(HashMap::new())),
@@ -90,8 +91,9 @@ impl BadgeManager {
         let req = get_global_chat_badges::GetGlobalChatBadgesRequest::new();
 
         debug!("getting global badges");
+        let token = self.token.lock().await.clone();
         let response: Vec<twitch_api::helix::chat::BadgeSet> =
-            match client.req_get(req, &self.token).await {
+            match client.req_get(req, &token).await {
                 Ok(resp) => resp.data,
                 Err(err) => return Err(err.to_string()),
             };
@@ -125,8 +127,9 @@ impl BadgeManager {
             );
 
             debug!(broadcaster_id, "getting badges");
+            let token = self.token.lock().await.clone();
             let response: Vec<twitch_api::helix::chat::BadgeSet> =
-                match client.req_get(req, &self.token).await {
+                match client.req_get(req, &token).await {
                     Ok(resp) => resp.data,
                     Err(err) => {
                         error!(

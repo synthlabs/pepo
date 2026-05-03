@@ -29,7 +29,7 @@ lazy_static! {
 #[derive(Clone)]
 pub struct TokenManager {
     pub on_refresh: Arc<Box<dyn Fn(UserToken) + Send + Sync>>,
-    user_token: Option<Arc<Mutex<UserToken>>>,
+    user_token: Arc<Mutex<Option<UserToken>>>,
     client: HelixClient<'static, reqwest::Client>,
     builder: Arc<Mutex<twitch_oauth2::DeviceUserTokenBuilder>>,
 }
@@ -43,7 +43,7 @@ impl TokenManager {
 
         TokenManager {
             on_refresh: Arc::new(Box::new(default_refresh_callback)),
-            user_token: Some(Arc::new(Mutex::new(token))),
+            user_token: Arc::new(Mutex::new(Some(token))),
             client,
             builder: Arc::new(Mutex::new(builder)),
         }
@@ -55,14 +55,14 @@ impl TokenManager {
             default_scopes.clone(),
         );
         TokenManager {
-            user_token: None,
+            user_token: Arc::new(Mutex::new(None)),
             on_refresh: Arc::new(Box::new(default_refresh_callback)),
             client,
             builder: Arc::new(Mutex::new(builder)),
         }
     }
 
-    pub async fn start_device_code_flow(self) -> twitch_oauth2::id::DeviceCodeResponse {
+    pub async fn start_device_code_flow(&self) -> twitch_oauth2::id::DeviceCodeResponse {
         debug!("starting device flow");
 
         let mut build_guard = self.builder.lock().await;
@@ -71,7 +71,7 @@ impl TokenManager {
         return result.clone();
     }
 
-    pub async fn finish_device_code_flow(mut self) -> twitch_oauth2::UserToken {
+    pub async fn finish_device_code_flow(&self) -> twitch_oauth2::UserToken {
         debug!("finishing device flow");
 
         let mut build_guard = self.builder.lock().await;
@@ -81,14 +81,14 @@ impl TokenManager {
             .await
             .unwrap();
 
-        self.user_token = Some(Arc::new(Mutex::new(token.clone())));
+        *self.user_token.lock().await = Some(token.clone());
 
         return token;
     }
 
-    pub async fn is_token_valid(self) -> bool {
-        if let Some(token_guard) = self.user_token {
-            let token = token_guard.lock().await;
+    pub async fn is_token_valid(&self) -> bool {
+        let token = self.user_token.lock().await;
+        if let Some(token) = token.as_ref() {
             match token.validate_token(&self.client.clone()).await {
                 Ok(_) => return true,
                 Err(err) => {
@@ -101,59 +101,60 @@ impl TokenManager {
         false
     }
 
-    pub async fn get_token(self) -> twitch_oauth2::UserToken {
-        let token_guard = self.user_token.expect("token to be set");
-        let token = token_guard.lock().await;
-        token.clone()
+    pub async fn get_token(&self) -> twitch_oauth2::UserToken {
+        self.user_token
+            .lock()
+            .await
+            .clone()
+            .expect("token to be set")
     }
 
-    pub fn manage(self) {
+    pub fn manage(self) -> tauri::async_runtime::JoinHandle<()> {
         tauri::async_runtime::spawn(async move {
             let mut last_validation_tick = Instant::now();
             loop {
-                if let Some(ref user_token) = self.user_token {
-                    let mut user_token_guard = user_token.lock().await;
-                    debug!(
-                        "last_validation_tick: since={:?}",
-                        last_validation_tick.elapsed()
-                    );
-                    if last_validation_tick.elapsed() > Duration::from_secs(300) {
-                        info!("validating token");
-                        match user_token_guard
-                            .validate_token(&self.client.clone())
-                            .await
-                        {
-                            Ok(res) => {
-                                debug!("validate: token={:?}", res);
-                                last_validation_tick = Instant::now();
-                            }
-                            Err(e) => {
-                                error!("token validation failed: {}", e);
-                                return;
-                            }
-                        }
-                    }
+                let mut user_token_guard = self.user_token.lock().await;
+                let Some(user_token) = user_token_guard.as_mut() else {
+                    error!("token manager started without a token");
+                    return;
+                };
 
-                    info!("token: expires_in={:?}", user_token_guard.expires_in());
-                    if user_token_guard.expires_in() < std::time::Duration::from_secs(600) {
-                        info!("refreshing token");
-                        match user_token_guard
-                            .refresh_token(&self.client.clone())
-                            .await
-                        {
-                            Ok(_) => {
-                                (self.on_refresh)(user_token_guard.clone());
-                            }
-                            Err(e) => {
-                                error!("token refresh failed: {}", e);
-                                return;
-                            }
+                debug!(
+                    "last_validation_tick: since={:?}",
+                    last_validation_tick.elapsed()
+                );
+                if last_validation_tick.elapsed() > Duration::from_secs(300) {
+                    info!("validating token");
+                    match user_token.validate_token(&self.client.clone()).await {
+                        Ok(res) => {
+                            debug!("validate: token={:?}", res);
+                            last_validation_tick = Instant::now();
+                        }
+                        Err(e) => {
+                            error!("token validation failed: {}", e);
+                            return;
                         }
                     }
                 }
+
+                info!("token: expires_in={:?}", user_token.expires_in());
+                if user_token.expires_in() < std::time::Duration::from_secs(600) {
+                    info!("refreshing token");
+                    match user_token.refresh_token(&self.client.clone()).await {
+                        Ok(_) => {
+                            (self.on_refresh)(user_token.clone());
+                        }
+                        Err(e) => {
+                            error!("token refresh failed: {}", e);
+                            return;
+                        }
+                    }
+                }
+                drop(user_token_guard);
+
                 debug!("sleeping");
                 tokio::time::sleep(time::Duration::from_secs(30)).await;
             }
-        });
+        })
     }
 }

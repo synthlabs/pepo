@@ -12,6 +12,7 @@ use crate::emote::{
         EmoteProvider,
     },
 };
+use crate::SharedTwitchToken;
 
 // TODO: switch to a RWLock instead of Mutex
 type SharedVec<V> = Arc<Mutex<Vec<V>>>;
@@ -21,14 +22,14 @@ type SharedMap<V> = Arc<Mutex<HashMap<String, V>>>;
 pub struct EmoteManager {
     pub providers: SharedVec<Box<dyn EmoteProvider<MultiCache> + Send>>,
     client: twitch_api::HelixClient<'static, reqwest::Client>,
-    token: twitch_oauth2::UserToken,
+    token: SharedTwitchToken,
     name_cache: SharedMap<String>,
 }
 
 impl EmoteManager {
     pub fn empty(
         client: twitch_api::HelixClient<'static, reqwest::Client>,
-        token: twitch_oauth2::UserToken,
+        token: SharedTwitchToken,
     ) -> EmoteManager {
         EmoteManager {
             providers: Arc::new(Mutex::new(Vec::new())),
@@ -100,9 +101,8 @@ impl EmoteManager {
 
         // Resolve via Helix API
         let result = tauri::async_runtime::block_on(async {
-            self.client
-                .get_user_from_id(user_id, &self.token)
-                .await
+            let token = self.token.lock().await.clone();
+            self.client.get_user_from_id(user_id, &token).await
         });
 
         match result {

@@ -75,8 +75,14 @@ impl EmoteProvider<MultiCache> for BttvProvider {
         let url = format!("{}/emotes/global", BTTV_API_BASE);
 
         match tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(async { client.get(&url).send().await?.json::<Vec<BttvEmote>>().await })
+            tokio::runtime::Handle::current().block_on(async {
+                client
+                    .get(&url)
+                    .send()
+                    .await?
+                    .json::<Vec<BttvEmote>>()
+                    .await
+            })
         }) {
             Ok(emotes) => {
                 debug!(count = emotes.len(), "loaded bttv global emotes");
@@ -107,11 +113,7 @@ impl EmoteProvider<MultiCache> for BttvProvider {
         }) {
             Ok(resp) => {
                 let total = resp.channel_emotes.len() + resp.shared_emotes.len();
-                debug!(
-                    broadcaster_id,
-                    count = total,
-                    "loaded bttv channel emotes"
-                );
+                debug!(broadcaster_id, count = total, "loaded bttv channel emotes");
                 for bttv in resp.channel_emotes.iter().chain(resp.shared_emotes.iter()) {
                     cache.set_emote(bttv.code.clone(), bttv_to_emote(bttv, "Channel"));
                 }

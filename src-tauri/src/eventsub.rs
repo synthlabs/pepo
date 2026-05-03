@@ -6,7 +6,7 @@ use futures::{stream, TryStreamExt};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::Arc;
 use std::sync::Mutex;
 use tokio::time::{sleep, Duration};
@@ -18,6 +18,9 @@ use twitch_api::{
     HelixClient,
 };
 use twitch_oauth2::UserToken;
+
+use crate::SharedTwitchToken;
+
 type SharedMap<V> = Arc<Mutex<HashMap<String, Mutex<HashSet<V>>>>>;
 
 #[derive(Debug)]
@@ -30,6 +33,11 @@ pub struct EventNotification {
 pub enum EventSubMessage {
     Notification(EventNotification),
     AuthFailed(String),
+}
+
+pub struct EventSubRuntime {
+    pub events: Receiver<EventSubMessage>,
+    pub handles: Vec<tauri::async_runtime::JoinHandle<()>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -217,20 +225,22 @@ impl EventSubManager {
     pub fn start(
         self,
         client: HelixClient<'static, reqwest::Client>,
-        token: UserToken,
-    ) -> Result<std::sync::mpsc::Receiver<EventSubMessage>, Report> {
+        token: SharedTwitchToken,
+    ) -> Result<EventSubRuntime, Report> {
         let connect_url_ref = self.connect_url.clone();
 
         let (std_tx, std_rx) = std::sync::mpsc::sync_channel::<EventSubMessage>(32);
+        let mut handles = Vec::new();
 
         #[cfg(debug_assertions)]
         {
             let token = token.clone();
             let client = client.clone();
-            tauri::async_runtime::spawn(async move {
+            let cost_watcher_handle = tauri::async_runtime::spawn(async move {
                 loop {
+                    let current_token = token.lock().await.clone();
                     let chatters: Vec<twitch_api::eventsub::EventSubSubscription> = match client
-                        .get_eventsub_subscriptions(None, None, None, &token.clone())
+                        .get_eventsub_subscriptions(None, None, None, &current_token)
                         .map_ok(|sub| {
                             stream::iter(
                                 sub.subscriptions
@@ -262,9 +272,10 @@ impl EventSubManager {
                     sleep(Duration::from_secs(30)).await;
                 }
             });
+            handles.push(cost_watcher_handle);
         }
 
-        tauri::async_runtime::spawn(async move {
+        let websocket_handle = tauri::async_runtime::spawn(async move {
             loop {
                 debug!("connecting to websocket");
 
@@ -322,7 +333,12 @@ impl EventSubManager {
                 sleep(Duration::from_secs(10)).await;
             }
         });
-        Ok(std_rx)
+        handles.push(websocket_handle);
+
+        Ok(EventSubRuntime {
+            events: std_rx,
+            handles,
+        })
     }
 
     /// Process a message from the websocket
@@ -331,7 +347,7 @@ impl EventSubManager {
         msg: tungstenite::Message,
         ts: SyncSender<EventSubMessage>,
         client: &HelixClient<'static, reqwest::Client>,
-        token: UserToken,
+        token: SharedTwitchToken,
     ) -> Result<(), Report> {
         match msg {
             tungstenite::Message::Text(s) => {
@@ -353,7 +369,8 @@ impl EventSubManager {
                         payload: ReconnectPayload { session },
                         ..
                     } => {
-                        self.process_welcome_message(session, client, token.clone())
+                        let current_token = token.lock().await.clone();
+                        self.process_welcome_message(session, client, current_token)
                             .await?;
 
                         Ok(())

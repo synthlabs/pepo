@@ -1,7 +1,6 @@
 use eventsub::EventSubManager;
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 #[cfg(debug_assertions)]
 use specta_typescript::Typescript;
 use std::collections::HashMap;
@@ -19,7 +18,6 @@ use token::TokenManager;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, trace};
 use twitch_api::{client::ClientDefault, HelixClient};
-use twitch_oauth2::tokens::errors::ValidationError;
 
 use crate::badgemanager::BadgeManager;
 use crate::emote::cache::EmoteCacheTrait;
@@ -51,12 +49,13 @@ impl Default for InternalState {
     }
 }
 
-type SharedUserToken = Mutex<types::UserToken>;
-type SharedTwitchToken = Mutex<twitch_oauth2::UserToken>;
+pub(crate) type SharedTwitchToken = Arc<Mutex<twitch_oauth2::UserToken>>;
 type SharedEventSubManager = Mutex<EventSubManager>;
 type SharedBadgeManager = Mutex<BadgeManager>;
 type SharedEmoteManager = Mutex<EmoteManager>;
 type SharedPollHandle = Mutex<Option<tauri::async_runtime::JoinHandle<()>>>;
+type SharedTokenRefreshHandle = Mutex<Option<tauri::async_runtime::JoinHandle<()>>>;
+type SharedEventSubHandles = Mutex<Vec<tauri::async_runtime::JoinHandle<()>>>;
 
 tauri_svelte_synced_store::state_handlers!(
     AuthState = "auth_state",
@@ -391,32 +390,31 @@ async fn login(
     let client = client.inner();
     info!(quick, "login");
 
-    let mut token_manager: TokenManager;
-    let store = app_handle.store("account.json").unwrap();
-
-    if let Some(binding) = store.get("token") {
-        debug!("loading token from file store");
-        let token: types::UserToken = serde_json::from_value(binding.clone()).unwrap();
-        token_manager = match token.to_twitch_token(client.clone()).await {
-            Ok(token) => TokenManager::from_existing(token.clone(), client.clone()),
-            Err(ValidationError::NotAuthorized) => TokenManager::new(client.clone()),
-            Err(err) => panic!("{err}"),
-        };
+    let auth_state_snapshot = state_syncer.snapshot::<AuthState>("auth_state");
+    let mut token_manager = if let Some(token) = auth_state_snapshot.token.clone() {
+        debug!("loading token from persisted auth_state");
+        match token.to_twitch_token(client.clone()).await {
+            Ok(token) => TokenManager::from_existing(token, client.clone()),
+            Err(err) => {
+                error!("failed to restore token from auth_state: {}", err);
+                TokenManager::new(client.clone())
+            }
+        }
     } else {
-        debug!("no token found on disk, setting empty token");
-        token_manager = TokenManager::new(client.clone());
-    }
+        debug!("no token found in persisted auth_state");
+        TokenManager::new(client.clone())
+    };
 
     let twitch_token: twitch_oauth2::UserToken;
-    let user_token: types::UserToken;
-    if token_manager.clone().is_token_valid().await {
+    let mut user_token: types::UserToken;
+    if token_manager.is_token_valid().await {
         debug!("token is already valid");
-        twitch_token = token_manager.clone().get_token().await;
+        twitch_token = token_manager.get_token().await;
         user_token = types::UserToken::from_twitch_token(twitch_token.clone());
     } else if quick {
         return Err("no valid token".to_string());
     } else {
-        let device_code = token_manager.clone().start_device_code_flow().await;
+        let device_code = token_manager.start_device_code_flow().await;
 
         {
             let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
@@ -424,6 +422,7 @@ async fn login(
 
             auth_state.phase = types::AuthPhase::WaitingForAuth;
             auth_state.device_code = device_code.user_code;
+            auth_state.token = None;
         }
 
         debug!("pausing to show verification code");
@@ -435,8 +434,12 @@ async fn login(
             .open_url(device_code.verification_uri.clone(), None::<&str>)
             .unwrap();
 
-        twitch_token = token_manager.clone().finish_device_code_flow().await;
+        twitch_token = token_manager.finish_device_code_flow().await;
         user_token = types::UserToken::from_twitch_token(twitch_token.clone());
+    }
+
+    if let Some(existing_token) = auth_state_snapshot.token {
+        user_token.profile_image_url = existing_token.profile_image_url;
     }
 
     {
@@ -444,14 +447,24 @@ async fn login(
         let mut auth_state = auth_state_ref.lock().unwrap();
 
         auth_state.phase = types::AuthPhase::Authorized;
+        auth_state.device_code = String::new();
         auth_state.token = Some(user_token.clone());
     }
+
+    let new_token_ref = Arc::new(Mutex::new(twitch_token.clone()));
+    let token_ref = if app_handle.manage::<SharedTwitchToken>(new_token_ref.clone()) {
+        new_token_ref
+    } else {
+        let existing_token_ref = app_handle.state::<SharedTwitchToken>().inner().clone();
+        *existing_token_ref.lock().await = twitch_token.clone();
+        existing_token_ref
+    };
 
     // Create empty managers — no network calls, just register state so
     // other Tauri commands can access them immediately.
     let eventsub_manager = EventSubManager::new();
-    let badge_manager = BadgeManager::empty(twitch_token.clone());
-    let emote_manager = EmoteManager::empty(client.clone(), twitch_token.clone());
+    let badge_manager = BadgeManager::empty(token_ref.clone());
+    let emote_manager = EmoteManager::empty(client.clone(), token_ref.clone());
 
     // Register or update shared state (safe for re-login)
     if !app_handle.manage::<SharedEventSubManager>(Mutex::new(eventsub_manager.clone())) {
@@ -463,39 +476,50 @@ async fn login(
     if !app_handle.manage::<SharedEmoteManager>(Mutex::new(emote_manager.clone())) {
         *app_handle.state::<SharedEmoteManager>().lock().await = emote_manager.clone();
     }
-    if !app_handle.manage::<SharedUserToken>(Mutex::new(user_token.clone())) {
-        *app_handle.state::<SharedUserToken>().lock().await = user_token.clone();
-    }
-    if !app_handle.manage::<SharedTwitchToken>(Mutex::new(twitch_token.clone())) {
-        *app_handle.state::<SharedTwitchToken>().lock().await = twitch_token.clone();
-    }
-
     // Token refresh callback + persistence
-    let app_handle_ref = app_handle.clone();
-    let store_ref = store.clone();
+    let token_ref_for_refresh = token_ref.clone();
+    let state_syncer_ref = state_syncer.inner().clone();
     token_manager.on_refresh = Arc::new(Box::new(move |token| {
-        let user_token_binding = app_handle_ref.state::<SharedUserToken>();
-        let twitch_token_binding = app_handle_ref.state::<SharedTwitchToken>();
+        let mut new_token = types::UserToken::from_twitch_token(token.clone());
+        let auth_state = state_syncer_ref.snapshot::<AuthState>("auth_state");
+        if let Some(existing_token) = auth_state.token {
+            new_token.profile_image_url = existing_token.profile_image_url;
+        }
 
-        let mut user_token_ref = tauri::async_runtime::block_on(user_token_binding.lock());
-        let mut twitch_token_ref = tauri::async_runtime::block_on(twitch_token_binding.lock());
+        tauri::async_runtime::block_on(async {
+            *token_ref_for_refresh.lock().await = token;
+        });
 
-        *twitch_token_ref = token.clone();
-
-        let new_token = types::UserToken::from_twitch_token(token);
-        *user_token_ref = new_token.clone();
-
-        debug!(
-            new_token.access_token,
-            new_token.login, new_token.user_id, "updating token store"
+        state_syncer_ref.update::<AuthState>(
+            "auth_state",
+            AuthState {
+                phase: types::AuthPhase::Authorized,
+                device_code: String::new(),
+                token: Some(new_token.clone()),
+            },
+            true,
         );
 
-        store_ref.set("token", json!(new_token));
+        info!(
+            login = %new_token.login,
+            user_id = %new_token.user_id,
+            expires_in = new_token.expires_in,
+            "token refresh persisted to auth_state"
+        );
     }));
 
-    debug!("setting token");
-    store.set("token", json!(user_token.clone()));
-    token_manager.manage();
+    {
+        let refresh_handle_state = app_handle.state::<SharedTokenRefreshHandle>();
+        let mut existing = refresh_handle_state.lock().await;
+        if let Some(handle) = existing.take() {
+            handle.abort();
+        }
+    }
+    let refresh_handle = token_manager.manage();
+    {
+        let refresh_handle_state = app_handle.state::<SharedTokenRefreshHandle>();
+        *refresh_handle_state.lock().await = Some(refresh_handle);
+    }
 
     // --- Background tasks ---
 
@@ -542,56 +566,67 @@ async fn login(
     {
         let eventsub_manager = eventsub_manager.clone();
         let client = client.clone();
-        let twitch_token = twitch_token.clone();
+        let token_ref = token_ref.clone();
         let app_ref = app_handle.clone();
         let badge_manager_ref = badge_manager.clone();
         let emote_manager_ref = emote_manager.clone();
-        tauri::async_runtime::spawn(async move {
-            let events = match eventsub_manager.start(client, twitch_token) {
-                Ok(events) => events,
-                Err(e) => {
-                    error!("failed to start eventsub: {}", e);
-                    return;
-                }
-            };
 
-            std::thread::spawn(move || {
-                use twitch_api::eventsub::{Message as M, Payload as P};
+        {
+            let eventsub_handle_state = app_handle.state::<SharedEventSubHandles>();
+            let mut existing = eventsub_handle_state.lock().await;
+            for handle in existing.drain(..) {
+                handle.abort();
+            }
+        }
 
-                for msg in events {
-                    match msg {
-                        eventsub::EventSubMessage::AuthFailed(reason) => {
-                            error!("EventSub auth failed: {}", reason);
-                            clear_auth(&app_ref);
-                            break;
-                        }
-                        eventsub::EventSubMessage::Notification(notification) => {
-                            match notification.event {
-                                twitch_api::eventsub::Event::ChannelChatMessageV1(P {
-                                    message: M::Notification(chat_message),
-                                    ..
-                                }) => {
-                                    let channel_msg = types::ChannelMessage::new(
-                                        chat_message.clone(),
-                                        notification.ts.to_string(),
-                                        badge_manager_ref.clone(),
-                                        emote_manager_ref.clone(),
-                                    );
-                                    let key = format!(
-                                        "chat_message:{}",
-                                        chat_message.broadcaster_user_login
-                                    );
-                                    trace!("chat message: id={} msg={:?}", key, channel_msg);
-                                    app_ref
-                                        .emit(&key, channel_msg)
-                                        .expect("unable to emit state")
-                                }
-                                _ => debug!("event notification: {:?}", notification.event),
+        let eventsub_runtime = match eventsub_manager.start(client, token_ref) {
+            Ok(runtime) => runtime,
+            Err(e) => {
+                error!("failed to start eventsub: {}", e);
+                return Err("failed to start eventsub".to_string());
+            }
+        };
+        let eventsub::EventSubRuntime { events, handles } = eventsub_runtime;
+
+        {
+            let eventsub_handle_state = app_handle.state::<SharedEventSubHandles>();
+            *eventsub_handle_state.lock().await = handles;
+        }
+
+        std::thread::spawn(move || {
+            use twitch_api::eventsub::{Message as M, Payload as P};
+
+            for msg in events {
+                match msg {
+                    eventsub::EventSubMessage::AuthFailed(reason) => {
+                        error!("EventSub auth failed: {}", reason);
+                        clear_auth(&app_ref);
+                        break;
+                    }
+                    eventsub::EventSubMessage::Notification(notification) => {
+                        match notification.event {
+                            twitch_api::eventsub::Event::ChannelChatMessageV1(P {
+                                message: M::Notification(chat_message),
+                                ..
+                            }) => {
+                                let channel_msg = types::ChannelMessage::new(
+                                    chat_message.clone(),
+                                    notification.ts.to_string(),
+                                    badge_manager_ref.clone(),
+                                    emote_manager_ref.clone(),
+                                );
+                                let key =
+                                    format!("chat_message:{}", chat_message.broadcaster_user_login);
+                                trace!("chat message: id={} msg={:?}", key, channel_msg);
+                                app_ref
+                                    .emit(&key, channel_msg)
+                                    .expect("unable to emit state")
                             }
+                            _ => debug!("event notification: {:?}", notification.event),
                         }
                     }
                 }
-            });
+            }
         });
     }
 
@@ -624,7 +659,7 @@ async fn login(
     Ok(user_token)
 }
 
-/// Clears auth state, channel cache, stored token, and aborts the poll task.
+/// Clears auth state, channel cache, and background auth tasks.
 /// Used by both explicit logout and automatic auth expiration handling.
 fn clear_auth(app_handle: &AppHandle) {
     let state_syncer = app_handle.state::<StateSyncer>();
@@ -634,6 +669,20 @@ fn clear_auth(app_handle: &AppHandle) {
         let poll_handle_state = app_handle.state::<SharedPollHandle>();
         let mut poll_handle = tauri::async_runtime::block_on(poll_handle_state.lock());
         if let Some(handle) = poll_handle.take() {
+            handle.abort();
+        }
+    }
+    {
+        let refresh_handle_state = app_handle.state::<SharedTokenRefreshHandle>();
+        let mut refresh_handle = tauri::async_runtime::block_on(refresh_handle_state.lock());
+        if let Some(handle) = refresh_handle.take() {
+            handle.abort();
+        }
+    }
+    {
+        let eventsub_handle_state = app_handle.state::<SharedEventSubHandles>();
+        let mut eventsub_handles = tauri::async_runtime::block_on(eventsub_handle_state.lock());
+        for handle in eventsub_handles.drain(..) {
             handle.abort();
         }
     }
@@ -726,6 +775,7 @@ pub fn run() {
                 .insert("channel_cache".to_owned(), true);
             let state_syncer = StateSyncer::new(sync_cfg, app.handle().clone());
 
+            let _auth_state: AuthState = state_syncer.load("auth_state");
             let mut internal_state: InternalState = state_syncer.load("internal_state");
             internal_state.version = app.package_info().version.to_string();
             internal_state.name = app.package_info().name.to_string();
@@ -768,8 +818,7 @@ pub fn run() {
             {
                 use windows::Win32::Foundation::COLORREF;
                 use windows::Win32::Graphics::Dwm::{
-                    DwmSetWindowAttribute, DWMWA_CAPTION_COLOR,
-                    DWMWA_USE_IMMERSIVE_DARK_MODE,
+                    DwmSetWindowAttribute, DWMWA_CAPTION_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE,
                 };
 
                 let hwnd = window.hwnd().unwrap();
@@ -805,11 +854,12 @@ pub fn run() {
 
             info!("made client");
 
-            state_syncer.set("auth_state", AuthState::default());
             state_syncer.set("internal_state", internal_state);
             state_syncer.set("channel_cache", ChannelCache::default());
             app.manage::<StateSyncer>(state_syncer);
             app.manage::<SharedPollHandle>(Mutex::new(None));
+            app.manage::<SharedTokenRefreshHandle>(Mutex::new(None));
+            app.manage::<SharedEventSubHandles>(Mutex::new(Vec::new()));
 
             app.manage(client);
 

@@ -46,7 +46,10 @@ impl Emote {
     ) -> Self {
         let id = value.id.to_string();
         let format: Vec<String> = value.format.iter().map(|v| v.to_string()).collect();
-        let fmt = format.last().cloned().unwrap_or_else(|| "static".to_string());
+        let fmt = format
+            .last()
+            .cloned()
+            .unwrap_or_else(|| "static".to_string());
         let url = format!(
             "https://static-cdn.jtvnw.net/emoticons/v2/{}/{}/dark/3.0",
             id, fmt
@@ -72,7 +75,10 @@ impl From<&twitch_api::helix::chat::UserEmote> for Emote {
         let format: Vec<String> = value.format.iter().map(|v| v.to_string()).collect();
         let scale: Vec<String> = value.scale.iter().map(|v| v.to_string()).collect();
         let theme_mode: Vec<String> = value.theme_mode.iter().map(|v| v.to_string()).collect();
-        let fmt = format.last().cloned().unwrap_or_else(|| "static".to_string());
+        let fmt = format
+            .last()
+            .cloned()
+            .unwrap_or_else(|| "static".to_string());
         let url = format!(
             "https://static-cdn.jtvnw.net/emoticons/v2/{}/{}/dark/3.0",
             id, fmt
@@ -99,8 +105,14 @@ impl From<&twitch_api::helix::chat::GlobalEmote> for Emote {
         let format: Vec<String> = value.format.iter().map(|v| v.to_string()).collect();
         let scale: Vec<String> = value.scale.iter().map(|v| v.to_string()).collect();
         let theme_mode: Vec<String> = value.theme_mode.iter().map(|v| v.to_string()).collect();
-        let fmt = format.last().cloned().unwrap_or_else(|| "static".to_string());
-        let tm = theme_mode.last().cloned().unwrap_or_else(|| "dark".to_string());
+        let fmt = format
+            .last()
+            .cloned()
+            .unwrap_or_else(|| "static".to_string());
+        let tm = theme_mode
+            .last()
+            .cloned()
+            .unwrap_or_else(|| "dark".to_string());
         let sc = scale.last().cloned().unwrap_or_else(|| "1.0".to_string());
         let url = format!(
             "https://static-cdn.jtvnw.net/emoticons/v2/{}/{}/{}/{}",

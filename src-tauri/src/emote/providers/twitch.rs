@@ -10,6 +10,7 @@ use crate::emote::{
     cache::{EmoteCache, EmoteCacheTrait, MultiCache},
     providers::{EmoteProvider, GLOBAL_SCOPE_KEY},
 };
+use crate::SharedTwitchToken;
 
 const USER_EMOTES_SCOPE_KEY: &str = "_user_emotes";
 
@@ -19,13 +20,13 @@ type SharedMap<V> = Arc<Mutex<HashMap<String, V>>>;
 pub struct TwitchProvider {
     cache: SharedMap<EmoteCache>,
     client: twitch_api::HelixClient<'static, reqwest::Client>,
-    token: twitch_oauth2::UserToken,
+    token: SharedTwitchToken,
 }
 
 impl TwitchProvider {
     pub fn new(
         client: twitch_api::HelixClient<'static, reqwest::Client>,
-        token: twitch_oauth2::UserToken,
+        token: SharedTwitchToken,
     ) -> Self {
         TwitchProvider {
             cache: Default::default(),
@@ -44,8 +45,10 @@ impl EmoteProvider<MultiCache> for TwitchProvider {
         let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
 
         match tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(async { self.client.get_global_emotes(&self.token).await })
+            tokio::runtime::Handle::current().block_on(async {
+                let token = self.token.lock().await.clone();
+                self.client.get_global_emotes(&token).await
+            })
         }) {
             Ok(resp) => resp
                 .iter()
@@ -67,8 +70,9 @@ impl EmoteProvider<MultiCache> for TwitchProvider {
 
         match tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
+                let token = self.token.lock().await.clone();
                 self.client
-                    .get_user_emotes(&self.token.user_id, &self.token)
+                    .get_user_emotes(&token.user_id, &token)
                     .try_collect::<Vec<_>>()
                     .await
             })

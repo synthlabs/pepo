@@ -102,15 +102,24 @@ impl UserToken {
         client: HelixClient<'static, reqwest::Client>,
     ) -> std::result::Result<
         twitch_oauth2::UserToken,
-        twitch_oauth2::tokens::errors::ValidationError<CompatError<reqwest::Error>>,
+        twitch_oauth2::tokens::errors::RetrieveTokenError<CompatError<reqwest::Error>>,
     > {
-        twitch_oauth2::UserToken::from_existing(
-            &client,
-            twitch_oauth2::AccessToken::from(self.access_token),
-            twitch_oauth2::RefreshToken::from(self.refresh_token.unwrap_or("".to_owned())),
-            None,
-        )
-        .await
+        let access_token = twitch_oauth2::AccessToken::from(self.access_token);
+        match self.refresh_token.filter(|token| !token.is_empty()) {
+            Some(refresh_token) => {
+                twitch_oauth2::UserToken::from_existing_or_refresh_token(
+                    &client,
+                    access_token,
+                    twitch_oauth2::RefreshToken::from(refresh_token),
+                    twitch_oauth2::ClientId::from(self.client_id),
+                    None,
+                )
+                .await
+            }
+            None => twitch_oauth2::UserToken::from_existing(&client, access_token, None, None)
+                .await
+                .map_err(Into::into),
+        }
     }
 }
 
