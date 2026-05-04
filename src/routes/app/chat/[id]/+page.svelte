@@ -15,17 +15,30 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
 	import { parseColonMacro } from '$lib/chat/colon-macro';
+	import {
+		DEFAULT_BOTTOM_THRESHOLD,
+		captureScrollSnapshot,
+		getBatchScrollSnapshot,
+		isAtBottom,
+		restoreScrollAfterRender,
+		scrollToBottom as scrollElementToBottom,
+		type ScrollSnapshot
+	} from '$lib/chat/autoscroll';
 
-	const AUTOSCROLL_BUFFER = 300; // the amount you can scroll up and still not disable auto scroll
 	const CHAT_MESSAGE_LIMIT = 500;
+	const CHAT_MESSAGE_SELECTOR = '[data-chat-message-index]';
+	const AUTOSCROLL_THRESHOLD = DEFAULT_BOTTOM_THRESHOLD;
 
 	let chatDIV = $state<HTMLDivElement>();
-	let scrolledAmount = $state(window.innerHeight);
-	let autoscroll: boolean = $state(true);
-	let isScrolled = $derived(
-		chatDIV ? scrolledAmount < chatDIV.scrollHeight - AUTOSCROLL_BUFFER : false
+	let messageListDIV = $state<HTMLDivElement>();
+	let autoScrollPinned = $state(true);
+	let unreadMessageCount = $state(0);
+	let showJumpToBottom = $derived(!autoScrollPinned);
+	let jumpToBottomLabel = $derived(
+		unreadMessageCount > 0
+			? `${unreadMessageCount} New Message${unreadMessageCount === 1 ? '' : 's'} Below`
+			: 'More Messages Below'
 	);
-	let forceAutoscrollDebounce: boolean = $state(true);
 	let showSeparator: boolean = $state(false);
 	let channel_name: string = $derived(page.params.id ?? '');
 	let msgs: ChannelMessage[] = $state([]);
@@ -44,8 +57,21 @@
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 	let un_sub: UnlistenFn;
+	let pendingScrollSnapshot: ScrollSnapshot | null = null;
+	let scrollFlushQueued = false;
+	let scrollFrame: number | undefined;
+	let resizeScrollFrame: number | undefined;
+	let resizeObserver: ResizeObserver | undefined;
+	let destroyed = false;
 
 	onMount(async () => {
+		if (messageListDIV && typeof ResizeObserver !== 'undefined') {
+			resizeObserver = new ResizeObserver(() => {
+				queuePinnedScrollToBottom();
+			});
+			resizeObserver.observe(messageListDIV);
+		}
+
 		Logger.info('joining channel:', channel_name);
 		let result = await commands.joinChat(channel_name);
 		Logger.debug(result);
@@ -59,15 +85,18 @@
 
 		Logger.debug('subbing to chat messages');
 		un_sub = await listen<ChannelMessage>(`chat_message:${channel_name}`, (event) => {
-			msgs.push(event.payload);
-			if (msgs.length > CHAT_MESSAGE_LIMIT) msgs.shift();
-			processAutoscroll();
+			addMessage(event.payload);
 		});
 
-		scrollToBottom();
+		jumpToBottom();
 	});
 
 	onDestroy(async () => {
+		destroyed = true;
+		resizeObserver?.disconnect();
+		if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
+		if (resizeScrollFrame !== undefined) cancelAnimationFrame(resizeScrollFrame);
+
 		Logger.info('unsubbing from channel', channel_name);
 		if (un_sub) {
 			un_sub();
@@ -75,45 +104,93 @@
 		await commands.leaveChat(channel_name).then(Logger.debug);
 	});
 
-	const refreshScrollAmount = () => {
-		scrolledAmount = chatDIV ? chatDIV.offsetHeight + chatDIV.scrollTop : 0;
-	};
-
-	const shouldScroll = (): boolean => {
-		if (forceAutoscrollDebounce) {
-			autoscroll = true;
-		} else {
-			refreshScrollAmount();
-			// determine whether we should auto-scroll
-			// once the DOM is updated...
-			// if the scroll amount matches the tail minus a buffer amount then autoscroll
-			autoscroll = !!chatDIV && scrolledAmount > chatDIV.scrollHeight - AUTOSCROLL_BUFFER;
+	const addMessage = (message: ChannelMessage) => {
+		if (chatDIV) {
+			pendingScrollSnapshot = getBatchScrollSnapshot(
+				pendingScrollSnapshot,
+				chatDIV,
+				CHAT_MESSAGE_SELECTOR,
+				AUTOSCROLL_THRESHOLD
+			);
 		}
-		return autoscroll;
+
+		const wasPinned = pendingScrollSnapshot?.wasAtBottom ?? autoScrollPinned;
+
+		msgs.push(message);
+		if (msgs.length > CHAT_MESSAGE_LIMIT) msgs.shift();
+		if (!wasPinned) unreadMessageCount += 1;
+
+		queueScrollRestore();
 	};
 
-	const processAutoscroll = async () => {
+	const refreshScrollState = () => {
+		if (!chatDIV) return;
+
+		autoScrollPinned = isAtBottom(chatDIV, AUTOSCROLL_THRESHOLD);
+		if (autoScrollPinned) {
+			pendingScrollSnapshot = null;
+			unreadMessageCount = 0;
+		} else if (pendingScrollSnapshot) {
+			pendingScrollSnapshot = captureScrollSnapshot(
+				chatDIV,
+				CHAT_MESSAGE_SELECTOR,
+				AUTOSCROLL_THRESHOLD
+			);
+		}
+	};
+
+	const queueScrollRestore = () => {
+		if (scrollFlushQueued) return;
+
+		scrollFlushQueued = true;
+		void restoreQueuedScroll();
+	};
+
+	const restoreQueuedScroll = async () => {
 		await tick();
-
-		if (shouldScroll()) {
-			if (chatDIV) {
-				chatDIV.scrollTo({ top: chatDIV.scrollHeight, left: 0, behavior: 'auto' });
-			}
+		if (destroyed) {
+			scrollFlushQueued = false;
+			return;
 		}
+
+		scrollFrame = requestAnimationFrame(() => {
+			scrollFrame = undefined;
+			scrollFlushQueued = false;
+
+			const snapshot = pendingScrollSnapshot;
+			pendingScrollSnapshot = null;
+			if (!chatDIV || !snapshot) return;
+
+			const result = restoreScrollAfterRender(
+				chatDIV,
+				snapshot,
+				CHAT_MESSAGE_SELECTOR,
+				AUTOSCROLL_THRESHOLD
+			);
+			autoScrollPinned = result.pinned;
+			if (autoScrollPinned) unreadMessageCount = 0;
+		});
 	};
 
-	const forceAutoscrollDebounceFn = () => {
-		forceAutoscrollDebounce = true;
-		Logger.debug('autoscroll debounce START');
-		setTimeout(() => {
-			Logger.debug('autoscroll debounce FINISH');
-			forceAutoscrollDebounce = false;
-		}, 2000);
+	const queuePinnedScrollToBottom = () => {
+		if (!autoScrollPinned || !chatDIV || resizeScrollFrame !== undefined) return;
+
+		resizeScrollFrame = requestAnimationFrame(() => {
+			resizeScrollFrame = undefined;
+			if (!autoScrollPinned || !chatDIV) return;
+
+			scrollElementToBottom(chatDIV);
+			refreshScrollState();
+		});
 	};
 
-	const scrollToBottom = () => {
-		forceAutoscrollDebounceFn();
-		processAutoscroll();
+	const jumpToBottom = () => {
+		if (!chatDIV) return;
+
+		pendingScrollSnapshot = null;
+		scrollElementToBottom(chatDIV);
+		autoScrollPinned = true;
+		unreadMessageCount = 0;
 	};
 
 	const submitForm = (event: SubmitEvent) => {
@@ -249,41 +326,42 @@
 		<div
 			class="grow overflow-x-hidden overflow-y-auto"
 			bind:this={chatDIV}
-			onscroll={refreshScrollAmount}
+			onscroll={refreshScrollState}
 		>
-			{#each msgs as msg (msg.index)}
-				<div
-					class={cn(
-						'inline-block w-full px-2 py-1 text-sm text-wrap',
-						msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary'
-					)}
-				>
-					<span class="text-xs whitespace-nowrap text-gray-500"
-						>{new Date(msg.ts).toLocaleTimeString('en', { timeStyle: 'short' })}</span
+			<div bind:this={messageListDIV}>
+				{#each msgs as msg (msg.index)}
+					<div
+						data-chat-message-index={msg.index}
+						class={cn(
+							'inline-block w-full px-2 py-1 text-sm text-wrap',
+							msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary'
+						)}
 					>
-					<Badges badges={msg.badges} />
-					<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
-						>{msg.chatter_user_name}</span
-					>:
-					{#each msg.fragments as fragment, i (i)}
-						{#if 'Text' in fragment}
-							{fragment.Text.text}
-						{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
-							<Emote emote={fragment.Emote.emote} />
-						{/if}
-					{/each}
-				</div>
-				{#if showSeparator}
-					<Separator class="" />
-				{/if}
-			{/each}
-		</div>
-		{#if isScrolled}
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="bg-primary cursor-pointer text-center" onclick={scrollToBottom}>
-				More Messages Below
+						<span class="text-xs whitespace-nowrap text-gray-500"
+							>{new Date(msg.ts).toLocaleTimeString('en', { timeStyle: 'short' })}</span
+						>
+						<Badges badges={msg.badges} />
+						<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
+							>{msg.chatter_user_name}</span
+						>:
+						{#each msg.fragments as fragment, i (i)}
+							{#if 'Text' in fragment}
+								{fragment.Text.text}
+							{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
+								<Emote emote={fragment.Emote.emote} />
+							{/if}
+						{/each}
+					</div>
+					{#if showSeparator}
+						<Separator class="" />
+					{/if}
+				{/each}
 			</div>
+		</div>
+		{#if showJumpToBottom}
+			<button class="bg-primary w-full cursor-pointer text-center" type="button" onclick={jumpToBottom}>
+				{jumpToBottomLabel}
+			</button>
 		{/if}
 		{#if errorState.active}
 			<div
