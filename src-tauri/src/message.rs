@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::trace;
 
 use crate::emote::{cache::EmoteCacheTrait, Emote};
 
@@ -32,22 +32,27 @@ pub struct Parser {}
 
 impl Parser {
     pub fn parse(message: String, cache: &dyn EmoteCacheTrait) -> Vec<Fragment> {
-        let _start_time = std::time::Instant::now();
+        let start_time = std::time::Instant::now();
+        let msg_len = message.len();
+        let providers = cache.providers();
 
         let mut result: Vec<Fragment> = Vec::new();
         let mut current = String::new();
         let mut word = String::new();
         let mut index: u64 = 0;
+        let mut emote_hits: usize = 0;
 
         let resolve_word = |word: &mut String,
                             current: &mut String,
                             result: &mut Vec<Fragment>,
-                            index: &mut u64| {
+                            index: &mut u64,
+                            emote_hits: &mut usize| {
             if word.is_empty() {
                 return;
             }
             if let Some(emote) = cache.get_emote(word.clone()) {
-                debug!("found emote: {}", word);
+                *emote_hits += 1;
+                trace!("found emote: {}", word);
                 if !current.is_empty() {
                     result.push(Fragment::Text(TextFragment {
                         index: *index,
@@ -72,11 +77,23 @@ impl Parser {
                 continue;
             }
             // word boundary
-            resolve_word(&mut word, &mut current, &mut result, &mut index);
+            resolve_word(
+                &mut word,
+                &mut current,
+                &mut result,
+                &mut index,
+                &mut emote_hits,
+            );
             current.push(c);
         }
         // trailing word at end-of-input
-        resolve_word(&mut word, &mut current, &mut result, &mut index);
+        resolve_word(
+            &mut word,
+            &mut current,
+            &mut result,
+            &mut index,
+            &mut emote_hits,
+        );
 
         if !current.is_empty() {
             result.push(Fragment::Text(TextFragment {
@@ -85,14 +102,17 @@ impl Parser {
             }));
         }
 
-        debug!(
-            msg = message,
-            msg_len = message.len(),
-            providers = ?cache.providers(),
+        let duration = start_time.elapsed();
+        trace!(
+            msg = %message,
+            msg_len = msg_len,
+            providers = ?providers,
             fragments = result.len(),
-            duration = ?_start_time.elapsed(),
+            emote_hits = emote_hits,
+            duration = ?duration,
             "parsed message into fragments",
         );
+        crate::logging::record_chat_parse(msg_len, providers, result.len(), duration, emote_hits);
 
         result
     }

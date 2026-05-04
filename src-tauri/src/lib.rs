@@ -28,6 +28,7 @@ mod badgemanager;
 mod emote;
 mod emotemanager;
 mod eventsub;
+mod logging;
 mod message;
 mod token;
 mod types;
@@ -172,17 +173,17 @@ async fn join_chat(
 ) -> Result<types::ChannelInfo, String> {
     debug!("join: channel={}", channel_name);
 
-    let token = token_ref.lock().await;
+    let token = { token_ref.lock().await.clone() };
     let client = client_ref.inner();
     let eventsub_manager = eventsub_manager_ref.lock().await.clone();
     let badge_manager = badge_manager_ref.lock().await.clone();
     let emote_manager = emote_manager_ref.lock().await.clone();
 
     let channel = client
-        .get_channel_from_login(&channel_name, &token.clone())
+        .get_channel_from_login(&channel_name, &token)
         .await
-        .unwrap()
-        .expect("missing channel");
+        .map_err(|e| format!("failed to get channel: {:?}", e))?
+        .ok_or_else(|| format!("channel not found: {}", channel_name))?;
 
     debug!("join: got channel info - {:?}", channel.clone());
 
@@ -194,7 +195,7 @@ async fn join_chat(
         .load_channel(channel.broadcaster_id.to_string())
         .await;
 
-    match eventsub_manager
+    if let Err(e) = eventsub_manager
         .join_chat(
             channel.broadcaster_id.clone(),
             channel_name,
@@ -203,14 +204,16 @@ async fn join_chat(
         )
         .await
     {
-        Ok(_) => debug!("joined channel"),
-        Err(e) => error!("join_chat - {:?}", e),
-    };
+        error!("join_chat - {:?}", e);
+        return Err(format!("failed to join channel chat: {:?}", e));
+    }
+
+    debug!("joined channel");
 
     let mut channel_info = types::ChannelInfo::from(channel);
 
     if let Ok(Some(user)) = client
-        .get_user_from_id(channel_info.broadcaster_id.as_str(), &token.clone())
+        .get_user_from_id(channel_info.broadcaster_id.as_str(), &token)
         .await
     {
         channel_info.profile_image_url = user.profile_image_url.unwrap_or_default();
@@ -314,7 +317,7 @@ async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), String> {
     let client = app_handle.state::<HelixClient<'static, reqwest::Client>>();
     let state_syncer = app_handle.state::<StateSyncer>();
 
-    info!("polling channel cache");
+    debug!("polling channel cache");
 
     let channels: Vec<twitch_api::helix::channels::FollowedBroadcaster> = client
         .get_followed_channels(token.user_id.to_string(), &token)
@@ -377,6 +380,33 @@ async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), String> {
     state_syncer.update::<types::ChannelCache>("channel_cache", cache, true);
 
     Ok(())
+}
+
+fn is_auth_failure_error(error: &str) -> bool {
+    let lower = error.to_lowercase();
+    lower.contains("401") || lower.contains("unauthorized") || lower.contains("invalid oauth token")
+}
+
+async fn handle_channel_cache_poll_error(
+    app_handle: &AppHandle,
+    context: &str,
+    error: String,
+) -> bool {
+    if is_auth_failure_error(&error) {
+        error!(
+            "channel cache poll failed due to auth; clearing auth: {}",
+            error
+        );
+        clear_auth_async(app_handle, false).await;
+        return true;
+    }
+
+    logging::error_repeated(
+        format!("channel_cache_poll:{context}:{error}"),
+        format!("{context} channel cache poll failed: {error}"),
+        Duration::from_secs(300),
+    );
+    false
 }
 
 #[tauri::command]
@@ -634,13 +664,17 @@ async fn login(
     let poll_app = app_handle.clone();
     let poll_handle = tauri::async_runtime::spawn(async move {
         if let Err(e) = poll_channel_cache(&poll_app).await {
-            error!("initial channel cache poll failed: {}", e);
+            if handle_channel_cache_poll_error(&poll_app, "initial", e).await {
+                return;
+            }
         }
 
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
             if let Err(e) = poll_channel_cache(&poll_app).await {
-                error!("channel cache poll failed: {}", e);
+                if handle_channel_cache_poll_error(&poll_app, "recurring", e).await {
+                    return;
+                }
             }
         }
     });
@@ -659,29 +693,28 @@ async fn login(
     Ok(user_token)
 }
 
-/// Clears auth state, channel cache, and background auth tasks.
-/// Used by both explicit logout and automatic auth expiration handling.
-fn clear_auth(app_handle: &AppHandle) {
+async fn clear_auth_async(app_handle: &AppHandle, abort_poll: bool) {
     let state_syncer = app_handle.state::<StateSyncer>();
 
-    // Abort poll task
     {
         let poll_handle_state = app_handle.state::<SharedPollHandle>();
-        let mut poll_handle = tauri::async_runtime::block_on(poll_handle_state.lock());
+        let mut poll_handle = poll_handle_state.lock().await;
         if let Some(handle) = poll_handle.take() {
-            handle.abort();
+            if abort_poll {
+                handle.abort();
+            }
         }
     }
     {
         let refresh_handle_state = app_handle.state::<SharedTokenRefreshHandle>();
-        let mut refresh_handle = tauri::async_runtime::block_on(refresh_handle_state.lock());
+        let mut refresh_handle = refresh_handle_state.lock().await;
         if let Some(handle) = refresh_handle.take() {
             handle.abort();
         }
     }
     {
         let eventsub_handle_state = app_handle.state::<SharedEventSubHandles>();
-        let mut eventsub_handles = tauri::async_runtime::block_on(eventsub_handle_state.lock());
+        let mut eventsub_handles = eventsub_handle_state.lock().await;
         for handle in eventsub_handles.drain(..) {
             handle.abort();
         }
@@ -699,6 +732,12 @@ fn clear_auth(app_handle: &AppHandle) {
     }
 }
 
+/// Clears auth state, channel cache, and background auth tasks.
+/// Used by both explicit logout and automatic auth expiration handling.
+fn clear_auth(app_handle: &AppHandle) {
+    tauri::async_runtime::block_on(clear_auth_async(app_handle, true));
+}
+
 #[tauri::command]
 #[specta::specta]
 fn logout(app_handle: AppHandle, _state_syncer: State<'_, StateSyncer>) -> Result<(), String> {
@@ -710,13 +749,18 @@ fn logout(app_handle: AppHandle, _state_syncer: State<'_, StateSyncer>) -> Resul
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     color_eyre::install().expect("failed to install color_eyre");
+    let pepo_log_level = logging::pepo_log_level();
 
     let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .max_file_size(1_000_000) // 1 MB per log file
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
-                .level(log::LevelFilter::Debug)
+                .level(log::LevelFilter::Info)
+                .level_for("pepo_lib", pepo_log_level)
+                .level_for("hyper_util", log::LevelFilter::Warn)
+                .level_for("reqwest", log::LevelFilter::Warn)
+                .level_for("tauri_svelte_synced_store", log::LevelFilter::Warn)
                 .targets([
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {

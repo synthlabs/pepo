@@ -19,7 +19,7 @@ use twitch_api::{
 };
 use twitch_oauth2::UserToken;
 
-use crate::SharedTwitchToken;
+use crate::{logging, SharedTwitchToken};
 
 type SharedMap<V> = Arc<Mutex<HashMap<String, Mutex<HashSet<V>>>>>;
 
@@ -356,7 +356,11 @@ impl EventSubManager {
                 let parsed = match Event::parse_websocket(&s) {
                     Ok(p) => p,
                     Err(e) => {
-                        warn!("process_message - skipping unparseable message: {e}");
+                        logging::warn_repeated(
+                            format!("eventsub_unparseable:{e}"),
+                            format!("process_message - skipping unparseable message: {e}"),
+                            Duration::from_secs(60),
+                        );
                         return Ok(());
                     }
                 };

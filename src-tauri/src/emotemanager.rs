@@ -86,7 +86,7 @@ impl EmoteManager {
 
         let mc = MultiCache::new(caches);
 
-        debug!(scope = scope, name = mc.name(), "get emote cache");
+        tracing::trace!(scope = scope, name = mc.name(), "get emote cache");
         mc
     }
 

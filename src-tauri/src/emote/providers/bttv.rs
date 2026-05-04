@@ -130,7 +130,7 @@ impl EmoteProvider<MultiCache> for BttvProvider {
 
     fn get_emote_cache(&self, scope: String) -> MultiCache {
         let store = self.cache.lock().unwrap();
-        debug!(scope, "bttv get_emote_cache");
+        tracing::trace!(scope, "bttv get_emote_cache");
         let mut caches = Vec::new();
         if let Some(channel_cache) = store.get(&scope) {
             caches.push(channel_cache.clone());

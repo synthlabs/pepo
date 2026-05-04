@@ -50,7 +50,8 @@
 		let result = await commands.joinChat(channel_name);
 		Logger.debug(result);
 		if (result.status !== 'ok') {
-			Logger.error('RESULT NOT OK');
+			Logger.error('failed to join channel:', result.error);
+			showMessageError(`Failed to join ${channel_name}: ${result.error}`);
 			return;
 		}
 

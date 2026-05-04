@@ -114,44 +114,49 @@ impl BadgeManager {
         client: twitch_api::HelixClient<'static, reqwest::Client>,
     ) {
         debug!(broadcaster_id, "loading channel");
-        let mut scoped_badges = self.scoped_badges.lock().await;
 
-        if !scoped_badges.contains_key(&broadcaster_id) {
-            let mut badges: HashMap<String, BadgeSet> = Default::default();
-            debug!(
-                broadcaster_id,
-                "channel doesn't exist in cache yet, loading"
-            );
-            let req = get_channel_chat_badges::GetChannelChatBadgesRequest::broadcaster_id(
-                broadcaster_id.clone(),
-            );
-
-            debug!(broadcaster_id, "getting badges");
-            let token = self.token.lock().await.clone();
-            let response: Vec<twitch_api::helix::chat::BadgeSet> =
-                match client.req_get(req, &token).await {
-                    Ok(resp) => resp.data,
-                    Err(err) => {
-                        error!(
-                            broadcaster_id,
-                            "failed to load channel badges: err={}",
-                            err.to_string()
-                        );
-                        return;
-                    }
-                };
-
-            let _: Vec<_> = response
-                .iter()
-                .map(|b| {
-                    let new_b = BadgeSet::from(b.clone());
-                    debug!(broadcaster_id, "adding badgeset: badgeset={:?}", b);
-                    badges.insert(new_b.set_id.clone(), new_b.clone());
-                })
-                .collect();
-
-            scoped_badges.insert(broadcaster_id, badges);
+        {
+            let scoped_badges = self.scoped_badges.lock().await;
+            if scoped_badges.contains_key(&broadcaster_id) {
+                return;
+            }
         }
+
+        let mut badges: HashMap<String, BadgeSet> = Default::default();
+        debug!(
+            broadcaster_id,
+            "channel doesn't exist in cache yet, loading"
+        );
+        let req = get_channel_chat_badges::GetChannelChatBadgesRequest::broadcaster_id(
+            broadcaster_id.clone(),
+        );
+
+        debug!(broadcaster_id, "getting badges");
+        let token = self.token.lock().await.clone();
+        let response: Vec<twitch_api::helix::chat::BadgeSet> =
+            match client.req_get(req, &token).await {
+                Ok(resp) => resp.data,
+                Err(err) => {
+                    error!(
+                        broadcaster_id,
+                        "failed to load channel badges: err={}",
+                        err.to_string()
+                    );
+                    return;
+                }
+            };
+
+        let _: Vec<_> = response
+            .iter()
+            .map(|b| {
+                let new_b = BadgeSet::from(b.clone());
+                debug!(broadcaster_id, "adding badgeset: badgeset={:?}", b);
+                badges.insert(new_b.set_id.clone(), new_b.clone());
+            })
+            .collect();
+
+        let mut scoped_badges = self.scoped_badges.lock().await;
+        scoped_badges.insert(broadcaster_id, badges);
     }
 
     pub async fn get(self, set_id: String, channel: String) -> Option<BadgeSet> {

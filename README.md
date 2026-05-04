@@ -60,6 +60,29 @@ pnpm tauri build
 
 The built application will be in `src-tauri/target/release/bundle/`.
 
+### Development Logging
+
+Pepo defaults to `info` logs for app code and suppresses noisy dependency debug logs. During development, set `PEPO_LOG` before starting Tauri:
+
+```powershell
+$env:PEPO_LOG = "debug"
+pnpm tauri dev
+```
+
+On macOS and Linux shells:
+
+```bash
+PEPO_LOG=debug pnpm tauri dev
+```
+
+Use `PEPO_LOG=trace` when you need hot-path chat parser and emote-cache lookup details. Desktop logs are written under the app log directory:
+
+| Platform | Log directory |
+| --- | --- |
+| macOS | `~/Library/Logs/com.pepo.chat` |
+| Windows | `%LOCALAPPDATA%\com.pepo.chat\logs` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/com.pepo.chat/logs` |
+
 ### Disclosure
 
 Due to my essentially zero experience with front end testing, the tests for this project were generated with claude

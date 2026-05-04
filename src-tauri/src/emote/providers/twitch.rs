@@ -4,7 +4,7 @@ use std::{
 };
 
 use futures::TryStreamExt;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use crate::emote::{
     cache::{EmoteCache, EmoteCacheTrait, MultiCache},
@@ -92,7 +92,7 @@ impl EmoteProvider<MultiCache> for TwitchProvider {
 
     fn get_emote_cache(&self, scope: String) -> MultiCache {
         let store = self.cache.lock().unwrap();
-        debug!(scope, "twitch get_emote_cache");
+        tracing::trace!(scope, "twitch get_emote_cache");
         let mut caches = Vec::new();
         if let Some(channel_cache) = store.get(&scope) {
             caches.push(channel_cache.clone());
