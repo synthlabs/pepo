@@ -5,3 +5,4 @@
 - [ ] HTTP-mocked tests for emote providers (`src-tauri/src/emote/providers/{twitch,bttv,ffz,seventv}.rs`) and OAuth (`src-tauri/src/token.rs`)
 - [ ] WebSocket-mocked tests for `src-tauri/src/eventsub.rs`.
 - [ ] Tauri command integration tests via `tauri::test::mock_app()`.
+- [x] BUG: with the new scroll controller, when we fill up the message buffer and we start shifting messages, autoscroll stop

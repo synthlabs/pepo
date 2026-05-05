@@ -3,6 +3,7 @@ import {
 	captureScrollSnapshot,
 	getBatchScrollSnapshot,
 	isAtBottom,
+	refreshScrollStateAfterScroll,
 	restoreScrollAfterRender
 } from './autoscroll';
 
@@ -156,5 +157,81 @@ describe('autoscroll helpers', () => {
 
 		expect(result.pinned).toBe(true);
 		expect(target.getScrollTop()).toBe(800);
+	});
+
+	it('does not let an interim scroll event pause a bottom-pinned burst before restore', () => {
+		const target = createContainer({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
+
+		target.setScrollHeight(1200);
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			snapshot,
+			true,
+			0,
+			MESSAGE_SELECTOR
+		);
+
+		expect(scrollState.pinned).toBe(true);
+		expect(scrollState.pendingSnapshot).toBe(snapshot);
+		expect(scrollState.unreadMessageCount).toBe(0);
+		expect(scrollState.deferred).toBe(true);
+
+		const result = restoreScrollAfterRender(
+			target.container,
+			scrollState.pendingSnapshot!,
+			MESSAGE_SELECTOR
+		);
+		expect(result.pinned).toBe(true);
+		expect(target.getScrollTop()).toBe(800);
+	});
+
+	it('keeps bottom pinned when buffer trim causes an interim scroll position before restore', () => {
+		const target = createContainer({ scrollTop: 700, scrollHeight: 1000, clientHeight: 300 });
+		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
+
+		target.setScrollHeight(1100);
+		target.container.scrollTop = 650;
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			snapshot,
+			true,
+			0,
+			MESSAGE_SELECTOR
+		);
+
+		expect(scrollState.pinned).toBe(true);
+		expect(scrollState.pendingSnapshot).toBe(snapshot);
+		expect(scrollState.deferred).toBe(true);
+
+		const result = restoreScrollAfterRender(
+			target.container,
+			scrollState.pendingSnapshot!,
+			MESSAGE_SELECTOR
+		);
+		expect(result.pinned).toBe(true);
+		expect(target.getScrollTop()).toBe(800);
+	});
+
+	it('still refreshes the anchor for a queued restore when the user was already paused', () => {
+		const target = createContainer({ scrollTop: 300, scrollHeight: 1000, clientHeight: 400 });
+		const anchor = appendMessage(target, '4', 300);
+		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
+
+		target.layouts.set(anchor, { top: 330, height: 50 });
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			snapshot,
+			true,
+			2,
+			MESSAGE_SELECTOR
+		);
+
+		expect(scrollState.pinned).toBe(false);
+		expect(scrollState.pendingSnapshot).not.toBe(snapshot);
+		expect(scrollState.pendingSnapshot?.wasAtBottom).toBe(false);
+		expect(scrollState.pendingSnapshot?.anchor).toEqual({ key: '4', topOffset: 30 });
+		expect(scrollState.unreadMessageCount).toBe(2);
+		expect(scrollState.deferred).toBe(false);
 	});
 });

@@ -17,9 +17,8 @@
 	import { parseColonMacro } from '$lib/chat/colon-macro';
 	import {
 		DEFAULT_BOTTOM_THRESHOLD,
-		captureScrollSnapshot,
 		getBatchScrollSnapshot,
-		isAtBottom,
+		refreshScrollStateAfterScroll,
 		restoreScrollAfterRender,
 		scrollToBottom as scrollElementToBottom,
 		type ScrollSnapshot
@@ -126,17 +125,18 @@
 	const refreshScrollState = () => {
 		if (!chatDIV) return;
 
-		autoScrollPinned = isAtBottom(chatDIV, AUTOSCROLL_THRESHOLD);
-		if (autoScrollPinned) {
-			pendingScrollSnapshot = null;
-			unreadMessageCount = 0;
-		} else if (pendingScrollSnapshot) {
-			pendingScrollSnapshot = captureScrollSnapshot(
-				chatDIV,
-				CHAT_MESSAGE_SELECTOR,
-				AUTOSCROLL_THRESHOLD
-			);
-		}
+		const scrollState = refreshScrollStateAfterScroll(
+			chatDIV,
+			pendingScrollSnapshot,
+			scrollFlushQueued,
+			unreadMessageCount,
+			CHAT_MESSAGE_SELECTOR,
+			AUTOSCROLL_THRESHOLD
+		);
+
+		autoScrollPinned = scrollState.pinned;
+		pendingScrollSnapshot = scrollState.pendingSnapshot;
+		unreadMessageCount = scrollState.unreadMessageCount;
 	};
 
 	const queueScrollRestore = () => {

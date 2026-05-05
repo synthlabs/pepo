@@ -19,6 +19,13 @@ export interface ScrollRestoreResult {
 	anchored: boolean;
 }
 
+export interface ScrollStateRefreshResult {
+	pinned: boolean;
+	pendingSnapshot: ScrollSnapshot | null;
+	unreadMessageCount: number;
+	deferred: boolean;
+}
+
 export function maxScrollTop(container: HTMLElement): number {
 	return Math.max(0, container.scrollHeight - container.clientHeight);
 }
@@ -86,6 +93,43 @@ export function restoreScrollAfterRender(
 
 	setScrollTopClamped(container, snapshot.scrollTop);
 	return { pinned: isAtBottom(container, thresholdPx), anchored: false };
+}
+
+export function refreshScrollStateAfterScroll(
+	container: HTMLElement,
+	pendingSnapshot: ScrollSnapshot | null,
+	restoreQueued: boolean,
+	unreadMessageCount: number,
+	messageSelector: string,
+	thresholdPx = DEFAULT_BOTTOM_THRESHOLD
+): ScrollStateRefreshResult {
+	if (restoreQueued && pendingSnapshot?.wasAtBottom) {
+		return {
+			pinned: true,
+			pendingSnapshot,
+			unreadMessageCount: 0,
+			deferred: true
+		};
+	}
+
+	const pinned = isAtBottom(container, thresholdPx);
+	if (pinned) {
+		return {
+			pinned: true,
+			pendingSnapshot: null,
+			unreadMessageCount: 0,
+			deferred: false
+		};
+	}
+
+	return {
+		pinned: false,
+		pendingSnapshot: pendingSnapshot
+			? captureScrollSnapshot(container, messageSelector, thresholdPx)
+			: pendingSnapshot,
+		unreadMessageCount,
+		deferred: false
+	};
 }
 
 function setScrollTopClamped(container: HTMLElement, scrollTop: number): void {
