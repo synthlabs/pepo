@@ -28,6 +28,7 @@ mod badgemanager;
 mod emote;
 mod emotemanager;
 mod eventsub;
+mod internal;
 mod logging;
 mod message;
 mod token;
@@ -64,6 +65,33 @@ tauri_svelte_synced_store::state_handlers!(
     ChannelCache = "channel_cache",
     Settings = "settings"
 );
+
+#[cfg(debug_assertions)]
+fn repo_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("src-tauri has no parent directory")
+        .to_path_buf()
+}
+
+#[cfg(debug_assertions)]
+fn typescript_exporter() -> Typescript {
+    Typescript::default()
+        .formatter(specta_typescript::formatter::prettier)
+        .bigint(specta_typescript::BigIntExportBehavior::Number)
+        .header("/* eslint-disable */")
+}
+
+#[cfg(debug_assertions)]
+fn export_bindings(builder: &tauri_specta::Builder<tauri::Wry>, path: std::path::PathBuf) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("Failed to create bindings output directory");
+    }
+
+    builder
+        .export(typescript_exporter(), path)
+        .expect("Failed to export typescript bindings");
+}
 
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
@@ -791,21 +819,18 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build());
 
-    let handlers = specta_builder();
+    let public_handlers = specta_builder();
 
     #[cfg(debug_assertions)] // <- Only export on non-release builds
-    handlers
-        .export(
-            Typescript::default()
-                .formatter(specta_typescript::formatter::prettier)
-                .bigint(specta_typescript::BigIntExportBehavior::Number)
-                .header("/* eslint-disable */"),
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .expect("src-tauri has no parent directory")
-                .join("src/lib/bindings.ts"),
-        )
-        .expect("Failed to export typescript bindings");
+    export_bindings(&public_handlers, repo_root().join("src/lib/bindings.ts"));
+
+    let handlers = internal::extend_specta(public_handlers);
+
+    #[cfg(all(debug_assertions, internal_enabled))]
+    export_bindings(
+        &handlers,
+        repo_root().join("internal/frontend/bindings.ts"),
+    );
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder
@@ -826,6 +851,7 @@ pub fn run() {
 
             // This is also required if you want to use events
             handlers.mount_events(app);
+            internal::setup(app)?;
 
             let mut sync_cfg = StateSyncerConfig::default();
             sync_cfg.persist_keys.insert("auth_state".to_owned(), true);

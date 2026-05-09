@@ -12,6 +12,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { DEFAULT_SETTINGS, normalizeSettings } from '$lib/settings';
+	import { InternalRoot } from '$internal';
 
 	let { children } = $props();
 
@@ -72,4 +73,5 @@
 			{/key}
 		</div>
 	</main>
+	<InternalRoot />
 </Sidebar.Provider>
