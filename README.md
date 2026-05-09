@@ -9,7 +9,7 @@
 This is a playground of a new chatting client. It currently only supports twitch, but the goal is to expand support for other sites such as youtube, etc. It is very very early in development.
 
 <p align="center">
-  <img src="screenshots/pepo_4AXEBXeHku.gif" height="500">
+  <img src="screenshots/pepo_WPmY9ak5rY.gif" height="500">
 </p>
 
 </span>
@@ -77,11 +77,11 @@ PEPO_LOG=debug pnpm tauri dev
 
 Use `PEPO_LOG=trace` when you need hot-path chat parser and emote-cache lookup details. Desktop logs are written under the app log directory:
 
-| Platform | Log directory |
-| --- | --- |
-| macOS | `~/Library/Logs/com.pepo.chat` |
-| Windows | `%LOCALAPPDATA%\com.pepo.chat\logs` |
-| Linux | `${XDG_DATA_HOME:-~/.local/share}/com.pepo.chat/logs` |
+| Platform | Log directory                                         |
+| -------- | ----------------------------------------------------- |
+| macOS    | `~/Library/Logs/com.pepo.chat`                        |
+| Windows  | `%LOCALAPPDATA%\com.pepo.chat\logs`                   |
+| Linux    | `${XDG_DATA_HOME:-~/.local/share}/com.pepo.chat/logs` |
 
 ### Disclosure
 

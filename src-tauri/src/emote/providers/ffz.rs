@@ -11,6 +11,7 @@ use crate::emote::{
     providers::{EmoteProvider, GLOBAL_SCOPE_KEY},
     Emote,
 };
+use crate::types::EmoteProviderId;
 
 const FFZ_API_BASE: &str = "https://api.frankerfacez.com/v1";
 const FFZ_CDN_BASE: &str = "https://cdn.frankerfacez.com/emote";
@@ -83,8 +84,8 @@ impl FfzProvider {
 }
 
 impl EmoteProvider<MultiCache> for FfzProvider {
-    fn get_name(&self) -> String {
-        "FfzProvider".to_string()
+    fn get_id(&self) -> EmoteProviderId {
+        EmoteProviderId::Ffz
     }
 
     fn load_global_emotes(&self, client: &reqwest::Client) {

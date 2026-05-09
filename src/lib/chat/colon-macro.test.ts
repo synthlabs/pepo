@@ -14,6 +14,12 @@ describe('parseColonMacro', () => {
 		expect(parseColonMacro(':a')).toBeNull();
 	});
 
+	it('uses the configured minimum query length', () => {
+		expect(parseColonMacro(':a', 1)).toBe('a');
+		expect(parseColonMacro(':ab', 3)).toBeNull();
+		expect(parseColonMacro(':abc', 3)).toBe('abc');
+	});
+
 	it('matches a colon-prefixed query at the start of the string', () => {
 		expect(parseColonMacro(':foo')).toBe('foo');
 	});

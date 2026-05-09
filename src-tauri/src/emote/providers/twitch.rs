@@ -10,6 +10,7 @@ use crate::emote::{
     cache::{EmoteCache, EmoteCacheTrait, MultiCache},
     providers::{EmoteProvider, GLOBAL_SCOPE_KEY},
 };
+use crate::types::EmoteProviderId;
 use crate::SharedTwitchToken;
 
 const USER_EMOTES_SCOPE_KEY: &str = "_user_emotes";
@@ -37,8 +38,8 @@ impl TwitchProvider {
 }
 
 impl EmoteProvider<MultiCache> for TwitchProvider {
-    fn get_name(&self) -> String {
-        "TwitchProvider".to_string()
+    fn get_id(&self) -> EmoteProviderId {
+        EmoteProviderId::Twitch
     }
 
     fn load_global_emotes(&self, _client: &reqwest::Client) {

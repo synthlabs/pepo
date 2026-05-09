@@ -9,9 +9,10 @@
 
 	interface Props {
 		badge_ref: BadgeRef;
+		sizePx?: number;
 	}
 
-	let { badge_ref }: Props = $props();
+	let { badge_ref, sizePx = 20 }: Props = $props();
 
 	let fallback = $derived(
 		badge_ref.set_id !== badge_ref.badge.set_id && badge_ref.id !== badge_ref.badge.id
@@ -28,10 +29,11 @@
 
 {#if fallback}
 	<!-- svelte-ignore svelte_component_deprecated -->
-	<svelte:component this={badgeMap.get(badge_ref.set_id)} />
+	<svelte:component this={badgeMap.get(badge_ref.set_id)} {sizePx} />
 {:else}
 	<img
-		class="inline h-5 max-w-none"
+		class="inline max-w-none"
+		style="height: {sizePx}px;"
 		src={badge_ref.badge.image_url_4x}
 		alt={badge_ref.badge.description}
 	/>

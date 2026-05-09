@@ -13,6 +13,8 @@ use crate::{
     message,
 };
 
+pub const SETTINGS_SCHEMA_VERSION: u32 = 1;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default)]
 pub struct AuthState {
     pub phase: AuthPhase,
@@ -33,6 +35,282 @@ pub enum AuthPhase {
 impl Default for AuthPhase {
     fn default() -> Self {
         AuthPhase::Unauthorized
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct Settings {
+    pub schema_version: u32,
+    pub appearance: AppearanceSettings,
+    pub layout: LayoutSettings,
+    pub chat: ChatSettings,
+    pub emotes: EmoteSettings,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            schema_version: 0,
+            appearance: AppearanceSettings::default(),
+            layout: LayoutSettings::default(),
+            chat: ChatSettings::default(),
+            emotes: EmoteSettings::default(),
+        }
+    }
+}
+
+impl Settings {
+    pub fn normalized(mut self) -> Self {
+        self.schema_version = SETTINGS_SCHEMA_VERSION;
+        self.chat = self.chat.normalized();
+        self.emotes = self.emotes.normalized();
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct AppearanceSettings {
+    pub theme: AppearanceTheme,
+}
+
+impl Default for AppearanceSettings {
+    fn default() -> Self {
+        Self {
+            theme: AppearanceTheme::Dark,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum AppearanceTheme {
+    System,
+    Light,
+    Dark,
+}
+
+impl Default for AppearanceTheme {
+    fn default() -> Self {
+        AppearanceTheme::Dark
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct LayoutSettings {
+    pub sidebar_open: bool,
+}
+
+impl Default for LayoutSettings {
+    fn default() -> Self {
+        Self { sidebar_open: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct ChatSettings {
+    pub message_limit: usize,
+    pub autoscroll_threshold_px: u32,
+    pub show_timestamps: bool,
+    pub timestamp_locale: String,
+    pub timestamp_style: TimestampStyle,
+    pub show_badges: bool,
+    pub show_emotes: bool,
+    pub alternate_backgrounds: bool,
+}
+
+impl Default for ChatSettings {
+    fn default() -> Self {
+        Self {
+            message_limit: 500,
+            autoscroll_threshold_px: 32,
+            show_timestamps: true,
+            timestamp_locale: "en".to_string(),
+            timestamp_style: TimestampStyle::Short,
+            show_badges: true,
+            show_emotes: true,
+            alternate_backgrounds: true,
+        }
+    }
+}
+
+impl ChatSettings {
+    pub fn normalized(mut self) -> Self {
+        let defaults = Self::default();
+        if self.message_limit == 0 {
+            self.message_limit = defaults.message_limit;
+        }
+        if self.autoscroll_threshold_px == 0 {
+            self.autoscroll_threshold_px = defaults.autoscroll_threshold_px;
+        }
+        if self.timestamp_locale.trim().is_empty() {
+            self.timestamp_locale = defaults.timestamp_locale;
+        }
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum TimestampStyle {
+    Short,
+    Medium,
+    Long,
+    Full,
+}
+
+impl Default for TimestampStyle {
+    fn default() -> Self {
+        TimestampStyle::Short
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct EmoteSettings {
+    pub providers: Vec<EmoteProviderPreference>,
+    pub autocomplete_enabled: bool,
+    pub autocomplete_min_chars: usize,
+    pub search_debounce_ms: u64,
+    pub autocomplete_result_limit: usize,
+    pub picker_result_limit: usize,
+    pub picker_columns: usize,
+    pub picker_max_height_px: u32,
+    pub inline_emote_px: u32,
+    pub inline_badge_px: u32,
+}
+
+impl Default for EmoteSettings {
+    fn default() -> Self {
+        Self {
+            providers: EmoteProviderId::default_preferences(),
+            autocomplete_enabled: true,
+            autocomplete_min_chars: 2,
+            search_debounce_ms: 75,
+            autocomplete_result_limit: 25,
+            picker_result_limit: 50,
+            picker_columns: 8,
+            picker_max_height_px: 192,
+            inline_emote_px: 28,
+            inline_badge_px: 20,
+        }
+    }
+}
+
+impl EmoteSettings {
+    pub fn normalized(mut self) -> Self {
+        let defaults = Self::default();
+        let mut providers = Vec::new();
+
+        for preference in self.providers {
+            if !providers
+                .iter()
+                .any(|p: &EmoteProviderPreference| p.id == preference.id)
+            {
+                providers.push(preference);
+            }
+        }
+
+        for preference in EmoteProviderId::default_preferences() {
+            if !providers.iter().any(|p| p.id == preference.id) {
+                providers.push(preference);
+            }
+        }
+
+        self.providers = providers;
+
+        if self.autocomplete_min_chars == 0 {
+            self.autocomplete_min_chars = defaults.autocomplete_min_chars;
+        }
+        if self.search_debounce_ms == 0 {
+            self.search_debounce_ms = defaults.search_debounce_ms;
+        }
+        if self.autocomplete_result_limit == 0 {
+            self.autocomplete_result_limit = defaults.autocomplete_result_limit;
+        }
+        if self.picker_result_limit == 0 {
+            self.picker_result_limit = defaults.picker_result_limit;
+        }
+        if self.picker_columns == 0 {
+            self.picker_columns = defaults.picker_columns;
+        }
+        if self.picker_max_height_px == 0 {
+            self.picker_max_height_px = defaults.picker_max_height_px;
+        }
+        if self.inline_emote_px == 0 {
+            self.inline_emote_px = defaults.inline_emote_px;
+        }
+        if self.inline_badge_px == 0 {
+            self.inline_badge_px = defaults.inline_badge_px;
+        }
+
+        self
+    }
+
+    pub fn provider_enabled(&self, id: EmoteProviderId) -> bool {
+        self.providers
+            .iter()
+            .find(|preference| preference.id == id)
+            .map(|preference| preference.enabled)
+            .unwrap_or(true)
+    }
+
+    pub fn enabled_provider_ids_ordered(&self) -> Vec<EmoteProviderId> {
+        self.providers
+            .iter()
+            .filter(|preference| preference.enabled)
+            .map(|preference| preference.id)
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq)]
+pub struct EmoteProviderPreference {
+    pub id: EmoteProviderId,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum EmoteProviderId {
+    Twitch,
+    Bttv,
+    Ffz,
+    Seventv,
+}
+
+impl EmoteProviderId {
+    pub fn default_preferences() -> Vec<EmoteProviderPreference> {
+        vec![
+            EmoteProviderPreference {
+                id: EmoteProviderId::Twitch,
+                enabled: true,
+            },
+            EmoteProviderPreference {
+                id: EmoteProviderId::Bttv,
+                enabled: true,
+            },
+            EmoteProviderPreference {
+                id: EmoteProviderId::Ffz,
+                enabled: true,
+            },
+            EmoteProviderPreference {
+                id: EmoteProviderId::Seventv,
+                enabled: true,
+            },
+        ]
+    }
+
+    pub fn provider_name(self) -> &'static str {
+        match self {
+            EmoteProviderId::Twitch => "TwitchProvider",
+            EmoteProviderId::Bttv => "BttvProvider",
+            EmoteProviderId::Ffz => "FfzProvider",
+            EmoteProviderId::Seventv => "SeventvProvider",
+        }
     }
 }
 
@@ -412,29 +690,37 @@ impl ChannelMessage {
         ts: String,
         bm: BadgeManager,
         em: EmoteManager,
+        emote_settings: EmoteSettings,
     ) -> Self {
         let raw_msg = serde_json::to_string(&value).unwrap();
         let bm_ref = bm.clone();
-        let emote_cache = em.get_emote_cache(value.broadcaster_user_id.to_string());
+        let emote_settings = emote_settings.normalized();
+        let broadcaster_id = value.broadcaster_user_id.to_string();
+        let emote_cache = em.get_emote_cache(broadcaster_id.clone(), &emote_settings);
 
-        let _: Vec<_> = value
-            .message
-            .fragments
-            .iter()
-            .map(|f| {
-                if let twitch_api::eventsub::channel::chat::Fragment::Emote { text, emote } = f {
-                    if !emote_cache.has_emote(text.to_string()) {
-                        let scope = em
-                            .resolve_user_name(&emote.owner_id.to_string())
-                            .unwrap_or_else(|| "Channel".to_string());
-                        emote_cache.set_emote(
-                            text.to_string(),
-                            Emote::from_emote_fragment(text.to_string(), emote, scope),
-                        );
+        if emote_settings.provider_enabled(EmoteProviderId::Twitch) {
+            let _: Vec<_> = value
+                .message
+                .fragments
+                .iter()
+                .map(|f| {
+                    if let twitch_api::eventsub::channel::chat::Fragment::Emote { text, emote } = f
+                    {
+                        if !emote_cache.has_emote(text.to_string()) {
+                            let scope = em
+                                .resolve_user_name(&emote.owner_id.to_string())
+                                .unwrap_or_else(|| "Channel".to_string());
+                            em.insert_twitch_fragment_emote(
+                                broadcaster_id.clone(),
+                                text.to_string(),
+                                Emote::from_emote_fragment(text.to_string(), emote, scope),
+                                &emote_settings,
+                            );
+                        }
                     }
-                }
-            })
-            .collect();
+                })
+                .collect();
+        }
 
         ChannelMessage {
             ts: ts,
@@ -478,5 +764,113 @@ impl ChannelMessage {
                 .collect(),
             fragments: message::Parser::parse(value.message.text.clone(), &emote_cache),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_settings_preserve_current_user_visible_behavior() {
+        let settings = Settings::default().normalized();
+
+        assert_eq!(settings.schema_version, SETTINGS_SCHEMA_VERSION);
+        assert!(matches!(settings.appearance.theme, AppearanceTheme::Dark));
+        assert!(settings.layout.sidebar_open);
+        assert_eq!(settings.chat.message_limit, 500);
+        assert_eq!(settings.chat.autoscroll_threshold_px, 32);
+        assert_eq!(settings.emotes.autocomplete_min_chars, 2);
+        assert_eq!(settings.emotes.autocomplete_result_limit, 25);
+        assert_eq!(settings.emotes.picker_result_limit, 50);
+        assert_eq!(
+            settings.emotes.enabled_provider_ids_ordered(),
+            vec![
+                EmoteProviderId::Twitch,
+                EmoteProviderId::Bttv,
+                EmoteProviderId::Ffz,
+                EmoteProviderId::Seventv
+            ]
+        );
+    }
+
+    #[test]
+    fn emote_provider_normalization_dedupes_and_appends_missing_defaults() {
+        let settings = EmoteSettings {
+            providers: vec![
+                EmoteProviderPreference {
+                    id: EmoteProviderId::Bttv,
+                    enabled: false,
+                },
+                EmoteProviderPreference {
+                    id: EmoteProviderId::Twitch,
+                    enabled: true,
+                },
+                EmoteProviderPreference {
+                    id: EmoteProviderId::Bttv,
+                    enabled: true,
+                },
+            ],
+            ..Default::default()
+        }
+        .normalized();
+
+        assert_eq!(
+            settings.providers,
+            vec![
+                EmoteProviderPreference {
+                    id: EmoteProviderId::Bttv,
+                    enabled: false,
+                },
+                EmoteProviderPreference {
+                    id: EmoteProviderId::Twitch,
+                    enabled: true,
+                },
+                EmoteProviderPreference {
+                    id: EmoteProviderId::Ffz,
+                    enabled: true,
+                },
+                EmoteProviderPreference {
+                    id: EmoteProviderId::Seventv,
+                    enabled: true,
+                },
+            ]
+        );
+        assert_eq!(
+            settings.enabled_provider_ids_ordered(),
+            vec![
+                EmoteProviderId::Twitch,
+                EmoteProviderId::Ffz,
+                EmoteProviderId::Seventv
+            ]
+        );
+    }
+
+    #[test]
+    fn all_disabled_providers_stay_disabled() {
+        let settings = EmoteSettings {
+            providers: EmoteProviderId::default_preferences()
+                .into_iter()
+                .map(|mut preference| {
+                    preference.enabled = false;
+                    preference
+                })
+                .collect(),
+            ..Default::default()
+        }
+        .normalized();
+
+        assert!(settings.enabled_provider_ids_ordered().is_empty());
+        assert!(!settings.provider_enabled(EmoteProviderId::Twitch));
+    }
+
+    #[test]
+    fn settings_deserialize_missing_fields_from_defaults() {
+        let settings: Settings = serde_json::from_str("{}").unwrap();
+        let settings = settings.normalized();
+
+        assert_eq!(settings.chat.message_limit, 500);
+        assert!(settings.chat.show_timestamps);
+        assert_eq!(settings.emotes.providers.len(), 4);
     }
 }

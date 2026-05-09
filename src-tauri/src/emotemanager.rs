@@ -11,7 +11,9 @@ use crate::emote::{
         bttv::BttvProvider, ffz::FfzProvider, seventv::SeventvProvider, twitch::TwitchProvider,
         EmoteProvider,
     },
+    Emote,
 };
+use crate::types::{EmoteProviderId, EmoteSettings};
 use crate::SharedTwitchToken;
 
 // TODO: switch to a RWLock instead of Mutex
@@ -39,15 +41,16 @@ impl EmoteManager {
         }
     }
 
-    pub fn load_global(&self) {
+    pub fn load_global(&self, emote_settings: &EmoteSettings) {
         let http_client = reqwest::Client::new();
 
-        let providers: Vec<Box<dyn EmoteProvider<MultiCache> + Send>> = vec![
-            Box::new(TwitchProvider::new(self.client.clone(), self.token.clone())),
-            Box::new(BttvProvider::new()),
-            Box::new(FfzProvider::new()),
-            Box::new(SeventvProvider::new()),
-        ];
+        let providers: Vec<Box<dyn EmoteProvider<MultiCache> + Send>> = emote_settings
+            .clone()
+            .normalized()
+            .enabled_provider_ids_ordered()
+            .into_iter()
+            .map(|id| self.provider(id))
+            .collect();
 
         for p in &providers {
             p.load_global_emotes(&http_client);
@@ -57,12 +60,17 @@ impl EmoteManager {
         *store = providers;
     }
 
-    pub async fn load_channel(self, broadcaster_id: String) {
+    pub async fn load_channel(self, broadcaster_id: String, emote_settings: &EmoteSettings) {
         let http_client = reqwest::Client::new();
         let providers = self.providers.lock().unwrap();
+        let provider_ids = emote_settings
+            .clone()
+            .normalized()
+            .enabled_provider_ids_ordered();
 
         let _: Vec<_> = providers
             .iter()
+            .filter(|p| provider_ids.contains(&p.get_id()))
             .map(|p| p.load_channel_emotes(broadcaster_id.clone(), &http_client))
             .collect();
     }
@@ -74,20 +82,57 @@ impl EmoteManager {
         }
     }
 
-    pub fn get_emote_cache(&self, scope: String) -> MultiCache {
+    pub fn get_emote_cache(&self, scope: String, emote_settings: &EmoteSettings) -> MultiCache {
         let providers = self.providers.lock().unwrap();
-        let caches: Vec<_> = providers
+        let provider_ids = emote_settings
+            .clone()
+            .normalized()
+            .enabled_provider_ids_ordered();
+        let caches: Vec<_> = provider_ids
             .iter()
-            .flat_map(|p| {
-                let mc = p.get_emote_cache(scope.clone());
-                mc.into_caches()
-            })
+            .flat_map(|id| providers.iter().find(|p| p.get_id() == *id))
+            .flat_map(|p| p.get_emote_cache(scope.clone()).into_caches())
             .collect();
 
         let mc = MultiCache::new(caches);
 
         tracing::trace!(scope = scope, name = mc.name(), "get emote cache");
         mc
+    }
+
+    pub fn insert_twitch_fragment_emote(
+        &self,
+        scope: String,
+        name: String,
+        emote: Emote,
+        emote_settings: &EmoteSettings,
+    ) {
+        let emote_settings = emote_settings.clone().normalized();
+        if !emote_settings.provider_enabled(EmoteProviderId::Twitch) {
+            return;
+        }
+
+        let providers = self.providers.lock().unwrap();
+        if let Some(provider) = providers
+            .iter()
+            .find(|p| p.get_id() == EmoteProviderId::Twitch)
+        {
+            let cache = provider.get_emote_cache(scope);
+            if !cache.has_emote(name.clone()) {
+                cache.set_emote(name, emote);
+            }
+        }
+    }
+
+    fn provider(&self, id: EmoteProviderId) -> Box<dyn EmoteProvider<MultiCache> + Send> {
+        match id {
+            EmoteProviderId::Twitch => {
+                Box::new(TwitchProvider::new(self.client.clone(), self.token.clone()))
+            }
+            EmoteProviderId::Bttv => Box::new(BttvProvider::new()),
+            EmoteProviderId::Ffz => Box::new(FfzProvider::new()),
+            EmoteProviderId::Seventv => Box::new(SeventvProvider::new()),
+        }
     }
 
     pub fn resolve_user_name(&self, user_id: &str) -> Option<String> {

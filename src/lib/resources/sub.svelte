@@ -1,9 +1,18 @@
+<script lang="ts">
+	interface Props {
+		sizePx?: number;
+	}
+
+	let { sizePx = 20 }: Props = $props();
+</script>
+
 <span>
 	<svg
 		xmlns="http://www.w3.org/2000/svg"
 		viewBox="0 0 24 24"
 		stroke-width="1.5"
-		class="inline-block h-5 fill-purple-950 stroke-purple-500"
+		class="inline-block fill-purple-950 stroke-purple-500"
+		style="height: {sizePx}px;"
 	>
 		<title>Subscriber</title>
 		<path

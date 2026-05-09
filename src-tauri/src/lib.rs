@@ -22,7 +22,7 @@ use twitch_api::{client::ClientDefault, HelixClient};
 use crate::badgemanager::BadgeManager;
 use crate::emote::cache::EmoteCacheTrait;
 use crate::emotemanager::EmoteManager;
-use crate::types::{AuthState, ChannelCache};
+use crate::types::{AuthState, ChannelCache, Settings};
 
 mod badgemanager;
 mod emote;
@@ -61,7 +61,8 @@ type SharedEventSubHandles = Mutex<Vec<tauri::async_runtime::JoinHandle<()>>>;
 tauri_svelte_synced_store::state_handlers!(
     AuthState = "auth_state",
     InternalState = "internal_state",
-    ChannelCache = "channel_cache"
+    ChannelCache = "channel_cache",
+    Settings = "settings"
 );
 
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
@@ -72,6 +73,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .typ::<types::AuthPhase>()
         .typ::<types::ChannelCache>()
         .typ::<types::ChannelStatus>()
+        .typ::<types::Settings>()
         .typ::<InternalState>()
         .commands(collect_commands![
             get_followed_streams,
@@ -124,10 +126,15 @@ async fn search_emotes(
     broadcaster_id: String,
     limit: Option<usize>,
     emote_manager_ref: State<'_, SharedEmoteManager>,
+    state_syncer: State<'_, StateSyncer>,
 ) -> Result<Vec<emote::Emote>, String> {
     let emote_manager = emote_manager_ref.lock().await.clone();
-    let cache = emote_manager.get_emote_cache(broadcaster_id);
-    Ok(cache.search_emotes(&query, limit.unwrap_or(25)))
+    let settings = state_syncer.snapshot::<Settings>("settings").normalized();
+    let cache = emote_manager.get_emote_cache(broadcaster_id, &settings.emotes);
+    Ok(cache.search_emotes(
+        &query,
+        limit.unwrap_or(settings.emotes.autocomplete_result_limit),
+    ))
 }
 
 #[tauri::command]
@@ -170,6 +177,7 @@ async fn join_chat(
     emote_manager_ref: State<'_, SharedEmoteManager>,
     token_ref: State<'_, SharedTwitchToken>,
     client_ref: State<'_, HelixClient<'static, reqwest::Client>>,
+    state_syncer: State<'_, StateSyncer>,
 ) -> Result<types::ChannelInfo, String> {
     debug!("join: channel={}", channel_name);
 
@@ -178,6 +186,7 @@ async fn join_chat(
     let eventsub_manager = eventsub_manager_ref.lock().await.clone();
     let badge_manager = badge_manager_ref.lock().await.clone();
     let emote_manager = emote_manager_ref.lock().await.clone();
+    let settings = state_syncer.snapshot::<Settings>("settings").normalized();
 
     let channel = client
         .get_channel_from_login(&channel_name, &token)
@@ -192,7 +201,7 @@ async fn join_chat(
         .await;
 
     emote_manager
-        .load_channel(channel.broadcaster_id.to_string())
+        .load_channel(channel.broadcaster_id.to_string(), &settings.emotes)
         .await;
 
     if let Err(e) = eventsub_manager
@@ -586,8 +595,12 @@ async fn login(
     // Global + user emotes
     {
         let emote_manager = emote_manager.clone();
+        let emote_settings = state_syncer
+            .snapshot::<Settings>("settings")
+            .normalized()
+            .emotes;
         tauri::async_runtime::spawn(async move {
-            emote_manager.load_global();
+            emote_manager.load_global(&emote_settings);
             emote_manager.load_user_emotes();
         });
     }
@@ -600,6 +613,7 @@ async fn login(
         let app_ref = app_handle.clone();
         let badge_manager_ref = badge_manager.clone();
         let emote_manager_ref = emote_manager.clone();
+        let state_syncer_ref = state_syncer.inner().clone();
 
         {
             let eventsub_handle_state = app_handle.state::<SharedEventSubHandles>();
@@ -639,11 +653,15 @@ async fn login(
                                 message: M::Notification(chat_message),
                                 ..
                             }) => {
+                                let settings = state_syncer_ref
+                                    .snapshot::<Settings>("settings")
+                                    .normalized();
                                 let channel_msg = types::ChannelMessage::new(
                                     chat_message.clone(),
                                     notification.ts.to_string(),
                                     badge_manager_ref.clone(),
                                     emote_manager_ref.clone(),
+                                    settings.emotes,
                                 );
                                 let key =
                                     format!("chat_message:{}", chat_message.broadcaster_user_login);
@@ -817,10 +835,16 @@ pub fn run() {
             sync_cfg
                 .persist_keys
                 .insert("channel_cache".to_owned(), true);
+            sync_cfg.persist_keys.insert("settings".to_owned(), true);
             let state_syncer = StateSyncer::new(sync_cfg, app.handle().clone());
 
             let _auth_state: AuthState = state_syncer.load("auth_state");
             let mut internal_state: InternalState = state_syncer.load("internal_state");
+            let mut settings: Settings = state_syncer.load("settings");
+            if settings.schema_version == 0 {
+                settings.layout.sidebar_open = internal_state.sidebar_open;
+            }
+            settings = settings.normalized();
             internal_state.version = app.package_info().version.to_string();
             internal_state.name = app.package_info().name.to_string();
 
@@ -900,6 +924,7 @@ pub fn run() {
 
             state_syncer.set("internal_state", internal_state);
             state_syncer.set("channel_cache", ChannelCache::default());
+            state_syncer.set("settings", settings);
             app.manage::<StateSyncer>(state_syncer);
             app.manage::<SharedPollHandle>(Mutex::new(None));
             app.manage::<SharedTokenRefreshHandle>(Mutex::new(None));

@@ -11,6 +11,7 @@ use crate::emote::{
     providers::{EmoteProvider, GLOBAL_SCOPE_KEY},
     Emote,
 };
+use crate::types::EmoteProviderId;
 
 const BTTV_API_BASE: &str = "https://api.betterttv.net/3/cached";
 const BTTV_CDN_BASE: &str = "https://cdn.betterttv.net/emote";
@@ -66,8 +67,8 @@ impl BttvProvider {
 }
 
 impl EmoteProvider<MultiCache> for BttvProvider {
-    fn get_name(&self) -> String {
-        "BttvProvider".to_string()
+    fn get_id(&self) -> EmoteProviderId {
+        EmoteProviderId::Bttv
     }
 
     fn load_global_emotes(&self, client: &reqwest::Client) {

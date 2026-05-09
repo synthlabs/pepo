@@ -4,13 +4,14 @@
 
 	interface Props {
 		badges: BadgeRef[];
+		sizePx?: number;
 	}
 
-	let { badges }: Props = $props();
+	let { badges, sizePx = 20 }: Props = $props();
 </script>
 
 <span class="inline-flex items-center gap-1 align-middle whitespace-nowrap">
 	{#each badges as badge (`${badge.set_id}:${badge.id}`)}
-		<Badge badge_ref={badge} />
+		<Badge badge_ref={badge} {sizePx} />
 	{/each}
 </span>

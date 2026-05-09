@@ -11,6 +11,7 @@ use crate::emote::{
     providers::{EmoteProvider, GLOBAL_SCOPE_KEY},
     Emote,
 };
+use crate::types::EmoteProviderId;
 
 const SEVENTV_API_BASE: &str = "https://7tv.io/v3";
 
@@ -86,8 +87,8 @@ impl SeventvProvider {
 }
 
 impl EmoteProvider<MultiCache> for SeventvProvider {
-    fn get_name(&self) -> String {
-        "SeventvProvider".to_string()
+    fn get_id(&self) -> EmoteProviderId {
+        EmoteProviderId::Seventv
     }
 
     fn load_global_emotes(&self, client: &reqwest::Client) {

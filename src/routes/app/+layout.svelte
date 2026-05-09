@@ -6,11 +6,12 @@
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
 	import { SyncedState } from 'tauri-svelte-synced-store';
-	import type { AuthState, ChannelCache, InternalState } from '$lib/bindings.ts';
+	import type { AuthState, ChannelCache, Settings } from '$lib/bindings.ts';
 	import Users from '@lucide/svelte/icons/users';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { DEFAULT_SETTINGS, normalizeSettings } from '$lib/settings';
 
 	let { children } = $props();
 
@@ -23,19 +24,19 @@
 	});
 
 	let channelCache = new SyncedState<ChannelCache>('channel_cache', { channels: {} });
-	let internalState = new SyncedState<InternalState>('internal_state', {
-		version: '',
-		name: '',
-		sidebar_open: true
-	});
+	let settings = new SyncedState<Settings>('settings', DEFAULT_SETTINGS);
+	let normalizedSettings = $derived(normalizeSettings(settings.obj));
 	let channelStatus = $derived(
 		page.params.id ? (channelCache.obj.channels[page.params.id] ?? null) : null
 	);
 </script>
 
 <Sidebar.Provider
-	bind:open={internalState.obj.sidebar_open}
-	onOpenChange={() => internalState.sync()}
+	open={normalizedSettings.layout.sidebar_open}
+	onOpenChange={(open) => {
+		settings.obj.layout.sidebar_open = open;
+		settings.sync();
+	}}
 >
 	<AppSidebar collapsible="icon"></AppSidebar>
 	<main class="flex max-h-dvh w-full max-w-full min-w-0 flex-col flex-nowrap">

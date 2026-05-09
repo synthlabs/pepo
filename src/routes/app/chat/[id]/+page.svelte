@@ -3,8 +3,9 @@
 	import { quadInOut } from 'svelte/easing';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { onDestroy, onMount, tick } from 'svelte';
-	import { commands, type ChannelInfo, type ChannelMessage } from '$lib/bindings.ts';
+	import { commands, type ChannelInfo, type ChannelMessage, type Settings } from '$lib/bindings.ts';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
+	import { SyncedState } from 'tauri-svelte-synced-store';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
 	import Badges from '$lib/components/chat/+badges.svelte';
@@ -16,17 +17,15 @@
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
 	import { parseColonMacro } from '$lib/chat/colon-macro';
 	import {
-		DEFAULT_BOTTOM_THRESHOLD,
 		getBatchScrollSnapshot,
 		refreshScrollStateAfterScroll,
 		restoreScrollAfterRender,
 		scrollToBottom as scrollElementToBottom,
 		type ScrollSnapshot
 	} from '$lib/chat/autoscroll';
+	import { DEFAULT_SETTINGS, formatTimestamp, normalizeSettings } from '$lib/settings';
 
-	const CHAT_MESSAGE_LIMIT = 500;
 	const CHAT_MESSAGE_SELECTOR = '[data-chat-message-index]';
-	const AUTOSCROLL_THRESHOLD = DEFAULT_BOTTOM_THRESHOLD;
 
 	let chatDIV = $state<HTMLDivElement>();
 	let messageListDIV = $state<HTMLDivElement>();
@@ -45,6 +44,10 @@
 	let hasInput = $derived(chatInput.length > 0);
 	let errorState = $state({ active: false, msg: '' });
 	let channelInfo = $state({} as ChannelInfo);
+	let settings = new SyncedState<Settings>('settings', DEFAULT_SETTINGS);
+	let normalizedSettings = $derived(normalizeSettings(settings.obj));
+	let chatSettings = $derived(normalizedSettings.chat);
+	let emoteSettings = $derived(normalizedSettings.emotes);
 
 	// Emote picker state
 	let emotePickerVisible = $state(false);
@@ -103,20 +106,24 @@
 		await commands.leaveChat(channel_name).then(Logger.debug);
 	});
 
+	$effect(() => {
+		while (msgs.length > chatSettings.message_limit) msgs.shift();
+	});
+
 	const addMessage = (message: ChannelMessage) => {
 		if (chatDIV) {
 			pendingScrollSnapshot = getBatchScrollSnapshot(
 				pendingScrollSnapshot,
 				chatDIV,
 				CHAT_MESSAGE_SELECTOR,
-				AUTOSCROLL_THRESHOLD
+				chatSettings.autoscroll_threshold_px
 			);
 		}
 
 		const wasPinned = pendingScrollSnapshot?.wasAtBottom ?? autoScrollPinned;
 
 		msgs.push(message);
-		if (msgs.length > CHAT_MESSAGE_LIMIT) msgs.shift();
+		if (msgs.length > chatSettings.message_limit) msgs.shift();
 		if (!wasPinned) unreadMessageCount += 1;
 
 		queueScrollRestore();
@@ -131,7 +138,7 @@
 			scrollFlushQueued,
 			unreadMessageCount,
 			CHAT_MESSAGE_SELECTOR,
-			AUTOSCROLL_THRESHOLD
+			chatSettings.autoscroll_threshold_px
 		);
 
 		autoScrollPinned = scrollState.pinned;
@@ -165,7 +172,7 @@
 				chatDIV,
 				snapshot,
 				CHAT_MESSAGE_SELECTOR,
-				AUTOSCROLL_THRESHOLD
+				chatSettings.autoscroll_threshold_px
 			);
 			autoScrollPinned = result.pinned;
 			if (autoScrollPinned) unreadMessageCount = 0;
@@ -222,7 +229,11 @@
 		}, timeout);
 	};
 
-	let colonMatch = $derived(parseColonMacro(chatInput));
+	let colonMatch = $derived(
+		emoteSettings.autocomplete_enabled
+			? parseColonMacro(chatInput, emoteSettings.autocomplete_min_chars)
+			: null
+	);
 
 	// React to colon match changes
 	$effect(() => {
@@ -232,13 +243,17 @@
 			clearTimeout(searchDebounceTimer);
 			const query = colonMatch;
 			searchDebounceTimer = setTimeout(async () => {
-				const result = await commands.searchEmotes(query, channelInfo.broadcaster_id, null);
+				const result = await commands.searchEmotes(
+					query,
+					channelInfo.broadcaster_id,
+					emoteSettings.autocomplete_result_limit
+				);
 				if (result.status === 'ok' && colonMatch === query) {
 					emoteResults = result.data;
 					selectedEmoteIndex = 0;
 					emotePickerVisible = emoteResults.length > 0;
 				}
-			}, 75);
+			}, emoteSettings.search_debounce_ms);
 		} else if (!colonMatch) {
 			emotePickerVisible = false;
 			emoteResults = [];
@@ -258,12 +273,16 @@
 		const query = emoteSearchQuery;
 		clearTimeout(searchDebounceTimer);
 		searchDebounceTimer = setTimeout(async () => {
-			const result = await commands.searchEmotes(query, channelInfo.broadcaster_id, 50);
+			const result = await commands.searchEmotes(
+				query,
+				channelInfo.broadcaster_id,
+				emoteSettings.picker_result_limit
+			);
 			if (result.status === 'ok' && emoteSearchQuery === query && pickerOpenedByButton) {
 				emoteResults = result.data;
 				selectedEmoteIndex = 0;
 			}
-		}, 75);
+		}, emoteSettings.search_debounce_ms);
 	});
 
 	const insertEmote = (emote: EmoteType) => {
@@ -290,7 +309,11 @@
 
 		pickerOpenedByButton = true;
 		emoteSearchQuery = '';
-		const result = await commands.searchEmotes('', channelInfo.broadcaster_id, 50);
+		const result = await commands.searchEmotes(
+			'',
+			channelInfo.broadcaster_id,
+			emoteSettings.picker_result_limit
+		);
 		if (result.status === 'ok') {
 			emoteResults = result.data;
 			selectedEmoteIndex = 0;
@@ -334,13 +357,18 @@
 						data-chat-message-index={msg.index}
 						class={cn(
 							'inline-block w-full px-2 py-1 text-sm text-wrap',
-							msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary'
+							chatSettings.alternate_backgrounds &&
+								(msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary')
 						)}
 					>
-						<span class="text-xs whitespace-nowrap text-gray-500"
-							>{new Date(msg.ts).toLocaleTimeString('en', { timeStyle: 'short' })}</span
-						>
-						<Badges badges={msg.badges} />
+						{#if chatSettings.show_timestamps}
+							<span class="text-xs whitespace-nowrap text-gray-500">
+								{formatTimestamp(msg.ts, normalizedSettings)}
+							</span>
+						{/if}
+						{#if chatSettings.show_badges}
+							<Badges badges={msg.badges} sizePx={emoteSettings.inline_badge_px} />
+						{/if}
 						<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
 							>{msg.chatter_user_name}</span
 						>:
@@ -348,7 +376,11 @@
 							{#if 'Text' in fragment}
 								{fragment.Text.text}
 							{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
-								<Emote emote={fragment.Emote.emote} />
+								{#if chatSettings.show_emotes}
+									<Emote emote={fragment.Emote.emote} sizePx={emoteSettings.inline_emote_px} />
+								{:else}
+									{fragment.Emote.emote.name}
+								{/if}
 							{/if}
 						{/each}
 					</div>
@@ -380,6 +412,9 @@
 				showSearch={pickerOpenedByButton}
 				bind:searchQuery={emoteSearchQuery}
 				onSearchKeydown={handleKeydown}
+				columns={emoteSettings.picker_columns}
+				maxHeightPx={emoteSettings.picker_max_height_px}
+				emoteSizePx={emoteSettings.inline_emote_px}
 			/>
 			<form onsubmit={submitForm} class="flex items-center">
 				<input
