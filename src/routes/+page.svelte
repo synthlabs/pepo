@@ -56,7 +56,7 @@
 <div class="bg-sidebar flex h-screen w-full flex-col items-center justify-center">
 	<button
 		class={cn(
-			'text-muted-foreground flex flex-col items-center justify-center gap-2 rounded-lg px-8 py-2 text-center hover:underline',
+			'text-muted-foreground flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg px-8 py-2 text-center hover:underline disabled:cursor-not-allowed',
 			loading ? '' : 'hover:bg-secondary hover:cursor-pointer'
 		)}
 		onclick={login}

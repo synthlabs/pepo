@@ -426,7 +426,7 @@
 				/>
 				<button
 					type="button"
-					class="text-muted-foreground hover:text-foreground p-2"
+					class="text-muted-foreground hover:text-foreground cursor-pointer p-2"
 					onclick={toggleEmotePicker}
 				>
 					<Smile class="h-5 w-5" />

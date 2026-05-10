@@ -60,7 +60,7 @@
 						<Tooltip.Trigger>
 							<button
 								bind:this={itemRefs[i]}
-								class="rounded p-1 hover:bg-accent {i === selectedIndex
+									class="cursor-pointer rounded p-1 hover:bg-accent {i === selectedIndex
 									? 'bg-accent'
 									: ''}"
 								onclick={() => onselect(emote)}
