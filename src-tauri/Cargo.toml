@@ -13,7 +13,6 @@ version = "2"
 color-eyre = "0.6.3"
 eyre = "0.6.12"
 futures = "0.3.31"
-inbound = { path = "../utils/rust/inbound" }
 lazy_static = "1.5.0"
 log = "0.4.29"
 serde_json = "1"
@@ -25,6 +24,8 @@ tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 tauri-plugin-store = "2"
 tracing-subscriber = "0.3.23"
+[dependencies.inbound]
+path = "../utils/rust/inbound"
 [dependencies.reqwest]
 features = ["json"]
 version = "0.12.28"
@@ -73,7 +74,7 @@ default-run = "pepo"
 description = "A Tauri App"
 edition = "2021"
 name = "pepo"
-version = "0.2.23"
+version = "0.2.24"
 
 [profile]
 [profile.dev]

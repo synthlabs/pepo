@@ -1,28 +1,17 @@
-[commit]: # '68d82709d0c6d115372ec457ca40edfe8c94bbc7'
+[commit]: # 'eb890031d2115afede42429a88875a3635bd7071'
 
 Features:
 
-- (tests): add base testing
-- (emotes): add search bar to manually opened emote menu
+- (inbound): support sending error reports
+- (internal): support internal testing packages
+- (settings): initial backend support and wiring for settings
 
 Fixes:
 
+- (chat): autoscroll now properly handles high burst rates
 - (chat): make autoscroll pausing more consistent
-- (chat): make autoscroll pausing more consistent
-- (chat): make autoscroll pausing more consistent
-- (core): reduce logging noise
-- (auth): clean up old auth code
-- (build): gen_bindings outputs to repo root
-- (ui/emote): use provider:id as the emote key
-- (ui): redirect to login when auth expires
 
 Misc:
 
-- (gha): use the new install_deps scripts
-- (build): fix mismatched cargo versions
-- (build): migrate to use shared utils/js
-- (build): migrate to use shared utils/scripts
-- (lint): cleanup warnings and errors
-- (deps): update deps
-- (deps): update deps
-- (updater): version bump 0.2.22
+- fix: clickable buttons now properly show pointer cursor
+- (updater): version bump 0.2.23
