@@ -3,6 +3,8 @@ name = "pepo"
 path = "src/main.rs"
 
 [build-dependencies]
+[build-dependencies.inbound-build]
+path = "../utils/rust/inbound-build"
 [build-dependencies.tauri-build]
 features = []
 version = "2"
@@ -11,6 +13,7 @@ version = "2"
 color-eyre = "0.6.3"
 eyre = "0.6.12"
 futures = "0.3.31"
+inbound = { path = "../utils/rust/inbound" }
 lazy_static = "1.5.0"
 log = "0.4.29"
 serde_json = "1"

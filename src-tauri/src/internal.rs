@@ -1,6 +1,9 @@
 #[cfg(internal_enabled)]
 mod local {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../internal/rust/mod.rs"));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../internal/rust/mod.rs"
+    ));
 }
 
 #[cfg(not(internal_enabled))]

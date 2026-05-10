@@ -11,6 +11,7 @@
     "opener:default",
     "store:default",
     "dialog:default",
-    "process:default"
+    "process:default",
+    "inbound:default"
   ]
 }

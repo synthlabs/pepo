@@ -1,11 +1,14 @@
 <script lang="ts">
 	import * as Avatar from '$lib/components/ui/avatar/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
 	import Bell from '@lucide/svelte/icons/bell';
+	import Bug from '@lucide/svelte/icons/bug';
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 	import LogOut from '@lucide/svelte/icons/log-out';
+	import { ReportWizard } from '$utils/inbound';
 
 	interface Props {
 		user: { name: string; provider: string; avatar: string };
@@ -14,6 +17,7 @@
 
 	let { user, onlogout }: Props = $props();
 	const sidebar = useSidebar();
+	let reportOpen = $state(false);
 </script>
 
 <Sidebar.Menu
@@ -59,12 +63,16 @@
 					</div>
 				</DropdownMenu.Label>
 				<DropdownMenu.Separator />
-				<DropdownMenu.Group>
-					<DropdownMenu.Item>
-						<Bell />
-						Notifications
-					</DropdownMenu.Item>
-				</DropdownMenu.Group>
+					<DropdownMenu.Group>
+						<DropdownMenu.Item>
+							<Bell />
+							Notifications
+						</DropdownMenu.Item>
+						<DropdownMenu.Item onclick={() => (reportOpen = true)}>
+							<Bug />
+							Report a bug
+						</DropdownMenu.Item>
+					</DropdownMenu.Group>
 				<DropdownMenu.Separator />
 				<DropdownMenu.Item onclick={onlogout}>
 					<LogOut />
@@ -72,5 +80,11 @@
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
-	</Sidebar.MenuItem>
-</Sidebar.Menu>
+		</Sidebar.MenuItem>
+	</Sidebar.Menu>
+
+<Sheet.Root bind:open={reportOpen}>
+	<Sheet.Content class="w-full sm:max-w-xl">
+		<ReportWizard onclose={() => (reportOpen = false)} />
+	</Sheet.Content>
+</Sheet.Root>

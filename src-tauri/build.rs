@@ -1,3 +1,5 @@
+use tauri_build::{Attributes, DefaultPermissionRule, InlinedPlugin};
+
 fn main() {
     println!("cargo:rustc-check-cfg=cfg(internal_enabled)");
     println!("cargo:rerun-if-env-changed=ENABLE_INTERNAL");
@@ -8,5 +10,14 @@ fn main() {
         println!("cargo:rustc-cfg=internal_enabled");
     }
 
-    tauri_build::build()
+    inbound_build::stamp();
+    tauri_build::try_build(
+        Attributes::new().plugin(
+            "inbound",
+            InlinedPlugin::new()
+                .commands(inbound_build::COMMANDS)
+                .default_permission(DefaultPermissionRule::AllowAllCommands),
+        ),
+    )
+    .expect("failed to run tauri build");
 }

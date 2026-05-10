@@ -31,8 +31,12 @@
 		<Label for={id} class="sr-only">Search</Label>
 		<Input
 			{id}
+			type="search"
 			placeholder="Chat..."
 			class="h-8 ps-8 {inputClass ?? ''}"
+			autocomplete="off"
+			autocapitalize="none"
+			spellcheck={false}
 			bind:value
 		/>
 		<SearchIcon

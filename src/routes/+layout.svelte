@@ -5,6 +5,7 @@
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import type { Settings } from '$lib/bindings';
 	import { applyThemePreference, DEFAULT_SETTINGS, normalizeSettings } from '$lib/settings';
+	import { ErrorToast } from '$utils/inbound';
 
 	let { children } = $props();
 	let settings = new SyncedState<Settings>('settings', DEFAULT_SETTINGS);
@@ -20,6 +21,8 @@
 		await checkForAppUpdates('https://github.com/synthlabs/pepo/releases/latest');
 	});
 </script>
+
+<ErrorToast />
 
 <div class="h-full w-full">
 	{@render children?.()}

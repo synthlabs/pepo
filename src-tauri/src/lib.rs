@@ -784,6 +784,64 @@ fn clear_auth(app_handle: &AppHandle) {
     tauri::async_runtime::block_on(clear_auth_async(app_handle, true));
 }
 
+fn inbound_build_info() -> inbound::BuildInfo {
+    inbound::BuildInfo {
+        app_version: env!("CARGO_PKG_VERSION").to_owned(),
+        app_commit: option_env!("INBOUND_GIT_SHA")
+            .unwrap_or("unknown")
+            .to_owned(),
+        build_time: option_env!("INBOUND_BUILD_TIME")
+            .unwrap_or("unknown")
+            .to_owned(),
+    }
+}
+
+struct PepoScrubber;
+
+impl inbound::Scrubber<tauri::Wry> for PepoScrubber {
+    fn scrub(&self, app: &AppHandle) -> Result<Option<serde_json::Value>, String> {
+        let state_syncer = app.state::<StateSyncer>();
+        let auth_state = state_syncer.snapshot::<AuthState>("auth_state");
+        let settings = state_syncer.snapshot::<Settings>("settings").normalized();
+        let mut value = serde_json::json!({
+            "auth_state": auth_state,
+            "settings": settings,
+        });
+
+        if let Some(auth) = value
+            .get_mut("auth_state")
+            .and_then(|value| value.as_object_mut())
+        {
+            if auth
+                .get("device_code")
+                .and_then(|value| value.as_str())
+                .is_some_and(|value| !value.is_empty())
+            {
+                auth.insert(
+                    "device_code".to_owned(),
+                    serde_json::Value::String("[redacted]".to_owned()),
+                );
+            }
+
+            if let Some(token) = auth
+                .get_mut("token")
+                .and_then(|value| value.as_object_mut())
+            {
+                token.insert(
+                    "access_token".to_owned(),
+                    serde_json::Value::String("[redacted]".to_owned()),
+                );
+                token.insert(
+                    "refresh_token".to_owned(),
+                    serde_json::Value::String("[redacted]".to_owned()),
+                );
+            }
+        }
+
+        Ok(Some(value))
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 fn logout(app_handle: AppHandle, _state_syncer: State<'_, StateSyncer>) -> Result<(), String> {
@@ -812,9 +870,15 @@ pub fn run() {
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
                         file_name: None,
                     }),
+                    inbound::capture::log_target(),
                 ])
                 .build(),
         )
+        .plugin(inbound::init(inbound::Config {
+            app: inbound::AppId::Pepo,
+            build: inbound_build_info(),
+            scrubber: Some(Arc::new(PepoScrubber)),
+        }))
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build());
@@ -827,10 +891,7 @@ pub fn run() {
     let handlers = internal::extend_specta(public_handlers);
 
     #[cfg(all(debug_assertions, internal_enabled))]
-    export_bindings(
-        &handlers,
-        repo_root().join("internal/frontend/bindings.ts"),
-    );
+    export_bindings(&handlers, repo_root().join("internal/frontend/bindings.ts"));
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder
