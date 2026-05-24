@@ -1,16 +1,14 @@
 #[cfg(internal_enabled)]
 mod local {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../internal/rust/mod.rs"
-    ));
+    pub use pepo_internal::{apply_plugins, setup};
+
+    #[cfg(debug_assertions)]
+    pub use pepo_internal::specta_builder;
 }
 
 #[cfg(not(internal_enabled))]
 mod local {
-    pub fn extend_specta(
-        builder: tauri_specta::Builder<tauri::Wry>,
-    ) -> tauri_specta::Builder<tauri::Wry> {
+    pub fn apply_plugins<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
         builder
     }
 
@@ -19,4 +17,7 @@ mod local {
     }
 }
 
-pub use local::{extend_specta, setup};
+pub use local::{apply_plugins, setup};
+
+#[cfg(all(debug_assertions, internal_enabled))]
+pub use local::specta_builder;

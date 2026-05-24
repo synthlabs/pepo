@@ -3050,6 +3050,7 @@ dependencies = [
  "log",
  "objc2",
  "objc2-app-kit",
+ "pepo-internal",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3074,6 +3075,15 @@ dependencies = [
  "twitch_api",
  "twitch_oauth2",
  "windows",
+]
+
+[[package]]
+name = "pepo-internal"
+version = "0.1.0"
+dependencies = [
+ "specta",
+ "tauri",
+ "tauri-specta",
 ]
 
 [[package]]

@@ -888,10 +888,11 @@ pub fn run() {
     #[cfg(debug_assertions)] // <- Only export on non-release builds
     export_bindings(&public_handlers, repo_root().join("src/lib/bindings.ts"));
 
-    let handlers = internal::extend_specta(public_handlers);
-
     #[cfg(all(debug_assertions, internal_enabled))]
-    export_bindings(&handlers, repo_root().join("internal/frontend/bindings.ts"));
+    export_bindings(
+        &internal::specta_builder(),
+        repo_root().join("internal/frontend/bindings.ts"),
+    );
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder
@@ -902,8 +903,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::new().build());
 
+    let builder = internal::apply_plugins(builder);
+
     let _builder = builder
-        .invoke_handler(handlers.invoke_handler())
+        .invoke_handler(public_handlers.invoke_handler())
         .setup(move |app| {
             #[cfg(desktop)]
             app.handle()
@@ -911,7 +914,7 @@ pub fn run() {
                 .unwrap();
 
             // This is also required if you want to use events
-            handlers.mount_events(app);
+            public_handlers.mount_events(app);
             internal::setup(app)?;
 
             let mut sync_cfg = StateSyncerConfig::default();

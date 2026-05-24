@@ -12,6 +12,7 @@
     "store:default",
     "dialog:default",
     "process:default",
-    "inbound:default"
+    "inbound:default",
+    "internal:default"
   ]
 }

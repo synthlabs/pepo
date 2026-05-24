@@ -20,6 +20,7 @@
         "updater:allow-download-and-install",
         "process:default",
         "process:allow-restart",
-        "inbound:default"
+        "inbound:default",
+        "internal:default"
     ]
 }

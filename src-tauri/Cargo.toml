@@ -5,6 +5,9 @@ path = "src/main.rs"
 [build-dependencies]
 [build-dependencies.inbound-build]
 path = "../utils/rust/inbound-build"
+[build-dependencies.pepo-internal]
+default-features = false
+path = "../internal/rust"
 [build-dependencies.tauri-build]
 features = []
 version = "2"
@@ -26,6 +29,9 @@ tauri-plugin-store = "2"
 tracing-subscriber = "0.3.23"
 [dependencies.inbound]
 path = "../utils/rust/inbound"
+[dependencies.pepo-internal]
+features = ["runtime"]
+path = "../internal/rust"
 [dependencies.reqwest]
 features = ["json"]
 version = "0.12.28"

@@ -1,0 +1,22 @@
+[package]
+edition = "2021"
+name = "pepo-internal"
+version = "0.1.0"
+
+[features]
+default = []
+runtime = ["dep:specta", "dep:tauri", "dep:tauri-specta"]
+
+[dependencies.specta]
+optional = true
+version = "=2.0.0-rc.22"
+
+[dependencies.tauri]
+features = []
+optional = true
+version = "2"
+
+[dependencies.tauri-specta]
+features = ["derive", "typescript"]
+optional = true
+version = "=2.0.0-rc.21"
