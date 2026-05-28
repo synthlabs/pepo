@@ -696,7 +696,12 @@ impl ChannelMessage {
         let bm_ref = bm.clone();
         let emote_settings = emote_settings.normalized();
         let broadcaster_id = value.broadcaster_user_id.to_string();
+        let broadcaster_login = value.broadcaster_user_login.to_string();
+        let message_id = value.message_id.to_string();
+        let message_text = value.message.text.clone();
         let emote_cache = em.get_emote_cache(broadcaster_id.clone(), &emote_settings);
+
+        crate::internal::detect_language(&message_text);
 
         if emote_settings.provider_enabled(EmoteProviderId::Twitch) {
             let _: Vec<_> = value
@@ -726,11 +731,11 @@ impl ChannelMessage {
             ts: ts,
             broadcaster_user_id: value.broadcaster_user_id.to_string(),
             broadcaster_user_name: value.broadcaster_user_name.to_string(),
-            broadcaster_user_login: value.broadcaster_user_login.to_string(),
+            broadcaster_user_login: broadcaster_login,
             chatter_user_id: value.chatter_user_id.to_string(),
             chatter_user_name: value.chatter_user_name.to_string(),
-            message_id: value.message_id.to_string(),
-            text: value.message.text.clone(),
+            message_id,
+            text: message_text.clone(),
             message_type: value.message_type.into(),
             color: value.color.to_string(),
             index: next_index!(),
@@ -762,7 +767,7 @@ impl ChannelMessage {
                     }
                 })
                 .collect(),
-            fragments: message::Parser::parse(value.message.text.clone(), &emote_cache),
+            fragments: message::Parser::parse(message_text, &emote_cache),
         }
     }
 }

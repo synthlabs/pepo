@@ -862,6 +862,7 @@ pub fn run() {
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
                 .level(log::LevelFilter::Info)
                 .level_for("pepo_lib", pepo_log_level)
+                .level_for("pepo_internal", pepo_log_level)
                 .level_for("hyper_util", log::LevelFilter::Warn)
                 .level_for("reqwest", log::LevelFilter::Warn)
                 .level_for("tauri_svelte_synced_store", log::LevelFilter::Warn)
