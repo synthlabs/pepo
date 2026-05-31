@@ -1,17 +1,15 @@
-[commit]: # 'eb890031d2115afede42429a88875a3635bd7071'
+[commit]: # 'dd35988fd5d3b07ed3d3c94410fb6fbc50495a11'
 
 Features:
 
-- (inbound): support sending error reports
-- (internal): support internal testing packages
-- (settings): initial backend support and wiring for settings
 
 Fixes:
 
-- (chat): autoscroll now properly handles high burst rates
-- (chat): make autoscroll pausing more consistent
+- (internal): internal namespaced logging properly shows now
+- (internal): fix internal starter code
 
 Misc:
 
+- (auth): update token management and add debug logging
+- (updater): version bump 0.2.24
 - fix: clickable buttons now properly show pointer cursor
-- (updater): version bump 0.2.23
