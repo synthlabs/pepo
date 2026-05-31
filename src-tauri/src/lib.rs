@@ -852,6 +852,14 @@ fn inbound_build_info() -> inbound::BuildInfo {
     }
 }
 
+fn internal_build_info(build_info: &inbound::BuildInfo) -> internal::InternalBuildInfo {
+    internal::InternalBuildInfo {
+        app_version: build_info.app_version.clone(),
+        app_commit: build_info.app_commit.clone(),
+        build_time: build_info.build_time.clone(),
+    }
+}
+
 struct PepoScrubber;
 
 impl inbound::Scrubber<tauri::Wry> for PepoScrubber {
@@ -910,6 +918,8 @@ fn logout(app_handle: AppHandle, _state_syncer: State<'_, StateSyncer>) -> Resul
 pub fn run() {
     color_eyre::install().expect("failed to install color_eyre");
     let pepo_log_level = logging::pepo_log_level();
+    let inbound_build = inbound_build_info();
+    let internal_build = internal_build_info(&inbound_build);
 
     let builder = tauri::Builder::default()
         .plugin(
@@ -933,7 +943,7 @@ pub fn run() {
         )
         .plugin(inbound::init(inbound::Config {
             app: inbound::AppId::Pepo,
-            build: inbound_build_info(),
+            build: inbound_build,
             scrubber: Some(Arc::new(PepoScrubber)),
         }))
         .plugin(tauri_plugin_process::init())
@@ -960,7 +970,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::new().build());
 
-    let builder = internal::apply_plugins(builder);
+    let builder = internal::apply_plugins(builder, internal_build);
 
     let _builder = builder
         .invoke_handler(public_handlers.invoke_handler())
