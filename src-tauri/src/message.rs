@@ -109,7 +109,7 @@ impl Parser {
             providers = ?providers,
             fragments = result.len(),
             emote_hits = emote_hits,
-            duration = ?duration,
+            duration_ms = crate::logging::duration_ms(duration),
             "parsed message into fragments",
         );
         crate::logging::record_chat_parse(msg_len, providers, result.len(), duration, emote_hits);

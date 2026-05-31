@@ -701,7 +701,7 @@ impl ChannelMessage {
         let message_text = value.message.text.clone();
         let emote_cache = em.get_emote_cache(broadcaster_id.clone(), &emote_settings);
 
-        crate::internal::detect_language(&message_text);
+        crate::internal::detect_language(&broadcaster_login, &message_id, &message_text);
 
         if emote_settings.provider_enabled(EmoteProviderId::Twitch) {
             let _: Vec<_> = value

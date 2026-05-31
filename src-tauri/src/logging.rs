@@ -10,6 +10,10 @@ const CHAT_PARSE_SUMMARY_INTERVAL: Duration = Duration::from_secs(60);
 static REPEATED_LOGS: OnceLock<Coalescer> = OnceLock::new();
 static CHAT_PARSE_STATS: OnceLock<Mutex<ChatParseStats>> = OnceLock::new();
 
+pub(crate) fn duration_ms(duration: Duration) -> f64 {
+    duration.as_secs_f64() * 1_000.0
+}
+
 pub(crate) fn pepo_log_level() -> LevelFilter {
     match std::env::var("PEPO_LOG").as_deref() {
         Ok("trace") | Ok("TRACE") => LevelFilter::Trace,
@@ -81,8 +85,8 @@ pub(crate) fn record_chat_parse(
             emote_hits = summary.emote_hits,
             avg_msg_len = summary.avg_msg_len,
             avg_fragments = summary.avg_fragments,
-            avg_parse_us = summary.avg_parse_us,
-            max_parse_us = summary.max_parse_us,
+            avg_parse_ms = summary.avg_parse_ms,
+            max_parse_ms = summary.max_parse_ms,
             providers = ?summary.providers,
             "chat parser summary"
         );
@@ -182,8 +186,8 @@ struct ChatParseStats {
     messages: u64,
     total_msg_len: u64,
     total_fragments: u64,
-    total_parse_us: u128,
-    max_parse_us: u128,
+    total_parse_ms: f64,
+    max_parse_ms: f64,
     emote_hits: u64,
     providers: Vec<String>,
 }
@@ -204,8 +208,9 @@ impl ChatParseStats {
         self.messages += 1;
         self.total_msg_len += msg_len as u64;
         self.total_fragments += fragments as u64;
-        self.total_parse_us += duration.as_micros();
-        self.max_parse_us = self.max_parse_us.max(duration.as_micros());
+        let parse_ms = duration_ms(duration);
+        self.total_parse_ms += parse_ms;
+        self.max_parse_ms = self.max_parse_ms.max(parse_ms);
         self.emote_hits += emote_hits as u64;
         self.providers = providers;
 
@@ -218,8 +223,8 @@ impl ChatParseStats {
             emote_hits: self.emote_hits,
             avg_msg_len: self.total_msg_len as f64 / self.messages as f64,
             avg_fragments: self.total_fragments as f64 / self.messages as f64,
-            avg_parse_us: self.total_parse_us as f64 / self.messages as f64,
-            max_parse_us: self.max_parse_us,
+            avg_parse_ms: self.total_parse_ms / self.messages as f64,
+            max_parse_ms: self.max_parse_ms,
             providers: self.providers.clone(),
         };
 
@@ -238,8 +243,8 @@ struct ChatParseSummary {
     emote_hits: u64,
     avg_msg_len: f64,
     avg_fragments: f64,
-    avg_parse_us: f64,
-    max_parse_us: u128,
+    avg_parse_ms: f64,
+    max_parse_ms: f64,
     providers: Vec<String>,
 }
 
@@ -345,8 +350,8 @@ mod tests {
                 emote_hits: 2,
                 avg_msg_len: 15.0,
                 avg_fragments: 2.0,
-                avg_parse_us: 20.0,
-                max_parse_us: 30,
+                avg_parse_ms: duration_ms(Duration::from_micros(20)),
+                max_parse_ms: duration_ms(Duration::from_micros(30)),
                 providers: vec!["Provider".into(), "Global".into()],
             })
         );
