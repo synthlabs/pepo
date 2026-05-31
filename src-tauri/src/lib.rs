@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 use specta_typescript::Typescript;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
@@ -16,8 +16,9 @@ use tauri_specta::collect_commands;
 use tauri_svelte_synced_store::{StateSyncer, StateSyncerConfig};
 use token::TokenManager;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 use twitch_api::{client::ClientDefault, HelixClient};
+use twitch_oauth2::TwitchToken;
 
 use crate::badgemanager::BadgeManager;
 use crate::emote::cache::EmoteCacheTrait;
@@ -56,8 +57,9 @@ type SharedEventSubManager = Mutex<EventSubManager>;
 type SharedBadgeManager = Mutex<BadgeManager>;
 type SharedEmoteManager = Mutex<EmoteManager>;
 type SharedPollHandle = Mutex<Option<tauri::async_runtime::JoinHandle<()>>>;
-type SharedTokenRefreshHandle = Mutex<Option<tauri::async_runtime::JoinHandle<()>>>;
 type SharedEventSubHandles = Mutex<Vec<tauri::async_runtime::JoinHandle<()>>>;
+/// Guards against overlapping token refreshes (supervisor tick vs. focus event).
+type RefreshLock = Mutex<()>;
 
 tauri_svelte_synced_store::state_handlers!(
     AuthState = "auth_state",
@@ -458,7 +460,7 @@ async fn login(
     info!(quick, "login");
 
     let auth_state_snapshot = state_syncer.snapshot::<AuthState>("auth_state");
-    let mut token_manager = if let Some(token) = auth_state_snapshot.token.clone() {
+    let token_manager = if let Some(token) = auth_state_snapshot.token.clone() {
         debug!("loading token from persisted auth_state");
         match token.to_twitch_token(client.clone()).await {
             Ok(token) => TokenManager::from_existing(token, client.clone()),
@@ -543,50 +545,10 @@ async fn login(
     if !app_handle.manage::<SharedEmoteManager>(Mutex::new(emote_manager.clone())) {
         *app_handle.state::<SharedEmoteManager>().lock().await = emote_manager.clone();
     }
-    // Token refresh callback + persistence
-    let token_ref_for_refresh = token_ref.clone();
-    let state_syncer_ref = state_syncer.inner().clone();
-    token_manager.on_refresh = Arc::new(Box::new(move |token| {
-        let mut new_token = types::UserToken::from_twitch_token(token.clone());
-        let auth_state = state_syncer_ref.snapshot::<AuthState>("auth_state");
-        if let Some(existing_token) = auth_state.token {
-            new_token.profile_image_url = existing_token.profile_image_url;
-        }
-
-        tauri::async_runtime::block_on(async {
-            *token_ref_for_refresh.lock().await = token;
-        });
-
-        state_syncer_ref.update::<AuthState>(
-            "auth_state",
-            AuthState {
-                phase: types::AuthPhase::Authorized,
-                device_code: String::new(),
-                token: Some(new_token.clone()),
-            },
-            true,
-        );
-
-        info!(
-            login = %new_token.login,
-            user_id = %new_token.user_id,
-            expires_in = new_token.expires_in,
-            "token refresh persisted to auth_state"
-        );
-    }));
-
-    {
-        let refresh_handle_state = app_handle.state::<SharedTokenRefreshHandle>();
-        let mut existing = refresh_handle_state.lock().await;
-        if let Some(handle) = existing.take() {
-            handle.abort();
-        }
-    }
-    let refresh_handle = token_manager.manage();
-    {
-        let refresh_handle_state = app_handle.state::<SharedTokenRefreshHandle>();
-        *refresh_handle_state.lock().await = Some(refresh_handle);
-    }
+    // Token refresh is handled by the always-on `token_refresh_supervisor`
+    // (spawned once at startup). Login only needs to publish the new token into
+    // `SharedTwitchToken` + auth_state (done above); the supervisor reads the
+    // shared token each tick, so there is no per-login refresh task to manage.
 
     // --- Background tasks ---
 
@@ -752,19 +714,14 @@ async fn clear_auth_async(app_handle: &AppHandle, abort_poll: bool) {
         }
     }
     {
-        let refresh_handle_state = app_handle.state::<SharedTokenRefreshHandle>();
-        let mut refresh_handle = refresh_handle_state.lock().await;
-        if let Some(handle) = refresh_handle.take() {
-            handle.abort();
-        }
-    }
-    {
         let eventsub_handle_state = app_handle.state::<SharedEventSubHandles>();
         let mut eventsub_handles = eventsub_handle_state.lock().await;
         for handle in eventsub_handles.drain(..) {
             handle.abort();
         }
     }
+    // The token refresh supervisor is long-lived; it idles automatically once
+    // auth_state is reset below (it gates on AuthPhase::Authorized).
 
     state_syncer.update::<AuthState>("auth_state", AuthState::default(), true);
     state_syncer.update::<types::ChannelCache>(
@@ -782,6 +739,105 @@ async fn clear_auth_async(app_handle: &AppHandle, abort_poll: bool) {
 /// Used by both explicit logout and automatic auth expiration handling.
 fn clear_auth(app_handle: &AppHandle) {
     tauri::async_runtime::block_on(clear_auth_async(app_handle, true));
+}
+
+/// Persist a freshly refreshed token into `auth_state`, preserving the cached
+/// profile image. Mirrors what the old `on_refresh` callback wrote.
+fn persist_refreshed_token(state_syncer: &StateSyncer, token: &twitch_oauth2::UserToken) {
+    let mut new_token = types::UserToken::from_twitch_token(token.clone());
+    let auth_state = state_syncer.snapshot::<AuthState>("auth_state");
+    if let Some(existing_token) = auth_state.token {
+        new_token.profile_image_url = existing_token.profile_image_url;
+    }
+    state_syncer.update::<AuthState>(
+        "auth_state",
+        AuthState {
+            phase: types::AuthPhase::Authorized,
+            device_code: String::new(),
+            token: Some(new_token.clone()),
+        },
+        true,
+    );
+    info!(
+        login = %new_token.login,
+        user_id = %new_token.user_id,
+        expires_in = new_token.expires_in,
+        "token refresh persisted to auth_state"
+    );
+}
+
+/// Best-effort token maintenance: optionally validate, then refresh the shared
+/// token when it is within 10 minutes of expiry. Transient failures are logged
+/// and retried on the next call; a genuinely dead token is caught reactively by
+/// the channel-cache 401 path (`handle_channel_cache_poll_error`). No-ops unless
+/// authorized. A non-blocking `RefreshLock` prevents overlapping refreshes
+/// (supervisor tick vs. focus event).
+async fn refresh_token_if_needed(app_handle: &AppHandle, force_validate: bool) {
+    let state_syncer = app_handle.state::<StateSyncer>();
+    if !matches!(
+        state_syncer.snapshot::<AuthState>("auth_state").phase,
+        types::AuthPhase::Authorized
+    ) {
+        return;
+    }
+
+    let Some(shared_token) = app_handle.try_state::<SharedTwitchToken>() else {
+        return;
+    };
+
+    let refresh_lock = app_handle.state::<RefreshLock>();
+    let _refresh_guard = match refresh_lock.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => return, // another refresh is already in progress
+    };
+
+    let client = app_handle.state::<HelixClient<'static, reqwest::Client>>();
+    let snapshot = { shared_token.lock().await.clone() };
+
+    if force_validate {
+        if let Err(e) = snapshot.validate_token(client.inner()).await {
+            warn!("token validation failed (will retry): {}", e);
+        }
+    }
+
+    let remaining = snapshot.expires_in();
+    info!("token: expires_in={:?}", remaining);
+    if remaining >= Duration::from_secs(600) {
+        return;
+    }
+
+    info!("refreshing token");
+    let mut refreshed = snapshot.clone();
+    match refreshed.refresh_token(client.inner()).await {
+        Ok(_) => {
+            let mut guard = shared_token.lock().await;
+            // Skip the write-back if a concurrent login swapped the token underneath us.
+            if guard.access_token.secret() == snapshot.access_token.secret() {
+                *guard = refreshed.clone();
+                drop(guard);
+                persist_refreshed_token(state_syncer.inner(), &refreshed);
+            }
+        }
+        Err(e) => warn!("token refresh failed (will retry next tick): {}", e),
+    }
+}
+
+/// Long-lived token maintenance loop, spawned once at startup. It idles while
+/// logged out and reads the shared token each tick, so it always operates on the
+/// current session's token without being aborted/respawned on login. This single
+/// owner replaces the old per-login refresh task, whose abort/respawn races could
+/// leave it silently dead.
+async fn token_refresh_supervisor(app_handle: AppHandle) {
+    info!("token refresh supervisor started");
+    let mut last_validation = Instant::now();
+    loop {
+        tokio::time::sleep(Duration::from_secs(15)).await;
+        let force_validate = last_validation.elapsed() > Duration::from_secs(300);
+        refresh_token_if_needed(&app_handle, force_validate).await;
+        if force_validate {
+            last_validation = Instant::now();
+        }
+    }
 }
 
 fn inbound_build_info() -> inbound::BuildInfo {
@@ -858,7 +914,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
-                .max_file_size(1_000_000) // 1 MB per log file
+                .max_file_size(9_000_000) // 9 MB per log file
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
                 .level(log::LevelFilter::Info)
                 .level_for("pepo_lib", pepo_log_level)
@@ -1003,6 +1059,23 @@ pub fn run() {
                 }
             }
 
+            // Revalidate/refresh the token whenever the window regains focus —
+            // covers returning to the app after the machine has slept.
+            {
+                let focus_app = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::Focused(focused) = event {
+                        if *focused {
+                            let app = focus_app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                info!("window focused; checking token freshness");
+                                refresh_token_if_needed(&app, true).await;
+                            });
+                        }
+                    }
+                });
+            }
+
             let client: HelixClient<'static, reqwest::Client> =
                 twitch_api::HelixClient::with_client(
                     ClientDefault::default_client_with_name(Some(
@@ -1018,10 +1091,13 @@ pub fn run() {
             state_syncer.set("settings", settings);
             app.manage::<StateSyncer>(state_syncer);
             app.manage::<SharedPollHandle>(Mutex::new(None));
-            app.manage::<SharedTokenRefreshHandle>(Mutex::new(None));
+            app.manage::<RefreshLock>(Mutex::new(()));
             app.manage::<SharedEventSubHandles>(Mutex::new(Vec::new()));
 
             app.manage(client);
+
+            // Single long-lived token maintenance loop; see token_refresh_supervisor.
+            tauri::async_runtime::spawn(token_refresh_supervisor(app.handle().clone()));
 
             #[cfg(debug_assertions)]
             window.open_devtools();

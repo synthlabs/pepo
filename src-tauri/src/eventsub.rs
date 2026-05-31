@@ -283,26 +283,52 @@ impl EventSubManager {
                     let guard = connect_url_ref.lock().unwrap();
                     (*guard).clone()
                 };
-                // Establish the stream
-                let mut s = connect(connect_url)
-                    .await
-                    .context("when establishing connection")
-                    .unwrap();
+                // Establish the stream; retry instead of panicking so a network
+                // blip (e.g. right after the machine wakes) can't kill the task.
+                let mut s = match connect(connect_url).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!("eventsub connect failed, retrying in 5s: {:?}", e);
+                        sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                };
 
                 let mut auth_failed = false;
 
-                while let Some(msg) = futures::StreamExt::next(&mut s).await {
-                    trace!("message received: {:?}", msg);
-                    let msg = match msg {
+                // Twitch sends a keepalive ~every 10s; 30s of silence means the
+                // socket is dead (common after sleep) — break to reconnect rather
+                // than blocking forever on next().
+                loop {
+                    let item = match tokio::time::timeout(
+                        Duration::from_secs(30),
+                        futures::StreamExt::next(&mut s),
+                    )
+                    .await
+                    {
+                        Ok(Some(item)) => item,
+                        Ok(None) => {
+                            warn!("eventsub stream closed, reconnecting");
+                            break;
+                        }
+                        Err(_) => {
+                            warn!("eventsub idle >30s (missed keepalives), reconnecting");
+                            break;
+                        }
+                    };
+                    trace!("message received: {:?}", item);
+                    let msg = match item {
+                        Ok(m) => m,
                         Err(tungstenite::Error::Protocol(
                             tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
                         )) => {
-                            error!(
-                                "connection was sent an unexpected frame or was reset, reestablishing it"
-                            );
+                            error!("eventsub connection reset, reconnecting");
                             break;
                         }
-                        _ => msg.context("when getting message").unwrap(),
+                        Err(e) => {
+                            error!("eventsub receive error, reconnecting: {:?}", e);
+                            break;
+                        }
                     };
                     let self_ref = self.clone();
                     match self_ref

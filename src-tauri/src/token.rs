@@ -1,17 +1,9 @@
-use core::time;
 use lazy_static::lazy_static;
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 use twitch_api::HelixClient;
 use twitch_oauth2::{Scope, TwitchToken, UserToken};
-
-fn default_refresh_callback(token: UserToken) {
-    debug!("token refreshed: {:#?}", token);
-}
 
 const CLIENT_ID: &str = "uyf8apz7jdx3ujc3pboj58vim8c8a6";
 
@@ -28,7 +20,6 @@ lazy_static! {
 
 #[derive(Clone)]
 pub struct TokenManager {
-    pub on_refresh: Arc<Box<dyn Fn(UserToken) + Send + Sync>>,
     user_token: Arc<Mutex<Option<UserToken>>>,
     client: HelixClient<'static, reqwest::Client>,
     builder: Arc<Mutex<twitch_oauth2::DeviceUserTokenBuilder>>,
@@ -42,7 +33,6 @@ impl TokenManager {
         );
 
         TokenManager {
-            on_refresh: Arc::new(Box::new(default_refresh_callback)),
             user_token: Arc::new(Mutex::new(Some(token))),
             client,
             builder: Arc::new(Mutex::new(builder)),
@@ -56,7 +46,6 @@ impl TokenManager {
         );
         TokenManager {
             user_token: Arc::new(Mutex::new(None)),
-            on_refresh: Arc::new(Box::new(default_refresh_callback)),
             client,
             builder: Arc::new(Mutex::new(builder)),
         }
@@ -109,52 +98,4 @@ impl TokenManager {
             .expect("token to be set")
     }
 
-    pub fn manage(self) -> tauri::async_runtime::JoinHandle<()> {
-        tauri::async_runtime::spawn(async move {
-            let mut last_validation_tick = Instant::now();
-            loop {
-                let mut user_token_guard = self.user_token.lock().await;
-                let Some(user_token) = user_token_guard.as_mut() else {
-                    error!("token manager started without a token");
-                    return;
-                };
-
-                debug!(
-                    "last_validation_tick: since={:?}",
-                    last_validation_tick.elapsed()
-                );
-                if last_validation_tick.elapsed() > Duration::from_secs(300) {
-                    info!("validating token");
-                    match user_token.validate_token(&self.client.clone()).await {
-                        Ok(res) => {
-                            debug!("validate: token={:?}", res);
-                            last_validation_tick = Instant::now();
-                        }
-                        Err(e) => {
-                            error!("token validation failed: {}", e);
-                            return;
-                        }
-                    }
-                }
-
-                info!("token: expires_in={:?}", user_token.expires_in());
-                if user_token.expires_in() < std::time::Duration::from_secs(600) {
-                    info!("refreshing token");
-                    match user_token.refresh_token(&self.client.clone()).await {
-                        Ok(_) => {
-                            (self.on_refresh)(user_token.clone());
-                        }
-                        Err(e) => {
-                            error!("token refresh failed: {}", e);
-                            return;
-                        }
-                    }
-                }
-                drop(user_token_guard);
-
-                debug!("sleeping");
-                tokio::time::sleep(time::Duration::from_secs(30)).await;
-            }
-        })
-    }
 }
