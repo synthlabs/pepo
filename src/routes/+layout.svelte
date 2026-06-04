@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import '../app.css';
 	import { checkForAppUpdates } from '$utils/updater';
+	import { Toaster } from '$lib/components/ui/sonner/index.ts';
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import type { Settings } from '$lib/bindings';
 	import { applyThemePreference, DEFAULT_SETTINGS, normalizeSettings } from '$lib/settings';
@@ -22,6 +23,7 @@
 	});
 </script>
 
+<Toaster theme={normalizedSettings.appearance.theme} position="top-right" />
 <ErrorToast />
 
 <div class="h-full w-full">

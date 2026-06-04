@@ -10,7 +10,6 @@
     "log:default",
     "opener:default",
     "store:default",
-    "dialog:default",
     "process:default",
     "inbound:default",
     "internal:default"

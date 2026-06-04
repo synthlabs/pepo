@@ -947,7 +947,6 @@ pub fn run() {
             scrubber: Some(Arc::new(PepoScrubber)),
         }))
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::new().build());
 
     let public_handlers = specta_builder();
