@@ -80,8 +80,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INBOUND_WEBHOOK_PEPO: ${{ secrets.INBOUND_WEBHOOK_PEPO }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PEPO_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_PEPO_SIGNING_KEY_PASSWORD }}
         with:
           tagName: app-${{ steps.tauri-version.outputs.VERSION }}-${{ steps.short-sha.outputs.SHORT_SHA }}
           releaseName: 'Pepo v${{ steps.tauri-version.outputs.VERSION }}-${{ steps.short-sha.outputs.SHORT_SHA }}'
