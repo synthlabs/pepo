@@ -3,7 +3,13 @@
 	import { quadInOut } from 'svelte/easing';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { onDestroy, onMount, tick } from 'svelte';
-	import { commands, type ChannelInfo, type ChannelMessage, type Settings } from '$lib/bindings.ts';
+	import {
+		commands,
+		type ChannelInfo,
+		type ChannelMessage,
+		type ChannelMessageTranslationUpdate,
+		type Settings
+	} from '$lib/bindings.ts';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import { cn } from '$lib/utils';
@@ -12,6 +18,7 @@
 	import Logger from '$utils/log';
 	import Emote from '$lib/components/chat/+emote.svelte';
 	import EmotePicker from '$lib/components/chat/+emote-picker.svelte';
+	import Translation from '$lib/components/chat/+translation.svelte';
 	import Smile from '@lucide/svelte/icons/smile';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
@@ -23,6 +30,11 @@
 		scrollToBottom as scrollElementToBottom,
 		type ScrollSnapshot
 	} from '$lib/chat/autoscroll';
+	import {
+		applyTranslationUpdate,
+		attachPendingTranslation,
+		type PendingTranslations
+	} from '$lib/chat/translation';
 	import { DEFAULT_SETTINGS, formatTimestamp, normalizeSettings } from '$lib/settings';
 
 	const CHAT_MESSAGE_SELECTOR = '[data-chat-message-index]';
@@ -58,7 +70,9 @@
 	let emoteSearchQuery = $state('');
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-	let un_sub: UnlistenFn;
+	const pendingTranslations: PendingTranslations = new Map();
+	let un_sub: UnlistenFn | undefined;
+	let translation_un_sub: UnlistenFn | undefined;
 	let pendingScrollSnapshot: ScrollSnapshot | null = null;
 	let scrollFlushQueued = false;
 	let scrollFrame: number | undefined;
@@ -89,6 +103,12 @@
 		un_sub = await listen<ChannelMessage>(`chat_message:${channel_name}`, (event) => {
 			addMessage(event.payload);
 		});
+		translation_un_sub = await listen<ChannelMessageTranslationUpdate>(
+			`chat_translation:${channel_name}`,
+			(event) => {
+				applyTranslation(event.payload);
+			}
+		);
 
 		jumpToBottom();
 	});
@@ -102,6 +122,9 @@
 		Logger.info('unsubbing from channel', channel_name);
 		if (un_sub) {
 			un_sub();
+		}
+		if (translation_un_sub) {
+			translation_un_sub();
 		}
 		await commands.leaveChat(channel_name).then(Logger.debug);
 	});
@@ -122,10 +145,27 @@
 
 		const wasPinned = pendingScrollSnapshot?.wasAtBottom ?? autoScrollPinned;
 
-		msgs.push(message);
+		msgs.push(attachPendingTranslation(message, pendingTranslations));
 		if (msgs.length > chatSettings.message_limit) msgs.shift();
 		if (!wasPinned) unreadMessageCount += 1;
 
+		queueScrollRestore();
+	};
+
+	const applyTranslation = (update: ChannelMessageTranslationUpdate) => {
+		const result = applyTranslationUpdate(msgs, update, pendingTranslations);
+		if (!result.changed) return;
+
+		if (chatDIV) {
+			pendingScrollSnapshot = getBatchScrollSnapshot(
+				pendingScrollSnapshot,
+				chatDIV,
+				CHAT_MESSAGE_SELECTOR,
+				chatSettings.autoscroll_threshold_px
+			);
+		}
+
+		msgs = result.messages;
 		queueScrollRestore();
 	};
 
@@ -383,6 +423,7 @@
 								{/if}
 							{/if}
 						{/each}
+						<Translation translation={msg.translation} />
 					</div>
 					{#if showSeparator}
 						<Separator class="" />
@@ -391,7 +432,11 @@
 			</div>
 		</div>
 		{#if showJumpToBottom}
-			<button class="bg-primary w-full cursor-pointer text-center" type="button" onclick={jumpToBottom}>
+			<button
+				class="bg-primary w-full cursor-pointer text-center"
+				type="button"
+				onclick={jumpToBottom}
+			>
 				{jumpToBottomLabel}
 			</button>
 		{/if}

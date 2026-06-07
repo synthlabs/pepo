@@ -649,6 +649,19 @@ impl From<twitch_api::eventsub::channel::chat::message::MessageType> for Channel
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type, PartialEq, Eq)]
+pub struct ChannelMessageTranslation {
+    pub source_language: String,
+    pub target_language: String,
+    pub translated_text: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type, PartialEq, Eq)]
+pub struct ChannelMessageTranslationUpdate {
+    pub message_id: String,
+    pub translation: ChannelMessageTranslation,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
 pub struct ChannelMessage {
     pub ts: String,
@@ -680,6 +693,8 @@ pub struct ChannelMessage {
     pub color: String,
     // Metadata if this message is a reply.
     // pub reply: Option<Reply>,
+    /// Translated message text when available.
+    pub translation: Option<ChannelMessageTranslation>,
     /// A stable message int that can be used by the UI
     pub index: u64,
 }
@@ -691,6 +706,7 @@ impl ChannelMessage {
         bm: BadgeManager,
         em: EmoteManager,
         emote_settings: EmoteSettings,
+        app_handle: tauri::AppHandle,
     ) -> Self {
         let raw_msg = serde_json::to_string(&value).unwrap();
         let bm_ref = bm.clone();
@@ -700,8 +716,6 @@ impl ChannelMessage {
         let message_id = value.message_id.to_string();
         let message_text = value.message.text.clone();
         let emote_cache = em.get_emote_cache(broadcaster_id.clone(), &emote_settings);
-
-        crate::internal::detect_language(&broadcaster_login, &message_id, &message_text);
 
         if emote_settings.provider_enabled(EmoteProviderId::Twitch) {
             let _: Vec<_> = value
@@ -727,6 +741,15 @@ impl ChannelMessage {
                 .collect();
         }
 
+        let fragments = message::Parser::parse(message_text.clone(), &emote_cache);
+        let translation_text = translation_input_from_fragments(&fragments);
+        crate::internal::detect_language(
+            app_handle,
+            &broadcaster_login,
+            &message_id,
+            translation_text.as_deref().unwrap_or(""),
+        );
+
         ChannelMessage {
             ts: ts,
             broadcaster_user_id: value.broadcaster_user_id.to_string(),
@@ -738,6 +761,7 @@ impl ChannelMessage {
             text: message_text.clone(),
             message_type: value.message_type.into(),
             color: value.color.to_string(),
+            translation: None,
             index: next_index!(),
             badges: value
                 .badges
@@ -767,14 +791,63 @@ impl ChannelMessage {
                     }
                 })
                 .collect(),
-            fragments: message::Parser::parse(message_text, &emote_cache),
+            fragments,
         }
     }
+}
+
+fn translation_input_from_fragments(fragments: &[message::Fragment]) -> Option<String> {
+    let text = fragments
+        .iter()
+        .filter_map(|fragment| match fragment {
+            message::Fragment::Text(fragment) => Some(fragment.text.as_str()),
+            message::Fragment::Emote(_) | message::Fragment::Cheer(_) => None,
+        })
+        .collect::<String>();
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!text.is_empty()).then_some(text)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn translation_input_uses_text_fragments_only() {
+        let input = translation_input_from_fragments(&[
+            message::Fragment::Text(message::TextFragment {
+                index: 0,
+                text: "ты видел ".to_owned(),
+            }),
+            message::Fragment::Emote(message::EmoteFragment {
+                index: 1,
+                emote: Emote {
+                    name: "LUL".to_owned(),
+                    ..Default::default()
+                },
+            }),
+            message::Fragment::Text(message::TextFragment {
+                index: 2,
+                text: " как он нюхал".to_owned(),
+            }),
+        ]);
+
+        assert_eq!(input.as_deref(), Some("ты видел как он нюхал"));
+    }
+
+    #[test]
+    fn translation_input_skips_emote_only_fragments() {
+        let input =
+            translation_input_from_fragments(&[message::Fragment::Emote(message::EmoteFragment {
+                index: 0,
+                emote: Emote {
+                    name: "LUL".to_owned(),
+                    ..Default::default()
+                },
+            })]);
+
+        assert_eq!(input, None);
+    }
 
     #[test]
     fn default_settings_preserve_current_user_visible_behavior() {

@@ -99,6 +99,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .typ::<types::UserToken>()
         .typ::<types::ChannelMessage>()
+        .typ::<types::ChannelMessageTranslation>()
+        .typ::<types::ChannelMessageTranslationUpdate>()
         .typ::<types::AuthState>()
         .typ::<types::AuthPhase>()
         .typ::<types::ChannelCache>()
@@ -652,6 +654,7 @@ async fn login(
                                     badge_manager_ref.clone(),
                                     emote_manager_ref.clone(),
                                     settings.emotes,
+                                    app_ref.clone(),
                                 );
                                 let key =
                                     format!("chat_message:{}", chat_message.broadcaster_user_login);

@@ -26,7 +26,13 @@ mod local {
         Ok(())
     }
 
-    pub fn detect_language(_channel_login: &str, _message_id: &str, _text: &str) {}
+    pub fn detect_language(
+        _app_handle: tauri::AppHandle,
+        _channel_login: &str,
+        _message_id: &str,
+        _text: &str,
+    ) {
+    }
 }
 
 pub use local::{apply_plugins, detect_language, setup, InternalBuildInfo};
