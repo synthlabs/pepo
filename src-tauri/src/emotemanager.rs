@@ -8,21 +8,22 @@ use tracing::{debug, error};
 use crate::emote::{
     cache::{EmoteCacheTrait, MultiCache},
     providers::{
-        bttv::BttvProvider, ffz::FfzProvider, seventv::SeventvProvider, twitch::TwitchProvider,
-        EmoteProvider,
+        bttv::BttvProvider, ffz::FfzProvider, http::provider_client, seventv::SeventvProvider,
+        twitch::TwitchProvider, EmoteProvider,
     },
     Emote,
 };
 use crate::types::{EmoteProviderId, EmoteSettings};
 use crate::SharedTwitchToken;
 
+type ProviderRef = Arc<dyn EmoteProvider<MultiCache>>;
 // TODO: switch to a RWLock instead of Mutex
-type SharedVec<V> = Arc<Mutex<Vec<V>>>;
+type SharedProviders = Arc<Mutex<Vec<ProviderRef>>>;
 type SharedMap<V> = Arc<Mutex<HashMap<String, V>>>;
 
 #[derive(Clone)]
 pub struct EmoteManager {
-    pub providers: SharedVec<Box<dyn EmoteProvider<MultiCache> + Send>>,
+    pub providers: SharedProviders,
     client: twitch_api::HelixClient<'static, reqwest::Client>,
     token: SharedTwitchToken,
     name_cache: SharedMap<String>,
@@ -42,9 +43,9 @@ impl EmoteManager {
     }
 
     pub fn load_global(&self, emote_settings: &EmoteSettings) {
-        let http_client = reqwest::Client::new();
+        let http_client = provider_client();
 
-        let providers: Vec<Box<dyn EmoteProvider<MultiCache> + Send>> = emote_settings
+        let providers: Vec<ProviderRef> = emote_settings
             .clone()
             .normalized()
             .enabled_provider_ids_ordered()
@@ -52,31 +53,53 @@ impl EmoteManager {
             .map(|id| self.provider(id))
             .collect();
 
-        for p in &providers {
-            p.load_global_emotes(&http_client);
+        {
+            let mut store = self.providers.lock().unwrap();
+            *store = providers.clone();
         }
 
-        let mut store = self.providers.lock().unwrap();
-        *store = providers;
+        for p in &providers {
+            debug!(provider = %p.get_name(), "loading global emotes");
+            p.load_global_emotes(&http_client);
+        }
     }
 
     pub async fn load_channel(self, broadcaster_id: String, emote_settings: &EmoteSettings) {
-        let http_client = reqwest::Client::new();
-        let providers = self.providers.lock().unwrap();
+        let http_client = provider_client();
         let provider_ids = emote_settings
             .clone()
             .normalized()
             .enabled_provider_ids_ordered();
+        let providers = {
+            let providers = self.providers.lock().unwrap();
+            providers
+                .iter()
+                .filter(|p| provider_ids.contains(&p.get_id()))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
+        debug!(
+            broadcaster_id,
+            provider_count = providers.len(),
+            "loading channel emotes"
+        );
 
         let _: Vec<_> = providers
             .iter()
-            .filter(|p| provider_ids.contains(&p.get_id()))
-            .map(|p| p.load_channel_emotes(broadcaster_id.clone(), &http_client))
+            .map(|p| {
+                debug!(
+                    broadcaster_id,
+                    provider = %p.get_name(),
+                    "loading channel emotes for provider"
+                );
+                p.load_channel_emotes(broadcaster_id.clone(), &http_client)
+            })
             .collect();
     }
 
     pub fn load_user_emotes(&self) {
-        let providers = self.providers.lock().unwrap();
+        let providers = self.providers.lock().unwrap().clone();
         for p in providers.iter() {
             p.load_user_emotes();
         }
@@ -117,21 +140,18 @@ impl EmoteManager {
             .iter()
             .find(|p| p.get_id() == EmoteProviderId::Twitch)
         {
-            let cache = provider.get_emote_cache(scope);
-            if !cache.has_emote(name.clone()) {
-                cache.set_emote(name, emote);
-            }
+            provider.insert_emote(scope, name, emote);
         }
     }
 
-    fn provider(&self, id: EmoteProviderId) -> Box<dyn EmoteProvider<MultiCache> + Send> {
+    fn provider(&self, id: EmoteProviderId) -> ProviderRef {
         match id {
             EmoteProviderId::Twitch => {
-                Box::new(TwitchProvider::new(self.client.clone(), self.token.clone()))
+                Arc::new(TwitchProvider::new(self.client.clone(), self.token.clone()))
             }
-            EmoteProviderId::Bttv => Box::new(BttvProvider::new()),
-            EmoteProviderId::Ffz => Box::new(FfzProvider::new()),
-            EmoteProviderId::Seventv => Box::new(SeventvProvider::new()),
+            EmoteProviderId::Bttv => Arc::new(BttvProvider::new()),
+            EmoteProviderId::Ffz => Arc::new(FfzProvider::new()),
+            EmoteProviderId::Seventv => Arc::new(SeventvProvider::new()),
         }
     }
 

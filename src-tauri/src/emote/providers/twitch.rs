@@ -4,11 +4,12 @@ use std::{
 };
 
 use futures::TryStreamExt;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::emote::{
     cache::{EmoteCache, EmoteCacheTrait, MultiCache},
     providers::{EmoteProvider, GLOBAL_SCOPE_KEY},
+    Emote,
 };
 use crate::types::EmoteProviderId;
 use crate::SharedTwitchToken;
@@ -62,8 +63,15 @@ impl EmoteProvider<MultiCache> for TwitchProvider {
         store.insert(GLOBAL_SCOPE_KEY.to_owned(), cache);
     }
 
-    fn load_channel_emotes(&self, _broadcaster_id: String, _client: &reqwest::Client) {
-        warn!("load_channel_emotes - not implemented for twitch, they include emote fragments in their eventsub messages now so we load them dynamically per message");
+    fn load_channel_emotes(&self, broadcaster_id: String, _client: &reqwest::Client) {
+        let mut store = self.cache.lock().unwrap();
+        store
+            .entry(broadcaster_id.clone())
+            .or_insert_with(|| EmoteCache::new(broadcaster_id.clone(), self.get_name()));
+        debug!(
+            broadcaster_id,
+            "prepared twitch channel emote cache for EventSub fragments"
+        );
     }
 
     fn load_user_emotes(&self) {
@@ -91,11 +99,32 @@ impl EmoteProvider<MultiCache> for TwitchProvider {
         store.insert(USER_EMOTES_SCOPE_KEY.to_owned(), cache);
     }
 
+    fn insert_emote(&self, scope: String, name: String, emote: Emote) {
+        let cache = {
+            let mut store = self.cache.lock().unwrap();
+            store
+                .entry(scope.clone())
+                .or_insert_with(|| EmoteCache::new(scope, self.get_name()))
+                .clone()
+        };
+
+        if !cache.has_emote(name.clone()) {
+            cache.set_emote(name, emote);
+        }
+    }
+
     fn get_emote_cache(&self, scope: String) -> MultiCache {
-        let store = self.cache.lock().unwrap();
+        let mut store = self.cache.lock().unwrap();
         tracing::trace!(scope, "twitch get_emote_cache");
         let mut caches = Vec::new();
-        if let Some(channel_cache) = store.get(&scope) {
+        if scope != GLOBAL_SCOPE_KEY && scope != USER_EMOTES_SCOPE_KEY {
+            let cache_name = self.get_name();
+            let channel_cache = store
+                .entry(scope.clone())
+                .or_insert_with(|| EmoteCache::new(scope.clone(), cache_name))
+                .clone();
+            caches.push(channel_cache);
+        } else if let Some(channel_cache) = store.get(&scope) {
             caches.push(channel_cache.clone());
         }
         if let Some(user_cache) = store.get(USER_EMOTES_SCOPE_KEY) {

@@ -8,7 +8,7 @@ use tracing::{debug, error};
 
 use crate::emote::{
     cache::{EmoteCache, EmoteCacheTrait, MultiCache},
-    providers::{EmoteProvider, GLOBAL_SCOPE_KEY},
+    providers::{http::fetch_json, EmoteProvider, GLOBAL_SCOPE_KEY},
     Emote,
 };
 use crate::types::EmoteProviderId;
@@ -77,12 +77,7 @@ impl EmoteProvider<MultiCache> for BttvProvider {
 
         match tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                client
-                    .get(&url)
-                    .send()
-                    .await?
-                    .json::<Vec<BttvEmote>>()
-                    .await
+                fetch_json::<Vec<BttvEmote>>(client, "BTTV", "global", &url).await
             })
         }) {
             Ok(emotes) => {
@@ -104,12 +99,13 @@ impl EmoteProvider<MultiCache> for BttvProvider {
 
         match tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                client
-                    .get(&url)
-                    .send()
-                    .await?
-                    .json::<BttvChannelResponse>()
-                    .await
+                fetch_json::<BttvChannelResponse>(
+                    client,
+                    "BTTV",
+                    format!("channel:{broadcaster_id}"),
+                    &url,
+                )
+                .await
             })
         }) {
             Ok(resp) => {

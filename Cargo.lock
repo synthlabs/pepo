@@ -3370,6 +3370,7 @@ dependencies = [
  "color-eyre",
  "eyre",
  "futures",
+ "httpmock",
  "inbound",
  "inbound-build",
  "lazy_static",

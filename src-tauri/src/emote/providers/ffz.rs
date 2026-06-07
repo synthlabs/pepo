@@ -8,7 +8,7 @@ use tracing::{debug, error};
 
 use crate::emote::{
     cache::{EmoteCache, EmoteCacheTrait, MultiCache},
-    providers::{EmoteProvider, GLOBAL_SCOPE_KEY},
+    providers::{http::fetch_json, EmoteProvider, GLOBAL_SCOPE_KEY},
     Emote,
 };
 use crate::types::EmoteProviderId;
@@ -94,12 +94,7 @@ impl EmoteProvider<MultiCache> for FfzProvider {
 
         match tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                client
-                    .get(&url)
-                    .send()
-                    .await?
-                    .json::<FfzGlobalResponse>()
-                    .await
+                fetch_json::<FfzGlobalResponse>(client, "FFZ", "global", &url).await
             })
         }) {
             Ok(resp) => {
@@ -125,12 +120,13 @@ impl EmoteProvider<MultiCache> for FfzProvider {
 
         match tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                client
-                    .get(&url)
-                    .send()
-                    .await?
-                    .json::<FfzRoomResponse>()
-                    .await
+                fetch_json::<FfzRoomResponse>(
+                    client,
+                    "FFZ",
+                    format!("channel:{broadcaster_id}"),
+                    &url,
+                )
+                .await
             })
         }) {
             Ok(resp) => {
