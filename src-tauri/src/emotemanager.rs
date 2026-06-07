@@ -7,6 +7,7 @@ use tracing::{debug, error};
 
 use crate::emote::{
     cache::{EmoteCacheTrait, MultiCache},
+    persist::{SharedEmoteMetadataStore, TauriEmoteMetadataStore},
     providers::{
         bttv::BttvProvider, ffz::FfzProvider, http::provider_client, seventv::SeventvProvider,
         twitch::TwitchProvider, EmoteProvider,
@@ -26,6 +27,7 @@ pub struct EmoteManager {
     pub providers: SharedProviders,
     client: twitch_api::HelixClient<'static, reqwest::Client>,
     token: SharedTwitchToken,
+    persistence: SharedEmoteMetadataStore,
     name_cache: SharedMap<String>,
 }
 
@@ -33,11 +35,13 @@ impl EmoteManager {
     pub fn empty(
         client: twitch_api::HelixClient<'static, reqwest::Client>,
         token: SharedTwitchToken,
+        app_handle: tauri::AppHandle,
     ) -> EmoteManager {
         EmoteManager {
             providers: Arc::new(Mutex::new(Vec::new())),
             client,
             token,
+            persistence: Arc::new(TauriEmoteMetadataStore::new(app_handle)),
             name_cache: Default::default(),
         }
     }
@@ -149,9 +153,9 @@ impl EmoteManager {
             EmoteProviderId::Twitch => {
                 Arc::new(TwitchProvider::new(self.client.clone(), self.token.clone()))
             }
-            EmoteProviderId::Bttv => Arc::new(BttvProvider::new()),
-            EmoteProviderId::Ffz => Arc::new(FfzProvider::new()),
-            EmoteProviderId::Seventv => Arc::new(SeventvProvider::new()),
+            EmoteProviderId::Bttv => Arc::new(BttvProvider::new(self.persistence.clone())),
+            EmoteProviderId::Ffz => Arc::new(FfzProvider::new(self.persistence.clone())),
+            EmoteProviderId::Seventv => Arc::new(SeventvProvider::new(self.persistence.clone())),
         }
     }
 

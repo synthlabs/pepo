@@ -534,7 +534,7 @@ async fn login(
     // other Tauri commands can access them immediately.
     let eventsub_manager = EventSubManager::new();
     let badge_manager = BadgeManager::empty(token_ref.clone());
-    let emote_manager = EmoteManager::empty(client.clone(), token_ref.clone());
+    let emote_manager = EmoteManager::empty(client.clone(), token_ref.clone(), app_handle.clone());
 
     // Register or update shared state (safe for re-login)
     if !app_handle.manage::<SharedEventSubManager>(Mutex::new(eventsub_manager.clone())) {

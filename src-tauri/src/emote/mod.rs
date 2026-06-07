@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod cache;
+pub mod persist;
 pub mod providers;
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Default, PartialEq)]

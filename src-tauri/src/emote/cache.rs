@@ -31,6 +31,26 @@ impl EmoteCache {
             store: Default::default(),
         }
     }
+
+    pub fn from_emotes(scope: String, provider: String, emotes: Vec<Emote>) -> Self {
+        let store = emotes
+            .into_iter()
+            .map(|emote| (emote.name.clone(), emote))
+            .collect();
+        EmoteCache {
+            scope,
+            provider,
+            store: Arc::new(RwLock::new(store)),
+        }
+    }
+
+    pub fn emotes(&self) -> Vec<Emote> {
+        self.store.read().unwrap().values().cloned().collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.store.read().unwrap().len()
+    }
 }
 
 impl EmoteCacheTrait for EmoteCache {
@@ -198,6 +218,20 @@ mod tests {
         let c = cache_with("scope", "TestProvider", &["aa", "ab", "ac", "ad"]);
         let results = c.search_emotes("a", 2);
         assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn emote_cache_snapshot_restore_round_trip() {
+        let c = cache_with("scope", "TestProvider", &["LUL", "Kappa"]);
+        let restored =
+            EmoteCache::from_emotes("scope".to_string(), "TestProvider".to_string(), c.emotes());
+
+        assert_eq!(restored.len(), 2);
+        assert_eq!(restored.get_emote("LUL".to_string()), Some(emote("LUL")));
+        assert_eq!(
+            restored.get_emote("Kappa".to_string()),
+            Some(emote("Kappa"))
+        );
     }
 
     #[test]
