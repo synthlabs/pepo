@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tracing::error;
 use twitch_api::{client::CompatError, HelixClient};
 use twitch_oauth2::TwitchToken;
 
@@ -708,7 +707,6 @@ impl ChannelMessage {
         emote_settings: EmoteSettings,
         app_handle: tauri::AppHandle,
     ) -> Self {
-        let raw_msg = serde_json::to_string(&value).unwrap();
         let bm_ref = bm.clone();
         let emote_settings = emote_settings.normalized();
         let broadcaster_id = value.broadcaster_user_id.to_string();
@@ -768,31 +766,37 @@ impl ChannelMessage {
                 .iter()
                 .map(|v| {
                     let bm_ref = bm_ref.clone();
-                    let b = match tauri::async_runtime::block_on(bm_ref
-                        .get(v.set_id.to_string(), value.broadcaster_user_id.to_string()))
-                    {
+                    let badge = match tauri::async_runtime::block_on(
+                        bm_ref.get(v.set_id.to_string(), value.broadcaster_user_id.to_string()),
+                    ) {
                         Some(b_set) => b_set.version(v.id.to_string()),
                         None => None,
                     };
 
-                    let b = match b {
-                        Some(b) => b,
-                        None => {
-                            error!("failed to find badge: set_id={}, version={}, broadcaster_id={}, raw_msg={}", v.set_id.to_string(), v.id.to_string(), value.broadcaster_user_id.to_string(), raw_msg);
-                            Default::default()
-                        },
-                    };
-
-                    BadgeRef {
-                        set_id: v.set_id.to_string(),
-                        id: v.id.to_string(),
-                        info: v.info.clone(),
-                        badge: b.clone(),
-                    }
+                    badge_ref_or_fallback(
+                        v.set_id.to_string(),
+                        v.id.to_string(),
+                        v.info.clone(),
+                        badge,
+                    )
                 })
                 .collect(),
             fragments,
         }
+    }
+}
+
+fn badge_ref_or_fallback(
+    set_id: String,
+    id: String,
+    info: String,
+    badge: Option<Badge>,
+) -> BadgeRef {
+    BadgeRef {
+        set_id,
+        id,
+        info,
+        badge: badge.unwrap_or_default(),
     }
 }
 
@@ -847,6 +851,46 @@ mod tests {
             })]);
 
         assert_eq!(input, None);
+    }
+
+    #[test]
+    fn badge_ref_uses_empty_badge_when_metadata_is_pending() {
+        let badge_ref = badge_ref_or_fallback(
+            "subscriber".to_owned(),
+            "12".to_owned(),
+            "12".to_owned(),
+            None,
+        );
+
+        assert_eq!(badge_ref.set_id, "subscriber");
+        assert_eq!(badge_ref.id, "12");
+        assert_eq!(badge_ref.info, "12");
+        assert!(badge_ref.badge.set_id.is_empty());
+        assert!(badge_ref.badge.id.is_empty());
+        assert!(badge_ref.badge.image_url_4x.is_empty());
+    }
+
+    #[test]
+    fn badge_ref_preserves_loaded_badge_metadata() {
+        let badge_ref = badge_ref_or_fallback(
+            "subscriber".to_owned(),
+            "12".to_owned(),
+            "12".to_owned(),
+            Some(Badge {
+                set_id: "subscriber".to_owned(),
+                id: "12".to_owned(),
+                image_url_4x: "https://example.com/sub.png".to_owned(),
+                title: "Subscriber".to_owned(),
+                ..Default::default()
+            }),
+        );
+
+        assert_eq!(badge_ref.set_id, "subscriber");
+        assert_eq!(badge_ref.id, "12");
+        assert_eq!(badge_ref.badge.set_id, "subscriber");
+        assert_eq!(badge_ref.badge.id, "12");
+        assert_eq!(badge_ref.badge.image_url_4x, "https://example.com/sub.png");
+        assert_eq!(badge_ref.badge.title, "Subscriber");
     }
 
     #[test]

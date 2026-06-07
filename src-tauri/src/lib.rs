@@ -214,7 +214,7 @@ async fn join_chat(
     debug!("join: channel={}", channel_name);
 
     let token = { token_ref.lock().await.clone() };
-    let client = client_ref.inner();
+    let client = client_ref.inner().clone();
     let eventsub_manager = eventsub_manager_ref.lock().await.clone();
     let badge_manager = badge_manager_ref.lock().await.clone();
     let emote_manager = emote_manager_ref.lock().await.clone();
@@ -228,19 +228,13 @@ async fn join_chat(
 
     debug!("join: got channel info - {:?}", channel.clone());
 
-    badge_manager
-        .load_channel(channel.broadcaster_id.to_string(), client.clone())
-        .await;
-
-    emote_manager
-        .load_channel(channel.broadcaster_id.to_string(), &settings.emotes)
-        .await;
+    let broadcaster_id = channel.broadcaster_id.to_string();
 
     if let Err(e) = eventsub_manager
         .join_chat(
             channel.broadcaster_id.clone(),
-            channel_name,
-            client,
+            channel_name.clone(),
+            &client,
             token.clone(),
         )
         .await
@@ -251,16 +245,21 @@ async fn join_chat(
 
     debug!("joined channel");
 
-    let mut channel_info = types::ChannelInfo::from(channel);
+    let emote_settings = settings.emotes;
+    tauri::async_runtime::spawn(async move {
+        debug!(
+            broadcaster_id,
+            channel = channel_name,
+            "loading channel cosmetics after EventSub join"
+        );
+        let badge_broadcaster_id = broadcaster_id.clone();
+        let emote_broadcaster_id = broadcaster_id.clone();
+        let load_badges = badge_manager.load_channel(badge_broadcaster_id, client);
+        let load_emotes = emote_manager.load_channel(emote_broadcaster_id, &emote_settings);
+        tokio::join!(load_badges, load_emotes);
+    });
 
-    if let Ok(Some(user)) = client
-        .get_user_from_id(channel_info.broadcaster_id.as_str(), &token)
-        .await
-    {
-        channel_info.profile_image_url = user.profile_image_url.unwrap_or_default();
-    }
-
-    Ok(channel_info)
+    Ok(types::ChannelInfo::from(channel))
 }
 
 #[tauri::command]

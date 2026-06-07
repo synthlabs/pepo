@@ -88,17 +88,6 @@
 			resizeObserver.observe(messageListDIV);
 		}
 
-		Logger.info('joining channel:', channel_name);
-		let result = await commands.joinChat(channel_name);
-		Logger.debug(result);
-		if (result.status !== 'ok') {
-			Logger.error('failed to join channel:', result.error);
-			showMessageError(`Failed to join ${channel_name}: ${result.error}`);
-			return;
-		}
-
-		channelInfo = result.data;
-
 		Logger.debug('subbing to chat messages');
 		un_sub = await listen<ChannelMessage>(`chat_message:${channel_name}`, (event) => {
 			addMessage(event.payload);
@@ -109,6 +98,21 @@
 				applyTranslation(event.payload);
 			}
 		);
+
+		Logger.info('joining channel:', channel_name);
+		let result = await commands.joinChat(channel_name);
+		Logger.debug(result);
+		if (result.status !== 'ok') {
+			Logger.error('failed to join channel:', result.error);
+			showMessageError(`Failed to join ${channel_name}: ${result.error}`);
+			un_sub?.();
+			translation_un_sub?.();
+			un_sub = undefined;
+			translation_un_sub = undefined;
+			return;
+		}
+
+		channelInfo = result.data;
 
 		jumpToBottom();
 	});

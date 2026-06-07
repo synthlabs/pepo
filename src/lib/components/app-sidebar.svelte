@@ -22,6 +22,7 @@
 
 	let followed_channels: Broadcaster[] = $state([]);
 	let extra_channel: ChannelInfo | null = $state(null);
+	let pending_extra_channel_login: string | null = $state(null);
 	let search = $state('');
 	let channelCache = new SyncedState<ChannelCache>('channel_cache', { channels: {} });
 	let filtered_channels = $derived(
@@ -44,14 +45,23 @@
 		current_channel && !followed_channels.some((f) => f.login === current_channel)
 	);
 
-	async function joinChannel(login: string) {
+	function joinChannel(login: string) {
 		if (!followed_channels.some((f) => f.login === login)) {
-			const result = await commands.getChannelInfo(login);
-			if (result.status === 'ok') {
-				extra_channel = result.data;
-			}
+			extra_channel = null;
+			pending_extra_channel_login = login;
+			void commands
+				.getChannelInfo(login)
+				.then((result) => {
+					if (result.status === 'ok' && pending_extra_channel_login === login) {
+						extra_channel = result.data;
+					}
+				})
+				.catch((error) => Logger.error('failed to get channel info:', error));
+		} else {
+			extra_channel = null;
+			pending_extra_channel_login = null;
 		}
-		goto(resolve(`/app/chat/${login}`));
+		void goto(resolve(`/app/chat/${login}`));
 	}
 
 	let authState = new SyncedState<AuthState>('auth_state', {
@@ -139,7 +149,7 @@
 		<SearchForm bind:value={search} onsubmit={joinChannel} />
 	</Sidebar.Header>
 	<Sidebar.Content class="overscroll-none">
-		{#if is_extra && extra_channel}
+		{#if is_extra && extra_channel && extra_channel.broadcaster_login === current_channel}
 			<Sidebar.Group>
 				<Sidebar.GroupContent>
 					<Sidebar.Menu
