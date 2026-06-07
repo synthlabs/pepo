@@ -1007,19 +1007,20 @@ pub fn run() {
             internal_state.version = app.package_info().version.to_string();
             internal_state.name = app.package_info().name.to_string();
 
-            let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default());
+            let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                .title(&format!(
+                    "{} {}",
+                    internal_state.name.clone(),
+                    internal_state.version.clone()
+                ))
+                .visible(false)
+                .background_color(tauri::webview::Color(20, 26, 39, 255));
 
             // set transparent title bar only when building for macOS
             #[cfg(target_os = "macos")]
             let win_builder = win_builder.title_bar_style(TitleBarStyle::Transparent);
 
             let window = win_builder.build().unwrap();
-
-            let _ = window.set_title(&format!(
-                "{} {}",
-                internal_state.name.clone(),
-                internal_state.version.clone()
-            ));
 
             // set background color only when building for macOS
             #[cfg(target_os = "macos")]
