@@ -23,7 +23,7 @@
 	});
 </script>
 
-<Toaster theme={normalizedSettings.appearance.theme} position="top-right" />
+<Toaster theme={normalizedSettings.appearance.theme} position="bottom-right" />
 <ErrorToast />
 
 <div class="h-full w-full">
