@@ -11,6 +11,7 @@
 		type Settings
 	} from '$lib/bindings.ts';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
+	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
@@ -24,6 +25,7 @@
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
 	import { parseColonMacro } from '$lib/chat/colon-macro';
 	import {
+		capturePinnedIntent,
 		getBatchScrollSnapshot,
 		refreshScrollStateAfterScroll,
 		restoreScrollAfterRender,
@@ -73,11 +75,14 @@
 	const pendingTranslations: PendingTranslations = new Map();
 	let un_sub: UnlistenFn | undefined;
 	let translation_un_sub: UnlistenFn | undefined;
+	let focus_un_sub: UnlistenFn | undefined;
 	let pendingScrollSnapshot: ScrollSnapshot | null = null;
 	let scrollFlushQueued = false;
 	let scrollFrame: number | undefined;
 	let resizeScrollFrame: number | undefined;
+	let focusRestoreFrame: number | undefined;
 	let resizeObserver: ResizeObserver | undefined;
+	let pinnedBeforeFocusLoss = true;
 	let destroyed = false;
 
 	onMount(async () => {
@@ -87,6 +92,10 @@
 			});
 			resizeObserver.observe(messageListDIV);
 		}
+
+		focus_un_sub = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+			handleWindowFocusChanged(focused);
+		});
 
 		Logger.debug('subbing to chat messages');
 		un_sub = await listen<ChannelMessage>(`chat_message:${channel_name}`, (event) => {
@@ -122,6 +131,7 @@
 		resizeObserver?.disconnect();
 		if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
 		if (resizeScrollFrame !== undefined) cancelAnimationFrame(resizeScrollFrame);
+		if (focusRestoreFrame !== undefined) cancelAnimationFrame(focusRestoreFrame);
 
 		Logger.info('unsubbing from channel', channel_name);
 		if (un_sub) {
@@ -129,6 +139,9 @@
 		}
 		if (translation_un_sub) {
 			translation_un_sub();
+		}
+		if (focus_un_sub) {
+			focus_un_sub();
 		}
 		await commands.leaveChat(channel_name).then(Logger.debug);
 	});
@@ -190,6 +203,20 @@
 		unreadMessageCount = scrollState.unreadMessageCount;
 	};
 
+	const handleWindowFocusChanged = (focused: boolean) => {
+		if (focused) {
+			if (pinnedBeforeFocusLoss) forcePinnedScrollToBottom();
+			return;
+		}
+
+		pinnedBeforeFocusLoss = capturePinnedIntent(
+			chatDIV,
+			pendingScrollSnapshot,
+			autoScrollPinned,
+			chatSettings.autoscroll_threshold_px
+		);
+	};
+
 	const queueScrollRestore = () => {
 		if (scrollFlushQueued) return;
 
@@ -223,6 +250,47 @@
 		});
 	};
 
+	const cancelQueuedScrollRestore = () => {
+		if (scrollFrame !== undefined) {
+			cancelAnimationFrame(scrollFrame);
+			scrollFrame = undefined;
+		}
+
+		scrollFlushQueued = false;
+		pendingScrollSnapshot = null;
+	};
+
+	const applyPinnedBottomState = () => {
+		if (!chatDIV) return;
+
+		scrollElementToBottom(chatDIV);
+		autoScrollPinned = true;
+		unreadMessageCount = 0;
+	};
+
+	const forcePinnedScrollToBottom = () => {
+		cancelQueuedScrollRestore();
+		if (focusRestoreFrame !== undefined) {
+			cancelAnimationFrame(focusRestoreFrame);
+			focusRestoreFrame = undefined;
+		}
+
+		applyPinnedBottomState();
+		void restorePinnedBottomAfterRender();
+	};
+
+	const restorePinnedBottomAfterRender = async () => {
+		await tick();
+		if (destroyed) return;
+
+		focusRestoreFrame = requestAnimationFrame(() => {
+			focusRestoreFrame = undefined;
+			if (destroyed) return;
+
+			applyPinnedBottomState();
+		});
+	};
+
 	const queuePinnedScrollToBottom = () => {
 		if (!autoScrollPinned || !chatDIV || resizeScrollFrame !== undefined) return;
 
@@ -238,10 +306,7 @@
 	const jumpToBottom = () => {
 		if (!chatDIV) return;
 
-		pendingScrollSnapshot = null;
-		scrollElementToBottom(chatDIV);
-		autoScrollPinned = true;
-		unreadMessageCount = 0;
+		forcePinnedScrollToBottom();
 	};
 
 	const submitForm = (event: SubmitEvent) => {

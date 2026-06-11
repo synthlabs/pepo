@@ -60,6 +60,17 @@ export function captureScrollSnapshot(
 	};
 }
 
+export function capturePinnedIntent(
+	container: HTMLElement | null | undefined,
+	pendingSnapshot: ScrollSnapshot | null,
+	fallbackPinned: boolean,
+	thresholdPx = DEFAULT_BOTTOM_THRESHOLD
+): boolean {
+	if (pendingSnapshot) return pendingSnapshot.wasAtBottom;
+	if (container) return isAtBottom(container, thresholdPx);
+	return fallbackPinned;
+}
+
 export function getBatchScrollSnapshot(
 	current: ScrollSnapshot | null,
 	container: HTMLElement,

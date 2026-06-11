@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	capturePinnedIntent,
 	captureScrollSnapshot,
 	getBatchScrollSnapshot,
 	isAtBottom,
@@ -157,6 +158,34 @@ describe('autoscroll helpers', () => {
 
 		expect(result.pinned).toBe(true);
 		expect(target.getScrollTop()).toBe(800);
+	});
+
+	it('keeps bottom-pinned intent from a pending snapshot even if the DOM has grown', () => {
+		const target = createContainer({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
+
+		target.setScrollHeight(1400);
+
+		expect(capturePinnedIntent(target.container, snapshot, false, 32)).toBe(true);
+	});
+
+	it('keeps paused intent from a pending snapshot', () => {
+		const target = createContainer({ scrollTop: 300, scrollHeight: 1000, clientHeight: 400 });
+		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
+
+		target.container.scrollTop = 600;
+
+		expect(capturePinnedIntent(target.container, snapshot, true, 32)).toBe(false);
+	});
+
+	it('uses the current viewport state when no pending snapshot exists', () => {
+		const target = createContainer({ scrollTop: 570, scrollHeight: 1000, clientHeight: 400 });
+
+		expect(capturePinnedIntent(target.container, null, false, 32)).toBe(true);
+
+		target.container.scrollTop = 300;
+		expect(capturePinnedIntent(target.container, null, true, 32)).toBe(false);
+		expect(capturePinnedIntent(null, null, true, 32)).toBe(true);
 	});
 
 	it('does not let an interim scroll event pause a bottom-pinned burst before restore', () => {
