@@ -1,3 +1,6 @@
+packages:
+  - .
+
 onlyBuiltDependencies:
   - esbuild
   - tauri-svelte-synced-store
