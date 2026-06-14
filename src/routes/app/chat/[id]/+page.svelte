@@ -25,6 +25,7 @@
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
 	import { parseColonMacro } from '$lib/chat/colon-macro';
 	import {
+		captureScrollSnapshot,
 		capturePinnedIntent,
 		getBatchScrollSnapshot,
 		refreshScrollStateAfterScroll,
@@ -40,6 +41,8 @@
 	import { DEFAULT_SETTINGS, formatTimestamp, normalizeSettings } from '$lib/settings';
 
 	const CHAT_MESSAGE_SELECTOR = '[data-chat-message-index]';
+	const USER_SCROLL_INTENT_MS = 250;
+	const PAUSED_REFLOW_SETTLE_MS = 250;
 
 	let chatDIV = $state<HTMLDivElement>();
 	let messageListDIV = $state<HTMLDivElement>();
@@ -77,18 +80,22 @@
 	let translation_un_sub: UnlistenFn | undefined;
 	let focus_un_sub: UnlistenFn | undefined;
 	let pendingScrollSnapshot: ScrollSnapshot | null = null;
+	let pausedReflowSnapshot: ScrollSnapshot | null = null;
 	let scrollFlushQueued = false;
 	let scrollFrame: number | undefined;
 	let resizeScrollFrame: number | undefined;
+	let pausedReflowFrame: number | undefined;
 	let focusRestoreFrame: number | undefined;
+	let pausedReflowTimer: ReturnType<typeof setTimeout> | undefined;
 	let resizeObserver: ResizeObserver | undefined;
 	let pinnedBeforeFocusLoss = true;
+	let userScrollIntentUntil = 0;
 	let destroyed = false;
 
 	onMount(async () => {
 		if (messageListDIV && typeof ResizeObserver !== 'undefined') {
 			resizeObserver = new ResizeObserver(() => {
-				queuePinnedScrollToBottom();
+				queueResizeScrollRestore();
 			});
 			resizeObserver.observe(messageListDIV);
 		}
@@ -131,7 +138,9 @@
 		resizeObserver?.disconnect();
 		if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
 		if (resizeScrollFrame !== undefined) cancelAnimationFrame(resizeScrollFrame);
+		if (pausedReflowFrame !== undefined) cancelAnimationFrame(pausedReflowFrame);
 		if (focusRestoreFrame !== undefined) cancelAnimationFrame(focusRestoreFrame);
+		if (pausedReflowTimer !== undefined) clearTimeout(pausedReflowTimer);
 
 		Logger.info('unsubbing from channel', channel_name);
 		if (un_sub) {
@@ -189,18 +198,39 @@
 	const refreshScrollState = () => {
 		if (!chatDIV) return;
 
+		const userInitiated = consumeUserScrollIntent();
 		const scrollState = refreshScrollStateAfterScroll(
 			chatDIV,
 			pendingScrollSnapshot,
 			scrollFlushQueued,
 			unreadMessageCount,
 			CHAT_MESSAGE_SELECTOR,
-			chatSettings.autoscroll_threshold_px
+			chatSettings.autoscroll_threshold_px,
+			{ userInitiated }
 		);
 
 		autoScrollPinned = scrollState.pinned;
 		pendingScrollSnapshot = scrollState.pendingSnapshot;
 		unreadMessageCount = scrollState.unreadMessageCount;
+		if (userInitiated) cancelQueuedScrollRestore();
+	};
+
+	const markUserScrollIntent = () => {
+		userScrollIntentUntil = performance.now() + USER_SCROLL_INTENT_MS;
+		cancelQueuedScrollRestore();
+	};
+
+	const handleScrollbarPointerIntent = (event: PointerEvent) => {
+		if (!chatDIV || !isScrollbarPointerEvent(chatDIV, event)) return;
+
+		markUserScrollIntent();
+	};
+
+	const consumeUserScrollIntent = () => {
+		if (performance.now() > userScrollIntentUntil) return false;
+
+		userScrollIntentUntil = 0;
+		return true;
 	};
 
 	const handleWindowFocusChanged = (focused: boolean) => {
@@ -246,7 +276,12 @@
 				chatSettings.autoscroll_threshold_px
 			);
 			autoScrollPinned = result.pinned;
-			if (autoScrollPinned) unreadMessageCount = 0;
+			if (autoScrollPinned) {
+				unreadMessageCount = 0;
+				clearPausedReflowSnapshot();
+			} else {
+				rememberPausedReflowSnapshot();
+			}
 		});
 	};
 
@@ -258,6 +293,7 @@
 
 		scrollFlushQueued = false;
 		pendingScrollSnapshot = null;
+		clearPausedReflowSnapshot();
 	};
 
 	const applyPinnedBottomState = () => {
@@ -301,6 +337,83 @@
 			scrollElementToBottom(chatDIV);
 			refreshScrollState();
 		});
+	};
+
+	const queueResizeScrollRestore = () => {
+		if (!chatDIV) return;
+		if (autoScrollPinned) {
+			queuePinnedScrollToBottom();
+			return;
+		}
+
+		if (pendingScrollSnapshot) {
+			queueScrollRestore();
+			return;
+		}
+
+		queuePausedReflowRestore();
+	};
+
+	const queuePausedReflowRestore = () => {
+		if (!chatDIV || !pausedReflowSnapshot || pausedReflowFrame !== undefined) return;
+
+		pausedReflowFrame = requestAnimationFrame(() => {
+			pausedReflowFrame = undefined;
+			if (!chatDIV || !pausedReflowSnapshot || autoScrollPinned) return;
+
+			const result = restoreScrollAfterRender(
+				chatDIV,
+				pausedReflowSnapshot,
+				CHAT_MESSAGE_SELECTOR,
+				chatSettings.autoscroll_threshold_px
+			);
+			autoScrollPinned = result.pinned;
+			if (autoScrollPinned) {
+				unreadMessageCount = 0;
+				clearPausedReflowSnapshot();
+				return;
+			}
+
+			rememberPausedReflowSnapshot();
+		});
+	};
+
+	const rememberPausedReflowSnapshot = () => {
+		if (!chatDIV) return;
+
+		pausedReflowSnapshot = captureScrollSnapshot(
+			chatDIV,
+			CHAT_MESSAGE_SELECTOR,
+			chatSettings.autoscroll_threshold_px
+		);
+		if (pausedReflowTimer !== undefined) clearTimeout(pausedReflowTimer);
+		pausedReflowTimer = setTimeout(() => {
+			pausedReflowTimer = undefined;
+			pausedReflowSnapshot = null;
+		}, PAUSED_REFLOW_SETTLE_MS);
+	};
+
+	const clearPausedReflowSnapshot = () => {
+		pausedReflowSnapshot = null;
+		if (pausedReflowFrame !== undefined) {
+			cancelAnimationFrame(pausedReflowFrame);
+			pausedReflowFrame = undefined;
+		}
+		if (pausedReflowTimer !== undefined) {
+			clearTimeout(pausedReflowTimer);
+			pausedReflowTimer = undefined;
+		}
+	};
+
+	const isScrollbarPointerEvent = (container: HTMLElement, event: PointerEvent) => {
+		const rect = container.getBoundingClientRect();
+		const verticalScrollbarWidth = container.offsetWidth - container.clientWidth;
+		const horizontalScrollbarHeight = container.offsetHeight - container.clientHeight;
+
+		return (
+			(verticalScrollbarWidth > 0 && event.clientX >= rect.right - verticalScrollbarWidth) ||
+			(horizontalScrollbarHeight > 0 && event.clientY >= rect.bottom - horizontalScrollbarHeight)
+		);
 	};
 
 	const jumpToBottom = () => {
@@ -456,9 +569,14 @@
 <Tooltip.Provider delayDuration={200}>
 	<div class="flex h-full w-full flex-col flex-nowrap">
 		<div
-			class="grow overflow-x-hidden overflow-y-auto"
+			class="grow overflow-x-hidden overflow-y-auto [overflow-anchor:none]"
+			aria-label="Chat messages"
 			bind:this={chatDIV}
+			onpointerdown={handleScrollbarPointerIntent}
+			role="region"
 			onscroll={refreshScrollState}
+			ontouchstart={markUserScrollIntent}
+			onwheel={markUserScrollIntent}
 		>
 			<div bind:this={messageListDIV}>
 				{#each msgs as msg (msg.index)}

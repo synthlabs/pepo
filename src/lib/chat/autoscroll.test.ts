@@ -242,7 +242,7 @@ describe('autoscroll helpers', () => {
 		expect(target.getScrollTop()).toBe(800);
 	});
 
-	it('still refreshes the anchor for a queued restore when the user was already paused', () => {
+	it('keeps the original paused anchor for an interim scroll event before restore', () => {
 		const target = createContainer({ scrollTop: 300, scrollHeight: 1000, clientHeight: 400 });
 		const anchor = appendMessage(target, '4', 300);
 		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
@@ -257,10 +257,59 @@ describe('autoscroll helpers', () => {
 		);
 
 		expect(scrollState.pinned).toBe(false);
+		expect(scrollState.pendingSnapshot).toBe(snapshot);
+		expect(scrollState.unreadMessageCount).toBe(2);
+		expect(scrollState.deferred).toBe(true);
+
+		const result = restoreScrollAfterRender(
+			target.container,
+			scrollState.pendingSnapshot!,
+			MESSAGE_SELECTOR
+		);
+		expect(result.pinned).toBe(false);
+		expect(target.getScrollTop()).toBe(330);
+	});
+
+	it('lets user-initiated scrolling replace a queued paused restore', () => {
+		const target = createContainer({ scrollTop: 300, scrollHeight: 1000, clientHeight: 400 });
+		const anchor = appendMessage(target, '4', 300);
+		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
+
+		target.layouts.set(anchor, { top: 330, height: 50 });
+		target.container.scrollTop = 350;
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			snapshot,
+			true,
+			2,
+			MESSAGE_SELECTOR,
+			32,
+			{ userInitiated: true }
+		);
+
+		expect(scrollState.pinned).toBe(false);
 		expect(scrollState.pendingSnapshot).not.toBe(snapshot);
 		expect(scrollState.pendingSnapshot?.wasAtBottom).toBe(false);
-		expect(scrollState.pendingSnapshot?.anchor).toEqual({ key: '4', topOffset: 30 });
+		expect(scrollState.pendingSnapshot?.anchor).toEqual({ key: '4', topOffset: -20 });
 		expect(scrollState.unreadMessageCount).toBe(2);
 		expect(scrollState.deferred).toBe(false);
+	});
+
+	it('can reapply a paused anchor after a later layout reflow', () => {
+		const target = createContainer({ scrollTop: 300, scrollHeight: 1000, clientHeight: 400 });
+		const anchor = appendMessage(target, '4', 300);
+		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
+
+		target.layouts.set(anchor, { top: 330, height: 50 });
+		restoreScrollAfterRender(target.container, snapshot, MESSAGE_SELECTOR);
+		expect(target.getScrollTop()).toBe(330);
+
+		const reflowSnapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
+		target.layouts.set(anchor, { top: 360, height: 50 });
+		const result = restoreScrollAfterRender(target.container, reflowSnapshot, MESSAGE_SELECTOR);
+
+		expect(result.pinned).toBe(false);
+		expect(result.anchored).toBe(true);
+		expect(target.getScrollTop()).toBe(360);
 	});
 });

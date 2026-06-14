@@ -26,6 +26,10 @@ export interface ScrollStateRefreshResult {
 	deferred: boolean;
 }
 
+export interface ScrollStateRefreshOptions {
+	userInitiated?: boolean;
+}
+
 export function maxScrollTop(container: HTMLElement): number {
 	return Math.max(0, container.scrollHeight - container.clientHeight);
 }
@@ -112,13 +116,14 @@ export function refreshScrollStateAfterScroll(
 	restoreQueued: boolean,
 	unreadMessageCount: number,
 	messageSelector: string,
-	thresholdPx = DEFAULT_BOTTOM_THRESHOLD
+	thresholdPx = DEFAULT_BOTTOM_THRESHOLD,
+	options: ScrollStateRefreshOptions = {}
 ): ScrollStateRefreshResult {
-	if (restoreQueued && pendingSnapshot?.wasAtBottom) {
+	if (restoreQueued && pendingSnapshot && !options.userInitiated) {
 		return {
-			pinned: true,
+			pinned: pendingSnapshot.wasAtBottom,
 			pendingSnapshot,
-			unreadMessageCount: 0,
+			unreadMessageCount: pendingSnapshot.wasAtBottom ? 0 : unreadMessageCount,
 			deferred: true
 		};
 	}
