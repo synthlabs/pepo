@@ -7,18 +7,71 @@
 	import Bell from '@lucide/svelte/icons/bell';
 	import Bug from '@lucide/svelte/icons/bug';
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import LogOut from '@lucide/svelte/icons/log-out';
+	import Plus from '@lucide/svelte/icons/plus';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { ReportWizard } from '$utils/inbound';
+	import TwitchIcon from '$lib/resources/twitch.svelte';
+	import type { AuthPhase } from '$lib/bindings';
 
-	interface Props {
-		user: { name: string; provider: string; avatar: string };
-		onlogout: () => void;
+	interface NavAccount {
+		id: string;
+		login: string;
+		avatar: string;
 	}
 
-	let { user, onlogout }: Props = $props();
+	interface Props {
+		accounts: NavAccount[];
+		activeAccountId: string | null;
+		authPhase: AuthPhase;
+		onlogout: () => void;
+		onswitchaccount?: (accountId: string) => void;
+		onaddaccount?: () => void;
+	}
+
+	let {
+		accounts,
+		activeAccountId,
+		authPhase,
+		onlogout,
+		onswitchaccount = () => {},
+		onaddaccount = () => {}
+	}: Props = $props();
 	const sidebar = useSidebar();
 	let reportOpen = $state(false);
+	let activeAccount = $derived(
+		accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? null
+	);
+	let switchableAccounts = $derived(
+		activeAccount ? accounts.filter((account) => account.id !== activeAccount.id) : accounts
+	);
+	let isSignedIn = $derived(authPhase === 'authorized' && !!activeAccount);
+	// TODO: replace this frontend-only check with backend refresh/validation health.
+	let authStatus = $derived(
+		isSignedIn
+			? {
+					label: 'Signed in',
+					class: 'text-emerald-500'
+				}
+			: {
+					label: 'Reauthentication needed',
+					class: 'text-destructive'
+				}
+	);
 </script>
+
+{#snippet providerBadge(sizeClass: string, iconSize: number, ringClass: string)}
+	<span
+		class={[
+			'bg-background text-primary absolute -right-1 -bottom-1 grid place-items-center rounded-md shadow-sm',
+			sizeClass,
+			ringClass
+		]}
+	>
+		<TwitchIcon size={iconSize} aria-hidden="true" />
+	</span>
+{/snippet}
 
 <Sidebar.Menu
 	class="px-2 py-1 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
@@ -29,59 +82,134 @@
 				{#snippet child({ props })}
 					<Sidebar.MenuButton
 						size="sm"
-						class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+						class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground mb-1"
 						{...props}
 					>
-						<Avatar.Root class="size-8">
-							<Avatar.Image src={user.avatar} alt={user.name} />
-							<Avatar.Fallback>{user.name}</Avatar.Fallback>
-						</Avatar.Root>
-						<div class="grid flex-1 text-left text-sm leading-tight">
-							<span class="truncate font-semibold">{user.name}</span>
-							<span class="text-muted-foreground truncate text-xs">{user.provider}</span>
+						<div class="relative shrink-0">
+							<Avatar.Root class="ring-primary/55 size-8 ring-2">
+								<Avatar.Image
+									src={activeAccount?.avatar ?? ''}
+									alt={activeAccount?.login ?? 'Account'}
+								/>
+								<Avatar.Fallback>{activeAccount?.login ?? '?'}</Avatar.Fallback>
+							</Avatar.Root>
+							{@render providerBadge('', 16, 'ring-2 ring-popover')}
+						</div>
+						<div
+							class="min-w-0 flex-1 pl-2 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden"
+						>
+							<span class="truncate font-semibold">{activeAccount?.login ?? 'Account'}</span>
 						</div>
 						<ChevronsUpDown class="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
 					</Sidebar.MenuButton>
 				{/snippet}
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content
-				class="w-(--bits-dropdown-menu-anchor-width) min-w-56 rounded-lg"
+				class="border-border/80 bg-popover w-68 rounded-lg p-1.5 shadow-xl"
 				side={sidebar.isMobile ? 'bottom' : 'right'}
 				align="end"
 				sideOffset={10}
 			>
 				<DropdownMenu.Label class="p-0 font-normal">
-					<div class="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-						<Avatar.Root class="h-8 w-8">
-							<Avatar.Image src={user.avatar} alt={user.name} />
-							<Avatar.Fallback>{user.name}</Avatar.Fallback>
-						</Avatar.Root>
-						<div class="grid flex-1 text-left text-sm leading-tight">
-							<span class="truncate font-semibold">{user.name}</span>
-							<span class="truncate text-xs">{user.provider}</span>
+					<div class="flex items-center gap-3 px-2 py-2.5 text-left">
+						<div class="relative shrink-0">
+							<Avatar.Root class="ring-primary/70 size-10 ring-2">
+								<Avatar.Image
+									src={activeAccount?.avatar ?? ''}
+									alt={activeAccount?.login ?? 'Account'}
+								/>
+								<Avatar.Fallback>{activeAccount?.login ?? '?'}</Avatar.Fallback>
+							</Avatar.Root>
+							{@render providerBadge('', 16, 'ring-2 ring-popover')}
+						</div>
+						<div class="min-w-0 flex-1">
+							<div class="flex min-w-0 items-center gap-1.5">
+								<span class="truncate text-sm font-semibold"
+									>{activeAccount?.login ?? 'Account'}</span
+								>
+							</div>
+							<div class="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
+								{#if isSignedIn}
+									<CircleCheck class={['size-3.5', authStatus.class]} />
+								{:else}
+									<TriangleAlert class={['size-3.5', authStatus.class]} />
+								{/if}
+								<span>{authStatus.label}</span>
+							</div>
 						</div>
 					</div>
 				</DropdownMenu.Label>
-				<DropdownMenu.Separator />
-					<DropdownMenu.Group>
-						<DropdownMenu.Item>
-							<Bell />
-							Notifications
-						</DropdownMenu.Item>
-						<DropdownMenu.Item onclick={() => (reportOpen = true)}>
-							<Bug />
-							Report a bug
-						</DropdownMenu.Item>
-					</DropdownMenu.Group>
-				<DropdownMenu.Separator />
-				<DropdownMenu.Item onclick={onlogout}>
+				<DropdownMenu.Separator class="my-2" />
+				<DropdownMenu.Group>
+					{#if switchableAccounts.length > 0}
+						<DropdownMenu.GroupHeading
+							class="text-muted-foreground px-2 pt-0 pb-1.5 text-[10px] font-semibold tracking-wider uppercase"
+						>
+							Switch to
+						</DropdownMenu.GroupHeading>
+						{#each switchableAccounts as account (account.id)}
+							<DropdownMenu.Item
+								class="my-0.5 gap-3 rounded-md px-2 py-2"
+								onclick={() => onswitchaccount(account.id)}
+							>
+								<div class="relative shrink-0">
+									<Avatar.Root class="size-8">
+										<Avatar.Image src={account.avatar} alt={account.login} />
+										<Avatar.Fallback>{account.login}</Avatar.Fallback>
+									</Avatar.Root>
+									{@render providerBadge('', 13, 'ring-2 ring-popover')}
+								</div>
+								<div class="min-w-0 flex-1">
+									<div class="truncate text-sm font-semibold">{account.login}</div>
+								</div>
+							</DropdownMenu.Item>
+						{/each}
+					{/if}
+					<DropdownMenu.Item
+						disabled
+						aria-label="Add an account coming soon"
+						class="text-muted-foreground my-0.5 gap-3 rounded-md px-2 py-1.5 data-disabled:opacity-75"
+						onclick={onaddaccount}
+					>
+						<span class="border-border/80 grid size-7 place-items-center rounded-full border">
+							<Plus class="size-4" />
+						</span>
+						<span>Add an account</span>
+					</DropdownMenu.Item>
+				</DropdownMenu.Group>
+				<DropdownMenu.Separator class="my-1" />
+				<DropdownMenu.Group>
+					<DropdownMenu.Item disabled class="rounded-md px-2 py-2 data-disabled:opacity-65">
+						<Bell />
+						Notifications
+					</DropdownMenu.Item>
+					<DropdownMenu.Item class="rounded-md px-2 py-2" onclick={() => (reportOpen = true)}>
+						<Bug />
+						Report a bug
+					</DropdownMenu.Item>
+				</DropdownMenu.Group>
+				<DropdownMenu.Separator class="my-1" />
+				{#if !isSignedIn}
+					<DropdownMenu.Item
+						class="text-destructive focus:text-destructive data-highlighted:text-destructive rounded-md px-2 py-2"
+						onclick={onlogout}
+					>
+						<TriangleAlert />
+						Reauthenticate
+					</DropdownMenu.Item>
+					<DropdownMenu.Separator class="my-1" />
+				{/if}
+				<DropdownMenu.Item
+					class="text-destructive focus:text-destructive data-highlighted:text-destructive rounded-md px-2 py-2"
+					onclick={onlogout}
+				>
 					<LogOut />
 					Log out
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
-		</Sidebar.MenuItem>
-	</Sidebar.Menu>
+	</Sidebar.MenuItem>
+</Sidebar.Menu>
 
 <Sheet.Root bind:open={reportOpen}>
 	<Sheet.Content class="w-full sm:max-w-xl">

@@ -10,6 +10,7 @@
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import {
 		commands,
+		type AuthPhase,
 		type AuthState,
 		type Broadcaster,
 		type ChannelCache,
@@ -70,11 +71,19 @@
 		token: null
 	});
 
-	let user = $derived({
-		name: authState.obj.token?.login ?? '',
-		provider: 'Twitch',
-		avatar: authState.obj.token?.profile_image_url ?? ''
-	});
+	let accounts = $derived(
+		authState.obj.token
+			? [
+					{
+						id: authState.obj.token.user_id || authState.obj.token.login,
+						login: authState.obj.token.login,
+						avatar: authState.obj.token.profile_image_url ?? ''
+					}
+				]
+			: []
+	);
+	let activeAccountId = $derived(accounts[0]?.id ?? null);
+	let authPhase: AuthPhase = $derived(authState.obj.phase);
 
 	async function logout() {
 		let result = await commands.logout();
@@ -185,7 +194,7 @@
 	</Sidebar.Content>
 	<Sidebar.Footer>
 		<Separator class="" />
-		<NavUser {user} onlogout={logout} />
+		<NavUser {accounts} {activeAccountId} {authPhase} onlogout={logout} />
 	</Sidebar.Footer>
 	<Sidebar.Rail />
 </Sidebar.Root>
