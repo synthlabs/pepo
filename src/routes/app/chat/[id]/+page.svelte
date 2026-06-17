@@ -39,6 +39,7 @@
 		type PendingTranslations
 	} from '$lib/chat/translation';
 	import { DEFAULT_SETTINGS, formatTimestamp, normalizeSettings } from '$lib/settings';
+	import { authState } from '$lib/stores/auth.svelte';
 
 	const CHAT_MESSAGE_SELECTOR = '[data-chat-message-index]';
 	const USER_SCROLL_INTENT_MS = 250;
@@ -62,6 +63,9 @@
 	let errorState = $state({ active: false, msg: '' });
 	let channelInfo = $state({} as ChannelInfo);
 	let settings = new SyncedState<Settings>('settings', DEFAULT_SETTINGS);
+	let username = $derived(
+		authState.obj.phase === 'authorized' && authState.obj.token ? authState.obj.token.login : null
+	);
 	let normalizedSettings = $derived(normalizeSettings(settings.obj));
 	let chatSettings = $derived(normalizedSettings.chat);
 	let emoteSettings = $derived(normalizedSettings.emotes);
@@ -654,7 +658,7 @@
 					onkeydown={handleKeydown}
 					type="text"
 					class="bg-background placeholder:text-muted-foreground h-full flex-1 p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
-					placeholder="Send message as sir_xin"
+					placeholder={username ? `Send message as ${username}` : 'Sign in to chat'}
 				/>
 				<button
 					type="button"

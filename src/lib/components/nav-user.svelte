@@ -61,12 +61,12 @@
 	);
 </script>
 
-{#snippet providerBadge(sizeClass: string, iconSize: number, ringClass: string)}
+{#snippet providerBadge(sizeClass: string, iconSize: number, surfaceClass: string)}
 	<span
 		class={[
-			'bg-background text-primary absolute -right-1 -bottom-1 grid place-items-center rounded-md shadow-sm',
+			'text-primary absolute -right-1 -bottom-1 grid place-items-center rounded-md shadow-sm',
 			sizeClass,
-			ringClass
+			surfaceClass
 		]}
 	>
 		<TwitchIcon size={iconSize} aria-hidden="true" />
@@ -93,7 +93,7 @@
 								/>
 								<Avatar.Fallback>{activeAccount?.login ?? '?'}</Avatar.Fallback>
 							</Avatar.Root>
-							{@render providerBadge('', 16, 'ring-2 ring-popover')}
+							{@render providerBadge('', 16, 'bg-sidebar ring-2 ring-sidebar')}
 						</div>
 						<div
 							class="min-w-0 flex-1 pl-2 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden"
@@ -120,7 +120,7 @@
 								/>
 								<Avatar.Fallback>{activeAccount?.login ?? '?'}</Avatar.Fallback>
 							</Avatar.Root>
-							{@render providerBadge('', 16, 'ring-2 ring-popover')}
+							{@render providerBadge('', 16, 'bg-background ring-2 ring-popover')}
 						</div>
 						<div class="min-w-0 flex-1">
 							<div class="flex min-w-0 items-center gap-1.5">
@@ -157,7 +157,7 @@
 										<Avatar.Image src={account.avatar} alt={account.login} />
 										<Avatar.Fallback>{account.login}</Avatar.Fallback>
 									</Avatar.Root>
-									{@render providerBadge('', 13, 'ring-2 ring-popover')}
+									{@render providerBadge('', 13, 'bg-background ring-2 ring-popover')}
 								</div>
 								<div class="min-w-0 flex-1">
 									<div class="truncate text-sm font-semibold">{account.login}</div>
@@ -200,7 +200,7 @@
 					<DropdownMenu.Separator class="my-1" />
 				{/if}
 				<DropdownMenu.Item
-					class="text-destructive focus:text-destructive data-highlighted:text-destructive rounded-md px-2 py-2"
+					class="text-red-600 focus:text-red-600 data-highlighted:text-red-600 dark:text-red-400 dark:focus:text-red-400 dark:data-highlighted:text-red-400 rounded-md px-2 py-2"
 					onclick={onlogout}
 				>
 					<LogOut />
