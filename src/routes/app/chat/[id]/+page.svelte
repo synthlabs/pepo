@@ -203,6 +203,8 @@
 		if (!chatDIV) return;
 
 		const userInitiated = consumeUserScrollIntent();
+		const wasPinned = autoScrollPinned;
+		const hadQueuedRestore = scrollFlushQueued && pendingScrollSnapshot !== null;
 		const scrollState = refreshScrollStateAfterScroll(
 			chatDIV,
 			pendingScrollSnapshot,
@@ -210,13 +212,14 @@
 			unreadMessageCount,
 			CHAT_MESSAGE_SELECTOR,
 			chatSettings.autoscroll_threshold_px,
-			{ userInitiated }
+			{ userInitiated, preservePinnedIntent: wasPinned }
 		);
 
 		autoScrollPinned = scrollState.pinned;
 		pendingScrollSnapshot = scrollState.pendingSnapshot;
 		unreadMessageCount = scrollState.unreadMessageCount;
 		if (userInitiated) cancelQueuedScrollRestore();
+		else if (wasPinned && scrollState.deferred && !hadQueuedRestore) queuePinnedScrollToBottom();
 	};
 
 	const markUserScrollIntent = () => {

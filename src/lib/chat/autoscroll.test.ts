@@ -312,4 +312,63 @@ describe('autoscroll helpers', () => {
 		expect(result.anchored).toBe(true);
 		expect(target.getScrollTop()).toBe(360);
 	});
+
+	it('requires explicit user scroll intent to pause autoscroll during layout reflow', () => {
+		const target = createContainer({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+
+		target.setScrollHeight(1100);
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			null,
+			false,
+			0,
+			MESSAGE_SELECTOR,
+			32,
+			{ preservePinnedIntent: true }
+		);
+
+		expect(scrollState.pinned).toBe(true);
+		expect(scrollState.pendingSnapshot).toBeNull();
+		expect(scrollState.unreadMessageCount).toBe(0);
+		expect(scrollState.deferred).toBe(true);
+	});
+
+	it('lets explicit user scroll intent pause autoscroll from a previously pinned state', () => {
+		const target = createContainer({ scrollTop: 500, scrollHeight: 1000, clientHeight: 400 });
+
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			null,
+			false,
+			0,
+			MESSAGE_SELECTOR,
+			32,
+			{ userInitiated: true, preservePinnedIntent: true }
+		);
+
+		expect(scrollState.pinned).toBe(false);
+		expect(scrollState.pendingSnapshot).toBeNull();
+		expect(scrollState.unreadMessageCount).toBe(0);
+		expect(scrollState.deferred).toBe(false);
+	});
+
+	it('does not promote an already paused viewport during layout reflow', () => {
+		const target = createContainer({ scrollTop: 300, scrollHeight: 1000, clientHeight: 400 });
+
+		target.setScrollHeight(1100);
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			null,
+			false,
+			2,
+			MESSAGE_SELECTOR,
+			32,
+			{ preservePinnedIntent: false }
+		);
+
+		expect(scrollState.pinned).toBe(false);
+		expect(scrollState.pendingSnapshot).toBeNull();
+		expect(scrollState.unreadMessageCount).toBe(2);
+		expect(scrollState.deferred).toBe(false);
+	});
 });

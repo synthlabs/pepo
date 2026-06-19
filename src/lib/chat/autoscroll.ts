@@ -28,6 +28,7 @@ export interface ScrollStateRefreshResult {
 
 export interface ScrollStateRefreshOptions {
 	userInitiated?: boolean;
+	preservePinnedIntent?: boolean;
 }
 
 export function maxScrollTop(container: HTMLElement): number {
@@ -124,6 +125,15 @@ export function refreshScrollStateAfterScroll(
 			pinned: pendingSnapshot.wasAtBottom,
 			pendingSnapshot,
 			unreadMessageCount: pendingSnapshot.wasAtBottom ? 0 : unreadMessageCount,
+			deferred: true
+		};
+	}
+
+	if (options.preservePinnedIntent && !options.userInitiated) {
+		return {
+			pinned: true,
+			pendingSnapshot,
+			unreadMessageCount: 0,
 			deferred: true
 		};
 	}
