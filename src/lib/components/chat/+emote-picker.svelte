@@ -3,6 +3,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { Input } from '$lib/components/ui/input';
 	import { gridTemplateColumns, px } from '$lib/settings';
+	import EmoteTooltip from './+emote-tooltip.svelte';
 
 	interface Props {
 		emotes: Emote[];
@@ -74,11 +75,8 @@
 								/>
 							</button>
 						</Tooltip.Trigger>
-						<Tooltip.Content>
-							<p class="font-semibold">{emote.name}</p>
-							<p class="text-xs text-muted-foreground">
-								{emote.provider} · {emote.scope}
-							</p>
+						<Tooltip.Content class="p-2">
+							<EmoteTooltip {emote} showTier={false} />
 						</Tooltip.Content>
 					</Tooltip.Root>
 				{/each}
