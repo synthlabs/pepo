@@ -11,8 +11,8 @@ use crate::emote::{
     providers::{EmoteProvider, GLOBAL_SCOPE_KEY},
     Emote,
 };
+use crate::token::TokenManager;
 use crate::types::EmoteProviderId;
-use crate::SharedTwitchToken;
 
 const USER_EMOTES_SCOPE_KEY: &str = "_user_emotes";
 
@@ -22,18 +22,18 @@ type SharedMap<V> = Arc<Mutex<HashMap<String, V>>>;
 pub struct TwitchProvider {
     cache: SharedMap<EmoteCache>,
     client: twitch_api::HelixClient<'static, reqwest::Client>,
-    token: SharedTwitchToken,
+    token_manager: TokenManager,
 }
 
 impl TwitchProvider {
     pub fn new(
         client: twitch_api::HelixClient<'static, reqwest::Client>,
-        token: SharedTwitchToken,
+        token_manager: TokenManager,
     ) -> Self {
         TwitchProvider {
             cache: Default::default(),
             client,
-            token,
+            token_manager,
         }
     }
 }
@@ -48,8 +48,13 @@ impl EmoteProvider<MultiCache> for TwitchProvider {
 
         match tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let token = self.token.lock().await.clone();
-                self.client.get_global_emotes(&token).await
+                let Some(token) = self.token_manager.active_twitch_token().await else {
+                    return Err("no active token".to_owned());
+                };
+                self.client
+                    .get_global_emotes(&token)
+                    .await
+                    .map_err(|err| err.to_string())
             })
         }) {
             Ok(resp) => resp
@@ -79,11 +84,14 @@ impl EmoteProvider<MultiCache> for TwitchProvider {
 
         match tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let token = self.token.lock().await.clone();
+                let Some(token) = self.token_manager.active_twitch_token().await else {
+                    return Err("no active token".to_owned());
+                };
                 self.client
                     .get_user_emotes(&token.user_id, &token)
                     .try_collect::<Vec<_>>()
                     .await
+                    .map_err(|err| err.to_string())
             })
         }) {
             Ok(emotes) => {

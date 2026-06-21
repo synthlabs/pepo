@@ -1,9 +1,9 @@
 use color_eyre::Report;
 use eyre::eyre;
 use eyre::WrapErr;
+use futures::StreamExt;
 #[cfg(debug_assertions)]
 use futures::{stream, TryStreamExt};
-use futures::StreamExt;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -21,7 +21,7 @@ use twitch_api::{
 };
 use twitch_oauth2::UserToken;
 
-use crate::{logging, SharedTwitchToken};
+use crate::{logging, token::TokenManager};
 
 type SharedMap<V> = Arc<Mutex<HashMap<String, Mutex<HashSet<V>>>>>;
 type DesiredChannels = Arc<Mutex<HashMap<String, UserId>>>;
@@ -103,9 +103,7 @@ enum EventSubFailure {
 }
 
 /// Connect to the websocket and return the stream
-async fn connect(
-    connect_url: String,
-) -> Result<EventSubSocket, Report> {
+async fn connect(connect_url: String) -> Result<EventSubSocket, Report> {
     info!(url = connect_url, "connecting to twitch");
     let config = tungstenite::protocol::WebSocketConfig::default();
     let (socket, _) =
@@ -427,18 +425,21 @@ impl EventSubManager {
     pub fn start(
         self,
         client: HelixClient<'static, reqwest::Client>,
-        token: SharedTwitchToken,
+        token_manager: TokenManager,
     ) -> Result<EventSubRuntime, Report> {
         let (std_tx, std_rx) = std::sync::mpsc::sync_channel::<EventSubMessage>(32);
         let mut handles = Vec::new();
 
         #[cfg(debug_assertions)]
         {
-            let token = token.clone();
+            let token_manager = token_manager.clone();
             let client = client.clone();
             let cost_watcher_handle = tauri::async_runtime::spawn(async move {
                 loop {
-                    let current_token = token.lock().await.clone();
+                    let Some(current_token) = token_manager.active_twitch_token().await else {
+                        sleep(Duration::from_secs(30)).await;
+                        continue;
+                    };
                     let chatters: Vec<twitch_api::eventsub::EventSubSubscription> = match client
                         .get_eventsub_subscriptions(None, None, None, &current_token)
                         .map_ok(|sub| {
@@ -486,10 +487,7 @@ impl EventSubManager {
                     Err(e) => {
                         let delay = retry_delay(retry_attempt);
                         retry_attempt = retry_attempt.saturating_add(1);
-                        error!(
-                            "eventsub connect failed, retrying in {:?}: {:?}",
-                            delay, e
-                        );
+                        error!("eventsub connect failed, retrying in {:?}: {:?}", delay, e);
                         sleep(delay).await;
                         continue;
                     }
@@ -503,7 +501,7 @@ impl EventSubManager {
                             next_socket_read(&mut s).await,
                             std_tx.clone(),
                             &client,
-                            token.clone(),
+                            token_manager.clone(),
                             ConnectionMode::Fresh,
                         )
                         .await
@@ -517,7 +515,7 @@ impl EventSubManager {
                                     &mut s,
                                     std_tx.clone(),
                                     &client,
-                                    token.clone(),
+                                    token_manager.clone(),
                                 )
                                 .await
                             {
@@ -528,8 +526,7 @@ impl EventSubManager {
                                 Err(err) => {
                                     let err_msg = format!("{:?}", err);
                                     error!("eventsub reconnect handoff failed - {}", err_msg);
-                                    if classify_error_text(&err_msg)
-                                        == EventSubFailure::AuthFailed
+                                    if classify_error_text(&err_msg) == EventSubFailure::AuthFailed
                                     {
                                         let _ = std_tx.send(EventSubMessage::AuthFailed(
                                             "token expired or revoked".into(),
@@ -572,13 +569,17 @@ impl EventSubManager {
         read: SocketRead,
         ts: SyncSender<EventSubMessage>,
         client: &HelixClient<'static, reqwest::Client>,
-        token: SharedTwitchToken,
+        token_manager: TokenManager,
         mode: ConnectionMode,
     ) -> SocketAction {
         match read {
             SocketRead::Message(msg) => {
                 trace!("message received: {:?}", msg);
-                match self.clone().process_message(msg, ts, client, token, mode).await {
+                match self
+                    .clone()
+                    .process_message(msg, ts, client, token_manager, mode)
+                    .await
+                {
                     Ok(action) => action,
                     Err(e) => {
                         let err_msg = format!("{:?}", e);
@@ -636,7 +637,7 @@ impl EventSubManager {
         old_socket: &mut EventSubSocket,
         ts: SyncSender<EventSubMessage>,
         client: &HelixClient<'static, reqwest::Client>,
-        token: SharedTwitchToken,
+        token_manager: TokenManager,
     ) -> Result<EventSubSocket, Report> {
         debug!("connecting to websocket mode=reconnect_handoff");
         let mut new_socket = connect(reconnect_url).await?;
@@ -644,8 +645,14 @@ impl EventSubManager {
         loop {
             tokio::select! {
                 old_read = next_socket_read(old_socket) => {
-                    self.clone()
-                        .process_old_socket_during_handoff(old_read, ts.clone(), client, token.clone())
+                    self
+                        .clone()
+                        .process_old_socket_during_handoff(
+                            old_read,
+                            ts.clone(),
+                            client,
+                            token_manager.clone(),
+                        )
                         .await?;
                 }
                 new_read = next_socket_read(&mut new_socket) => {
@@ -653,7 +660,7 @@ impl EventSubManager {
                         new_read,
                         ts.clone(),
                         client,
-                        token.clone(),
+                        token_manager.clone(),
                         ConnectionMode::ReconnectHandoff,
                     ).await {
                         SocketAction::Connected => return Ok(new_socket),
@@ -678,12 +685,18 @@ impl EventSubManager {
         read: SocketRead,
         ts: SyncSender<EventSubMessage>,
         client: &HelixClient<'static, reqwest::Client>,
-        token: SharedTwitchToken,
+        token_manager: TokenManager,
     ) -> Result<(), Report> {
         match read {
             SocketRead::Message(msg) => {
                 match self
-                    .process_message(msg, ts, client, token, ConnectionMode::ReconnectHandoff)
+                    .process_message(
+                        msg,
+                        ts,
+                        client,
+                        token_manager,
+                        ConnectionMode::ReconnectHandoff,
+                    )
                     .await
                 {
                     Ok(SocketAction::Continue | SocketAction::Connected) => Ok(()),
@@ -715,7 +728,10 @@ impl EventSubManager {
                 Ok(())
             }
             SocketRead::ReceiveError(err) => {
-                warn!("old EventSub socket errored during reconnect handoff: {:?}", err);
+                warn!(
+                    "old EventSub socket errored during reconnect handoff: {:?}",
+                    err
+                );
                 Ok(())
             }
         }
@@ -727,7 +743,7 @@ impl EventSubManager {
         msg: tungstenite::Message,
         ts: SyncSender<EventSubMessage>,
         client: &HelixClient<'static, reqwest::Client>,
-        token: SharedTwitchToken,
+        token_manager: TokenManager,
         mode: ConnectionMode,
     ) -> Result<SocketAction, Report> {
         match msg {
@@ -750,7 +766,9 @@ impl EventSubManager {
                         payload: WelcomePayload { session },
                         ..
                     } => {
-                        let current_token = token.lock().await.clone();
+                        let Some(current_token) = token_manager.active_twitch_token().await else {
+                            return Err(eyre!("AUTH_EXPIRED: no active token"));
+                        };
                         self.process_welcome_message(session, client, current_token, mode)
                             .await?;
 
@@ -886,9 +904,7 @@ impl EventSubManager {
                     }
                     _ => logging::error_repeated(
                         format!("eventsub_channel_resubscribe:{channel_name}:{err_msg}"),
-                        format!(
-                            "failed to resubscribe EventSub channel {channel_name}: {err_msg}"
-                        ),
+                        format!("failed to resubscribe EventSub channel {channel_name}: {err_msg}"),
                         Duration::from_secs(300),
                     ),
                 }
@@ -914,7 +930,9 @@ mod tests {
             EventSubFailure::DuplicateSubscription
         );
         assert_eq!(
-            classify_error_text("websocket transport session does not exist or has already disconnected"),
+            classify_error_text(
+                "websocket transport session does not exist or has already disconnected"
+            ),
             EventSubFailure::StaleSession
         );
         assert_eq!(

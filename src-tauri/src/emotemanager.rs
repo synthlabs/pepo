@@ -14,8 +14,8 @@ use crate::emote::{
     },
     Emote,
 };
+use crate::token::TokenManager;
 use crate::types::{EmoteProviderId, EmoteSettings};
-use crate::SharedTwitchToken;
 
 type ProviderRef = Arc<dyn EmoteProvider<MultiCache>>;
 // TODO: switch to a RWLock instead of Mutex
@@ -26,7 +26,7 @@ type SharedMap<V> = Arc<Mutex<HashMap<String, V>>>;
 pub struct EmoteManager {
     pub providers: SharedProviders,
     client: twitch_api::HelixClient<'static, reqwest::Client>,
-    token: SharedTwitchToken,
+    token_manager: TokenManager,
     persistence: SharedEmoteMetadataStore,
     name_cache: SharedMap<String>,
 }
@@ -34,13 +34,13 @@ pub struct EmoteManager {
 impl EmoteManager {
     pub fn empty(
         client: twitch_api::HelixClient<'static, reqwest::Client>,
-        token: SharedTwitchToken,
+        token_manager: TokenManager,
         app_handle: tauri::AppHandle,
     ) -> EmoteManager {
         EmoteManager {
             providers: Arc::new(Mutex::new(Vec::new())),
             client,
-            token,
+            token_manager,
             persistence: Arc::new(TauriEmoteMetadataStore::new(app_handle)),
             name_cache: Default::default(),
         }
@@ -150,9 +150,10 @@ impl EmoteManager {
 
     fn provider(&self, id: EmoteProviderId) -> ProviderRef {
         match id {
-            EmoteProviderId::Twitch => {
-                Arc::new(TwitchProvider::new(self.client.clone(), self.token.clone()))
-            }
+            EmoteProviderId::Twitch => Arc::new(TwitchProvider::new(
+                self.client.clone(),
+                self.token_manager.clone(),
+            )),
             EmoteProviderId::Bttv => Arc::new(BttvProvider::new(self.persistence.clone())),
             EmoteProviderId::Ffz => Arc::new(FfzProvider::new(self.persistence.clone())),
             EmoteProviderId::Seventv => Arc::new(SeventvProvider::new(self.persistence.clone())),
@@ -170,8 +171,13 @@ impl EmoteManager {
 
         // Resolve via Helix API
         let result = tauri::async_runtime::block_on(async {
-            let token = self.token.lock().await.clone();
-            self.client.get_user_from_id(user_id, &token).await
+            let Some(token) = self.token_manager.active_twitch_token().await else {
+                return Err("no active token".to_owned());
+            };
+            self.client
+                .get_user_from_id(user_id, &token)
+                .await
+                .map_err(|err| err.to_string())
         });
 
         match result {

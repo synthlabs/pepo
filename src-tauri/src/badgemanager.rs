@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use tracing::{debug, error, trace};
 
-use crate::SharedTwitchToken;
+use crate::token::TokenManager;
 use twitch_api::helix::chat::{get_channel_chat_badges, get_global_chat_badges};
 
 type SharedMap<V> = Arc<Mutex<HashMap<String, V>>>;
@@ -70,15 +70,15 @@ pub struct Badge {
 
 #[derive(Clone)]
 pub struct BadgeManager {
-    token: SharedTwitchToken,
+    token_manager: TokenManager,
     pub global_badges: SharedMap<BadgeSet>,
     pub scoped_badges: SharedMap<Scope<BadgeSet>>,
 }
 
 impl BadgeManager {
-    pub fn empty(token: SharedTwitchToken) -> BadgeManager {
+    pub fn empty(token_manager: TokenManager) -> BadgeManager {
         BadgeManager {
-            token,
+            token_manager,
             global_badges: Arc::new(Mutex::new(HashMap::new())),
             scoped_badges: Default::default(),
         }
@@ -91,7 +91,9 @@ impl BadgeManager {
         let req = get_global_chat_badges::GetGlobalChatBadgesRequest::new();
 
         debug!("getting global badges");
-        let token = self.token.lock().await.clone();
+        let Some(token) = self.token_manager.active_twitch_token().await else {
+            return Err("no active token".to_owned());
+        };
         let response: Vec<twitch_api::helix::chat::BadgeSet> =
             match client.req_get(req, &token).await {
                 Ok(resp) => resp.data,
@@ -132,7 +134,13 @@ impl BadgeManager {
         );
 
         debug!(broadcaster_id, "getting badges");
-        let token = self.token.lock().await.clone();
+        let Some(token) = self.token_manager.active_twitch_token().await else {
+            error!(
+                broadcaster_id,
+                "failed to load channel badges: no active token"
+            );
+            return;
+        };
         let response: Vec<twitch_api::helix::chat::BadgeSet> =
             match client.req_get(req, &token).await {
                 Ok(resp) => resp.data,
