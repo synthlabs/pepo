@@ -74,7 +74,7 @@ impl BttvProvider {
         }
     }
 
-    fn hydrate_cache(&self, scope_key: &str) -> Option<EmoteCache> {
+    fn hydrate_persisted_cache(&self, scope_key: &str) -> Option<EmoteCache> {
         if let Some(cache) = self.cache.lock().unwrap().get(scope_key).cloned() {
             return Some(cache);
         }
@@ -121,8 +121,12 @@ impl EmoteProvider<MultiCache> for BttvProvider {
         EmoteProviderId::Bttv
     }
 
+    fn hydrate_cache(&self, scope_key: &str) -> bool {
+        self.hydrate_persisted_cache(scope_key).is_some()
+    }
+
     fn load_global_emotes(&self, client: &reqwest::Client) {
-        let fallback = self.hydrate_cache(GLOBAL_SCOPE_KEY);
+        let fallback = self.hydrate_persisted_cache(GLOBAL_SCOPE_KEY);
         let url = format!("{}/emotes/global", self.api_base);
 
         match tokio::task::block_in_place(|| {
@@ -146,7 +150,7 @@ impl EmoteProvider<MultiCache> for BttvProvider {
     }
 
     fn load_channel_emotes(&self, broadcaster_id: String, client: &reqwest::Client) {
-        let fallback = self.hydrate_cache(&broadcaster_id);
+        let fallback = self.hydrate_persisted_cache(&broadcaster_id);
         let url = format!("{}/users/twitch/{}", self.api_base, broadcaster_id);
 
         match tokio::task::block_in_place(|| {

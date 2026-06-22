@@ -3,13 +3,17 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use tracing::{debug, error, trace};
 
-use crate::token::TokenManager;
+use crate::{
+    badgepersist::{SharedBadgeMetadataStore, TauriBadgeMetadataStore},
+    emote::providers::GLOBAL_SCOPE_KEY,
+    token::TokenManager,
+};
 use twitch_api::helix::chat::{get_channel_chat_badges, get_global_chat_badges};
 
 type SharedMap<V> = Arc<Mutex<HashMap<String, V>>>;
 type Scope<T> = HashMap<String, T>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, PartialEq)]
 pub struct BadgeSet {
     /// An ID that identifies this set of chat badges. For example, Bits or Subscriber.
     pub set_id: String,
@@ -49,7 +53,7 @@ impl From<twitch_api::helix::chat::BadgeSet> for BadgeSet {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, Default, PartialEq)]
 pub struct Badge {
     /// An ID that identifies this set of chat badges. For example, Bits or Subscriber.
     pub set_id: String,
@@ -70,28 +74,88 @@ pub struct Badge {
 
 #[derive(Clone)]
 pub struct BadgeManager {
-    token_manager: TokenManager,
+    token_manager: Option<TokenManager>,
+    persistence: SharedBadgeMetadataStore,
     pub global_badges: SharedMap<BadgeSet>,
     pub scoped_badges: SharedMap<Scope<BadgeSet>>,
 }
 
 impl BadgeManager {
-    pub fn empty(token_manager: TokenManager) -> BadgeManager {
+    pub fn empty(token_manager: TokenManager, app_handle: tauri::AppHandle) -> BadgeManager {
         BadgeManager {
-            token_manager,
+            token_manager: Some(token_manager),
+            persistence: Arc::new(TauriBadgeMetadataStore::new(app_handle)),
             global_badges: Arc::new(Mutex::new(HashMap::new())),
             scoped_badges: Default::default(),
         }
+    }
+
+    #[cfg(test)]
+    fn with_persistence_for_test(persistence: SharedBadgeMetadataStore) -> BadgeManager {
+        BadgeManager {
+            token_manager: None,
+            persistence,
+            global_badges: Arc::new(Mutex::new(HashMap::new())),
+            scoped_badges: Default::default(),
+        }
+    }
+
+    pub async fn hydrate_global(&self) {
+        if !self.global_badges.lock().await.is_empty() {
+            return;
+        }
+
+        let Some(hydrated) = self.persistence.load_scope(GLOBAL_SCOPE_KEY) else {
+            return;
+        };
+        let count = hydrated.count();
+        let age_seconds = hydrated.age_seconds();
+        *self.global_badges.lock().await = badge_sets_to_scope(hydrated.badge_sets);
+        debug!(
+            count,
+            age_seconds,
+            "hydrated persisted global badge metadata"
+        );
+    }
+
+    pub async fn hydrate_channel(&self, broadcaster_id: &str) {
+        {
+            let scoped_badges = self.scoped_badges.lock().await;
+            if scoped_badges.contains_key(broadcaster_id) {
+                return;
+            }
+        }
+
+        let Some(hydrated) = self.persistence.load_scope(broadcaster_id) else {
+            return;
+        };
+        let count = hydrated.count();
+        let age_seconds = hydrated.age_seconds();
+        self.scoped_badges.lock().await.insert(
+            broadcaster_id.to_string(),
+            badge_sets_to_scope(hydrated.badge_sets),
+        );
+        debug!(
+            broadcaster_id,
+            count,
+            age_seconds,
+            "hydrated persisted channel badge metadata"
+        );
     }
 
     pub async fn load_global(
         &self,
         client: twitch_api::HelixClient<'static, reqwest::Client>,
     ) -> Result<(), String> {
+        self.hydrate_global().await;
+
         let req = get_global_chat_badges::GetGlobalChatBadgesRequest::new();
 
         debug!("getting global badges");
-        let Some(token) = self.token_manager.active_twitch_token().await else {
+        let Some(token_manager) = &self.token_manager else {
+            return Err("no active token".to_owned());
+        };
+        let Some(token) = token_manager.active_twitch_token().await else {
             return Err("no active token".to_owned());
         };
         let response: Vec<twitch_api::helix::chat::BadgeSet> =
@@ -100,12 +164,14 @@ impl BadgeManager {
                 Err(err) => return Err(err.to_string()),
             };
 
-        let mut global_badges = self.global_badges.lock().await;
-        for b in &response {
-            let new_b = BadgeSet::from(b.clone());
-            debug!("adding badgeset: badgeset={:?}", b);
-            global_badges.insert(b.set_id.to_string(), new_b);
-        }
+        let badge_sets = response
+            .into_iter()
+            .map(|b| {
+                debug!("adding badgeset: badgeset={:?}", b);
+                BadgeSet::from(b)
+            })
+            .collect();
+        self.store_global_badges(badge_sets).await;
 
         Ok(())
     }
@@ -116,25 +182,23 @@ impl BadgeManager {
         client: twitch_api::HelixClient<'static, reqwest::Client>,
     ) {
         debug!(broadcaster_id, "loading channel");
-
-        {
-            let scoped_badges = self.scoped_badges.lock().await;
-            if scoped_badges.contains_key(&broadcaster_id) {
-                return;
-            }
-        }
+        self.hydrate_channel(&broadcaster_id).await;
 
         let mut badges: HashMap<String, BadgeSet> = Default::default();
-        debug!(
-            broadcaster_id,
-            "channel doesn't exist in cache yet, loading"
-        );
+        debug!(broadcaster_id, "refreshing channel badges");
         let req = get_channel_chat_badges::GetChannelChatBadgesRequest::broadcaster_id(
             broadcaster_id.clone(),
         );
 
         debug!(broadcaster_id, "getting badges");
-        let Some(token) = self.token_manager.active_twitch_token().await else {
+        let Some(token_manager) = &self.token_manager else {
+            error!(
+                broadcaster_id,
+                "failed to load channel badges: no active token"
+            );
+            return;
+        };
+        let Some(token) = token_manager.active_twitch_token().await else {
             error!(
                 broadcaster_id,
                 "failed to load channel badges: no active token"
@@ -154,17 +218,14 @@ impl BadgeManager {
                 }
             };
 
-        let _: Vec<_> = response
-            .iter()
-            .map(|b| {
-                let new_b = BadgeSet::from(b.clone());
-                debug!(broadcaster_id, "adding badgeset: badgeset={:?}", b);
-                badges.insert(new_b.set_id.clone(), new_b.clone());
-            })
-            .collect();
+        for b in response {
+            let new_b = BadgeSet::from(b.clone());
+            debug!(broadcaster_id, "adding badgeset: badgeset={:?}", b);
+            badges.insert(new_b.set_id.clone(), new_b.clone());
+        }
 
-        let mut scoped_badges = self.scoped_badges.lock().await;
-        scoped_badges.insert(broadcaster_id, badges);
+        self.store_channel_badges(broadcaster_id, scope_to_badge_sets(badges))
+            .await;
     }
 
     pub async fn get(self, set_id: String, channel: String) -> Option<BadgeSet> {
@@ -179,5 +240,152 @@ impl BadgeManager {
             None => debug!(set_id, channel, "channel scope doesn't exist"),
         }
         global_badges.get(&set_id).cloned()
+    }
+
+    async fn store_global_badges(&self, badge_sets: Vec<BadgeSet>) {
+        self.persistence
+            .save_scope(GLOBAL_SCOPE_KEY, badge_sets.clone());
+        *self.global_badges.lock().await = badge_sets_to_scope(badge_sets);
+    }
+
+    async fn store_channel_badges(&self, broadcaster_id: String, badge_sets: Vec<BadgeSet>) {
+        self.persistence
+            .save_scope(&broadcaster_id, badge_sets.clone());
+        self.scoped_badges
+            .lock()
+            .await
+            .insert(broadcaster_id, badge_sets_to_scope(badge_sets));
+    }
+}
+
+fn badge_sets_to_scope(badge_sets: Vec<BadgeSet>) -> Scope<BadgeSet> {
+    badge_sets
+        .into_iter()
+        .map(|badge_set| (badge_set.set_id.clone(), badge_set))
+        .collect()
+}
+
+fn scope_to_badge_sets(scope: Scope<BadgeSet>) -> Vec<BadgeSet> {
+    scope.into_values().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::badgepersist::{BadgeMetadataStore, MemoryBadgeMetadataStore};
+
+    const NOW: u64 = 1_800_000_000;
+
+    fn badge_set(set_id: &str, version_id: &str, url: &str) -> BadgeSet {
+        BadgeSet {
+            set_id: set_id.to_string(),
+            versions: vec![Badge {
+                set_id: set_id.to_string(),
+                id: version_id.to_string(),
+                image_url_4x: url.to_string(),
+                title: set_id.to_string(),
+                ..Default::default()
+            }],
+        }
+    }
+
+    #[tokio::test]
+    async fn hydrate_global_uses_persisted_badges() {
+        let persistence = MemoryBadgeMetadataStore::new(NOW);
+        persistence.insert(
+            GLOBAL_SCOPE_KEY,
+            vec![badge_set("moderator", "1", "https://example.com/mod.png")],
+            NOW,
+        );
+        let manager = BadgeManager::with_persistence_for_test(persistence);
+
+        manager.hydrate_global().await;
+
+        let badge_set = manager
+            .clone()
+            .get("moderator".to_string(), "1234".to_string())
+            .await
+            .unwrap();
+        let badge = badge_set.version("1".to_string()).unwrap();
+        assert_eq!(badge.image_url_4x, "https://example.com/mod.png");
+    }
+
+    #[tokio::test]
+    async fn hydrate_channel_uses_persisted_badges_before_refresh() {
+        let persistence = MemoryBadgeMetadataStore::new(NOW);
+        persistence.insert(
+            "1234",
+            vec![badge_set(
+                "subscriber",
+                "12",
+                "https://example.com/sub-12.png",
+            )],
+            NOW,
+        );
+        let manager = BadgeManager::with_persistence_for_test(persistence);
+
+        manager.hydrate_channel("1234").await;
+
+        let badge_set = manager
+            .clone()
+            .get("subscriber".to_string(), "1234".to_string())
+            .await
+            .unwrap();
+        let badge = badge_set.version("12".to_string()).unwrap();
+        assert_eq!(badge.image_url_4x, "https://example.com/sub-12.png");
+    }
+
+    #[tokio::test]
+    async fn channel_load_without_token_keeps_hydrated_badges() {
+        let persistence = MemoryBadgeMetadataStore::new(NOW);
+        persistence.insert(
+            "1234",
+            vec![badge_set(
+                "subscriber",
+                "12",
+                "https://example.com/cached-sub.png",
+            )],
+            NOW,
+        );
+        let manager = BadgeManager::with_persistence_for_test(persistence);
+        let client = twitch_api::HelixClient::with_client(reqwest::Client::new());
+
+        manager.clone().load_channel("1234".to_string(), client).await;
+
+        let badge_set = manager
+            .clone()
+            .get("subscriber".to_string(), "1234".to_string())
+            .await
+            .unwrap();
+        let badge = badge_set.version("12".to_string()).unwrap();
+        assert_eq!(badge.image_url_4x, "https://example.com/cached-sub.png");
+    }
+
+    #[tokio::test]
+    async fn successful_empty_channel_refresh_replaces_cached_badges() {
+        let persistence = MemoryBadgeMetadataStore::new(NOW);
+        persistence.insert(
+            "1234",
+            vec![badge_set(
+                "subscriber",
+                "12",
+                "https://example.com/cached-sub.png",
+            )],
+            NOW,
+        );
+        let manager = BadgeManager::with_persistence_for_test(persistence.clone());
+        manager.hydrate_channel("1234").await;
+
+        manager
+            .store_channel_badges("1234".to_string(), Vec::new())
+            .await;
+
+        assert!(manager
+            .clone()
+            .get("subscriber".to_string(), "1234".to_string())
+            .await
+            .is_none());
+        let persisted = persistence.load_scope("1234").unwrap();
+        assert_eq!(persisted.count(), 0);
     }
 }

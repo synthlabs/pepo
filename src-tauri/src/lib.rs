@@ -24,6 +24,7 @@ use crate::emote::cache::EmoteCacheTrait;
 use crate::emotemanager::EmoteManager;
 use crate::types::{AuthState, ChannelCache, Settings};
 
+mod badgepersist;
 mod badgemanager;
 mod emote;
 mod emotemanager;
@@ -234,6 +235,11 @@ async fn join_chat(
     debug!("join: got channel info - {:?}", channel.clone());
 
     let broadcaster_id = channel.broadcaster_id.to_string();
+    let emote_settings = settings.emotes;
+
+    badge_manager.hydrate_global().await;
+    badge_manager.hydrate_channel(&broadcaster_id).await;
+    emote_manager.preload(&broadcaster_id, &emote_settings);
 
     if let Err(e) = eventsub_manager
         .join_chat(
@@ -250,7 +256,6 @@ async fn join_chat(
 
     debug!("joined channel");
 
-    let emote_settings = settings.emotes;
     tauri::async_runtime::spawn(async move {
         debug!(
             broadcaster_id,
@@ -531,7 +536,7 @@ async fn login(
     // Create empty managers — no network calls, just register state so
     // other Tauri commands can access them immediately.
     let eventsub_manager = EventSubManager::new();
-    let badge_manager = BadgeManager::empty(token_manager.clone());
+    let badge_manager = BadgeManager::empty(token_manager.clone(), app_handle.clone());
     let emote_manager =
         EmoteManager::empty(client.clone(), token_manager.clone(), app_handle.clone());
 

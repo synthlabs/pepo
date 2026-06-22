@@ -14,6 +14,9 @@ pub trait EmoteProvider<T: EmoteCacheTrait>: Send + Sync {
     fn get_name(&self) -> String {
         self.get_id().provider_name().to_string()
     }
+    fn hydrate_cache(&self, _scope_key: &str) -> bool {
+        false
+    }
     fn load_global_emotes(&self, client: &reqwest::Client);
     fn load_channel_emotes(&self, broadcaster_id: String, client: &reqwest::Client);
     fn load_user_emotes(&self) {}
