@@ -138,7 +138,10 @@ export function refreshScrollStateAfterScroll(
 		};
 	}
 
-	const pinned = isAtBottom(container, thresholdPx);
+	const pinned =
+		options.userInitiated && options.preservePinnedIntent
+			? distanceFromBottom(container) === 0
+			: isAtBottom(container, thresholdPx);
 	if (pinned) {
 		return {
 			pinned: true,

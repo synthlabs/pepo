@@ -334,7 +334,7 @@ describe('autoscroll helpers', () => {
 	});
 
 	it('lets explicit user scroll intent pause autoscroll from a previously pinned state', () => {
-		const target = createContainer({ scrollTop: 500, scrollHeight: 1000, clientHeight: 400 });
+		const target = createContainer({ scrollTop: 599, scrollHeight: 1000, clientHeight: 400 });
 
 		const scrollState = refreshScrollStateAfterScroll(
 			target.container,
@@ -347,6 +347,25 @@ describe('autoscroll helpers', () => {
 		);
 
 		expect(scrollState.pinned).toBe(false);
+		expect(scrollState.pendingSnapshot).toBeNull();
+		expect(scrollState.unreadMessageCount).toBe(0);
+		expect(scrollState.deferred).toBe(false);
+	});
+
+	it('keeps explicit user scroll intent pinned at exact bottom', () => {
+		const target = createContainer({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			null,
+			false,
+			0,
+			MESSAGE_SELECTOR,
+			32,
+			{ userInitiated: true, preservePinnedIntent: true }
+		);
+
+		expect(scrollState.pinned).toBe(true);
 		expect(scrollState.pendingSnapshot).toBeNull();
 		expect(scrollState.unreadMessageCount).toBe(0);
 		expect(scrollState.deferred).toBe(false);
