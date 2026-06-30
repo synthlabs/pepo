@@ -5,6 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { commands, type AuthState } from '$lib/bindings';
+	import { hasUsableAuth } from '$lib/auth';
 	import { cn } from '$lib/utils.js';
 	import Logger from '$utils/log';
 
@@ -20,9 +21,10 @@
 
 	let showPostAuthSpinner = $state(false);
 	let postAuthTimer: ReturnType<typeof setTimeout> | undefined;
+	let usableAuth = $derived(hasUsableAuth(authState.obj));
 
 	$effect(() => {
-		if (authState.obj.phase === 'authorized') {
+		if (usableAuth) {
 			postAuthTimer = setTimeout(() => {
 				showPostAuthSpinner = true;
 			}, 2000);
@@ -71,7 +73,7 @@
 					class="bg-muted-foreground text-accent w-3xs rounded-lg px-4 py-2 text-center font-mono text-2xl font-bold tracking-wider hover:cursor-text"
 					>{authState.obj.device_code}</span
 				>
-			{:else if authState.obj.phase === 'authorized'}
+			{:else if usableAuth}
 				{#if showPostAuthSpinner}
 					<LoaderCircle class="text-primary animate-spin" />
 				{:else}

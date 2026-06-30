@@ -6,37 +6,37 @@
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
 	import { SyncedState } from 'tauri-svelte-synced-store';
-	import type { AuthState, ChannelCache, Settings } from '$lib/bindings.ts';
+	import type { AuthState, ChannelCache } from '$lib/bindings.ts';
 	import Users from '@lucide/svelte/icons/users';
 	import * as Tooltip from '$lib/components/ui/tooltip/index.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { DEFAULT_SETTINGS, normalizeSettings } from '$lib/settings';
+	import { hasUsableAuth } from '$lib/auth';
+	import { appSettings, getNormalizedAppSettings } from '$lib/stores/settings.svelte';
 	import { InternalRoot } from '$internal';
 
 	let { children } = $props();
+	let normalizedAppSettings = $derived(getNormalizedAppSettings());
 
 	let authState = new SyncedState<AuthState>('auth_state');
 
 	$effect(() => {
-		if (authState.ready && authState.obj.phase === 'unauthorized') {
+		if (authState.ready && !hasUsableAuth(authState.obj)) {
 			goto(resolve('/'));
 		}
 	});
 
 	let channelCache = new SyncedState<ChannelCache>('channel_cache', { channels: {} });
-	let settings = new SyncedState<Settings>('settings', DEFAULT_SETTINGS);
-	let normalizedSettings = $derived(normalizeSettings(settings.obj));
 	let channelStatus = $derived(
 		page.params.id ? (channelCache.obj.channels[page.params.id] ?? null) : null
 	);
 </script>
 
 <Sidebar.Provider
-	open={normalizedSettings.layout.sidebar_open}
+	open={normalizedAppSettings.layout.sidebar_open}
 	onOpenChange={(open) => {
-		settings.obj.layout.sidebar_open = open;
-		settings.sync();
+		appSettings.obj.layout.sidebar_open = open;
+		appSettings.sync();
 	}}
 >
 	<AppSidebar collapsible="icon"></AppSidebar>

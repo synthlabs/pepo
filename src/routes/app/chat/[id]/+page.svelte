@@ -7,12 +7,10 @@
 		commands,
 		type ChannelInfo,
 		type ChannelMessage,
-		type ChannelMessageTranslationUpdate,
-		type Settings
+		type ChannelMessageTranslationUpdate
 	} from '$lib/bindings.ts';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
-	import { SyncedState } from 'tauri-svelte-synced-store';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
 	import Badges from '$lib/components/chat/+badges.svelte';
@@ -38,8 +36,9 @@
 		attachPendingTranslation,
 		type PendingTranslations
 	} from '$lib/chat/translation';
-	import { DEFAULT_SETTINGS, formatTimestamp, normalizeSettings } from '$lib/settings';
+	import { formatTimestamp } from '$lib/settings';
 	import { authState } from '$lib/stores/auth.svelte';
+	import { getNormalizedAppSettings } from '$lib/stores/settings.svelte';
 
 	const CHAT_MESSAGE_SELECTOR = '[data-chat-message-index]';
 	const USER_SCROLL_INTENT_MS = 250;
@@ -62,13 +61,12 @@
 	let hasInput = $derived(chatInput.length > 0);
 	let errorState = $state({ active: false, msg: '' });
 	let channelInfo = $state({} as ChannelInfo);
-	let settings = new SyncedState<Settings>('settings', DEFAULT_SETTINGS);
 	let username = $derived(
 		authState.obj.phase === 'authorized' && authState.obj.token ? authState.obj.token.login : null
 	);
-	let normalizedSettings = $derived(normalizeSettings(settings.obj));
-	let chatSettings = $derived(normalizedSettings.chat);
-	let emoteSettings = $derived(normalizedSettings.emotes);
+	let normalizedAppSettings = $derived(getNormalizedAppSettings());
+	let chatSettings = $derived(normalizedAppSettings.chat);
+	let emoteSettings = $derived(normalizedAppSettings.emotes);
 
 	// Emote picker state
 	let emotePickerVisible = $state(false);
@@ -597,7 +595,7 @@
 					>
 						{#if chatSettings.show_timestamps}
 							<span class="text-xs whitespace-nowrap text-gray-500">
-								{formatTimestamp(msg.ts, normalizedSettings)}
+								{formatTimestamp(msg.ts, normalizedAppSettings)}
 							</span>
 						{/if}
 						{#if chatSettings.show_badges}

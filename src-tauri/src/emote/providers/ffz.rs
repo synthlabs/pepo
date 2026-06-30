@@ -12,7 +12,7 @@ use crate::emote::{
     providers::{http::fetch_json, EmoteProvider, GLOBAL_SCOPE_KEY},
     Emote,
 };
-use crate::types::EmoteProviderId;
+use crate::types::{EmoteProviderId, ProviderSettings};
 
 const FFZ_API_BASE: &str = "https://api.frankerfacez.com/v1";
 const FFZ_CDN_BASE: &str = "https://cdn.frankerfacez.com/emote";
@@ -91,14 +91,21 @@ impl FfzProvider {
         }
     }
 
-    fn hydrate_persisted_cache(&self, scope_key: &str) -> Option<EmoteCache> {
+    fn hydrate_persisted_cache(
+        &self,
+        scope_key: &str,
+        provider_settings: &ProviderSettings,
+    ) -> Option<EmoteCache> {
         if let Some(cache) = self.cache.lock().unwrap().get(scope_key).cloned() {
             return Some(cache);
         }
 
-        let hydrated = self
-            .persistence
-            .load_cache(self.get_id(), scope_key, &self.get_name())?;
+        let hydrated = self.persistence.load_cache(
+            self.get_id(),
+            scope_key,
+            &self.get_name(),
+            provider_settings,
+        )?;
         debug!(
             provider = %self.get_name(),
             scope_key,
@@ -115,9 +122,14 @@ impl FfzProvider {
         Some(cache)
     }
 
-    fn store_fresh_cache(&self, scope_key: String, cache: EmoteCache) {
+    fn store_fresh_cache(
+        &self,
+        scope_key: String,
+        cache: EmoteCache,
+        provider_settings: &ProviderSettings,
+    ) {
         self.persistence
-            .save_cache(self.get_id(), &scope_key, &cache);
+            .save_cache(self.get_id(), &scope_key, &cache, provider_settings);
         self.cache.lock().unwrap().insert(scope_key, cache);
     }
 
@@ -138,12 +150,13 @@ impl EmoteProvider<MultiCache> for FfzProvider {
         EmoteProviderId::Ffz
     }
 
-    fn hydrate_cache(&self, scope_key: &str) -> bool {
-        self.hydrate_persisted_cache(scope_key).is_some()
+    fn hydrate_cache(&self, scope_key: &str, provider_settings: &ProviderSettings) -> bool {
+        self.hydrate_persisted_cache(scope_key, provider_settings)
+            .is_some()
     }
 
-    fn load_global_emotes(&self, client: &reqwest::Client) {
-        let fallback = self.hydrate_persisted_cache(GLOBAL_SCOPE_KEY);
+    fn load_global_emotes(&self, client: &reqwest::Client, provider_settings: &ProviderSettings) {
+        let fallback = self.hydrate_persisted_cache(GLOBAL_SCOPE_KEY, provider_settings);
         let url = format!("{}/set/global", self.api_base);
 
         match tokio::task::block_in_place(|| {
@@ -161,7 +174,7 @@ impl EmoteProvider<MultiCache> for FfzProvider {
                     }
                 }
                 debug!(count, "loaded ffz global emotes");
-                self.store_fresh_cache(GLOBAL_SCOPE_KEY.to_owned(), cache);
+                self.store_fresh_cache(GLOBAL_SCOPE_KEY.to_owned(), cache, provider_settings);
             }
             Err(err) => {
                 error!("failed to load ffz global emotes: err={}", err);
@@ -170,8 +183,13 @@ impl EmoteProvider<MultiCache> for FfzProvider {
         }
     }
 
-    fn load_channel_emotes(&self, broadcaster_id: String, client: &reqwest::Client) {
-        let fallback = self.hydrate_persisted_cache(&broadcaster_id);
+    fn load_channel_emotes(
+        &self,
+        broadcaster_id: String,
+        client: &reqwest::Client,
+        provider_settings: &ProviderSettings,
+    ) {
+        let fallback = self.hydrate_persisted_cache(&broadcaster_id, provider_settings);
         let url = format!("{}/room/id/{}", self.api_base, broadcaster_id);
 
         match tokio::task::block_in_place(|| {
@@ -195,7 +213,7 @@ impl EmoteProvider<MultiCache> for FfzProvider {
                     }
                 }
                 debug!(broadcaster_id, count, "loaded ffz channel emotes");
-                self.store_fresh_cache(broadcaster_id, cache);
+                self.store_fresh_cache(broadcaster_id, cache, provider_settings);
             }
             Err(err) => {
                 error!(
@@ -260,7 +278,7 @@ mod tests {
         );
         let provider = FfzProvider::with_api_base(persistence, server.base_url());
 
-        provider.load_global_emotes(&reqwest::Client::new());
+        provider.load_global_emotes(&reqwest::Client::new(), &ProviderSettings::default());
 
         let cache = provider.get_emote_cache(GLOBAL_SCOPE_KEY.to_string());
         assert!(cache.has_emote("CachedFFZ".to_string()));

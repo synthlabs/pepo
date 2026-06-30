@@ -7,8 +7,8 @@ use std::{
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+use crate::types::ProviderSettings;
+
 const BODY_PREVIEW_BYTES: usize = 512;
 
 #[derive(Debug)]
@@ -92,10 +92,10 @@ impl Error for ProviderFetchError {
     }
 }
 
-pub(crate) fn provider_client() -> reqwest::Client {
+pub(crate) fn provider_client(settings: &ProviderSettings) -> reqwest::Client {
     reqwest::Client::builder()
-        .connect_timeout(CONNECT_TIMEOUT)
-        .timeout(REQUEST_TIMEOUT)
+        .connect_timeout(settings.http_connect_timeout())
+        .timeout(settings.http_request_timeout())
         .build()
         .expect("valid emote provider HTTP client")
 }

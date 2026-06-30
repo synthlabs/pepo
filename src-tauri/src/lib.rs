@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use specta_typescript::Typescript;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
@@ -22,10 +22,10 @@ use twitch_api::{client::ClientDefault, HelixClient};
 use crate::badgemanager::BadgeManager;
 use crate::emote::cache::EmoteCacheTrait;
 use crate::emotemanager::EmoteManager;
-use crate::types::{AuthState, ChannelCache, Settings};
+use crate::types::{AppSettings, AuthState, ChannelCache};
 
-mod badgepersist;
 mod badgemanager;
+mod badgepersist;
 mod emote;
 mod emotemanager;
 mod eventsub;
@@ -60,12 +60,24 @@ type SharedEventSubHandles = Mutex<Vec<tauri::async_runtime::JoinHandle<()>>>;
 /// Guards against overlapping token refreshes (supervisor tick vs. focus event).
 type RefreshLock = Mutex<()>;
 
+const APP_SETTINGS_KEY: &str = "app_settings";
+
 tauri_svelte_synced_store::state_handlers!(
     AuthState = "auth_state",
     InternalState = "internal_state",
     ChannelCache = "channel_cache",
-    Settings = "settings"
+    AppSettings = "app_settings"
 );
+
+fn app_settings(state_syncer: &StateSyncer) -> AppSettings {
+    state_syncer
+        .snapshot::<AppSettings>(APP_SETTINGS_KEY)
+        .normalized()
+}
+
+fn make_eventsub_settings_reader(state_syncer: StateSyncer) -> eventsub::EventSubSettingsReader {
+    Arc::new(move || app_settings(&state_syncer).eventsub)
+}
 
 #[cfg(debug_assertions)]
 fn repo_root() -> std::path::PathBuf {
@@ -104,7 +116,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .typ::<types::AuthPhase>()
         .typ::<types::ChannelCache>()
         .typ::<types::ChannelStatus>()
-        .typ::<types::Settings>()
+        .typ::<types::AppSettings>()
         .typ::<InternalState>()
         .commands(collect_commands![
             get_followed_streams,
@@ -161,7 +173,7 @@ async fn search_emotes(
     state_syncer: State<'_, StateSyncer>,
 ) -> Result<Vec<emote::Emote>, String> {
     let emote_manager = emote_manager_ref.lock().await.clone();
-    let settings = state_syncer.snapshot::<Settings>("settings").normalized();
+    let settings = app_settings(state_syncer.inner());
     let cache = emote_manager.get_emote_cache(broadcaster_id, &settings.emotes);
     Ok(cache.search_emotes(
         &query,
@@ -224,7 +236,7 @@ async fn join_chat(
     let eventsub_manager = eventsub_manager_ref.lock().await.clone();
     let badge_manager = badge_manager_ref.lock().await.clone();
     let emote_manager = emote_manager_ref.lock().await.clone();
-    let settings = state_syncer.snapshot::<Settings>("settings").normalized();
+    let settings = app_settings(state_syncer.inner());
 
     let channel = client
         .get_channel_from_login(&channel_name, &token)
@@ -236,10 +248,13 @@ async fn join_chat(
 
     let broadcaster_id = channel.broadcaster_id.to_string();
     let emote_settings = settings.emotes;
+    let provider_settings = settings.providers;
 
-    badge_manager.hydrate_global().await;
-    badge_manager.hydrate_channel(&broadcaster_id).await;
-    emote_manager.preload(&broadcaster_id, &emote_settings);
+    badge_manager.hydrate_global(&provider_settings).await;
+    badge_manager
+        .hydrate_channel(&broadcaster_id, &provider_settings)
+        .await;
+    emote_manager.preload(&broadcaster_id, &emote_settings, &provider_settings);
 
     if let Err(e) = eventsub_manager
         .join_chat(
@@ -264,8 +279,10 @@ async fn join_chat(
         );
         let badge_broadcaster_id = broadcaster_id.clone();
         let emote_broadcaster_id = broadcaster_id.clone();
-        let load_badges = badge_manager.load_channel(badge_broadcaster_id, client);
-        let load_emotes = emote_manager.load_channel(emote_broadcaster_id, &emote_settings);
+        let load_badges =
+            badge_manager.load_channel(badge_broadcaster_id, client, &provider_settings);
+        let load_emotes =
+            emote_manager.load_channel(emote_broadcaster_id, &emote_settings, &provider_settings);
         tokio::join!(load_badges, load_emotes);
     });
 
@@ -328,8 +345,10 @@ fn get_followed_channels(
     _app_handle: AppHandle,
     token_manager: State<'_, TokenManager>,
     client: State<'_, HelixClient<'static, reqwest::Client>>,
+    state_syncer: State<'_, StateSyncer>,
 ) -> Result<Vec<types::Broadcaster>, String> {
     let client = client.inner();
+    let channel_cache_settings = app_settings(state_syncer.inner()).channel_cache;
 
     let token_guard = tauri::async_runtime::block_on(token_manager.active_twitch_token())
         .ok_or_else(|| "no active token".to_owned())?;
@@ -346,7 +365,7 @@ fn get_followed_channels(
     };
 
     let mut users: Vec<twitch_api::helix::users::User> = Vec::new();
-    for chunk in channels.chunks(100) {
+    for chunk in channels.chunks(channel_cache_settings.user_lookup_chunk_size) {
         let ids: Vec<twitch_api::types::UserId> =
             chunk.iter().map(|b| b.broadcaster_id.clone()).collect();
 
@@ -371,6 +390,7 @@ async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), String> {
         .ok_or_else(|| "no active token".to_owned())?;
     let client = app_handle.state::<HelixClient<'static, reqwest::Client>>();
     let state_syncer = app_handle.state::<StateSyncer>();
+    let channel_cache_settings = app_settings(state_syncer.inner()).channel_cache;
 
     debug!("polling channel cache");
 
@@ -381,7 +401,7 @@ async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), String> {
         .map_err(|e| format!("failed to get followed channels: {}", e))?;
 
     let mut users: HashMap<String, twitch_api::helix::users::User> = HashMap::new();
-    for chunk in channels.chunks(100) {
+    for chunk in channels.chunks(channel_cache_settings.user_lookup_chunk_size) {
         let ids: Vec<twitch_api::types::UserId> =
             chunk.iter().map(|b| b.broadcaster_id.clone()).collect();
         let chunk_users: Vec<twitch_api::helix::users::User> = client
@@ -456,11 +476,18 @@ async fn handle_channel_cache_poll_error(
         return true;
     }
 
-    logging::error_repeated(
-        format!("channel_cache_poll:{context}:{error}"),
-        format!("{context} channel cache poll failed: {error}"),
-        Duration::from_secs(300),
-    );
+    let channel_cache_settings =
+        app_settings(app_handle.state::<StateSyncer>().inner()).channel_cache;
+    let message = format!("{context} channel cache poll failed: {error}");
+    if channel_cache_settings.error_log_throttle_enabled {
+        logging::error_repeated(
+            format!("channel_cache_poll:{context}:{error}"),
+            message,
+            channel_cache_settings.error_log_throttle(),
+        );
+    } else {
+        error!("{message}");
+    }
     false
 }
 
@@ -484,6 +511,14 @@ async fn login(
 
     let twitch_token: twitch_oauth2::UserToken;
     let user_token: types::UserToken;
+    if clear_stale_authorized_auth_if_needed(&app_handle, &token_manager, &auth_state_snapshot)
+        .await
+    {
+        if quick {
+            return Err("no valid token".to_string());
+        }
+    }
+
     if token_manager.is_active_token_valid().await {
         debug!("token is already valid");
         twitch_token = token_manager
@@ -509,7 +544,12 @@ async fn login(
         }
 
         debug!("pausing to show verification code");
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(
+            app_settings(state_syncer.inner())
+                .auth
+                .login_activation_delay(),
+        )
+        .await;
 
         info!("login {}", device_code.verification_uri);
         app_handle
@@ -585,8 +625,9 @@ async fn login(
     {
         let badge_manager = badge_manager.clone();
         let client = client.clone();
+        let provider_settings = app_settings(state_syncer.inner()).providers;
         tauri::async_runtime::spawn(async move {
-            if let Err(e) = badge_manager.load_global(client).await {
+            if let Err(e) = badge_manager.load_global(client, &provider_settings).await {
                 error!("failed to load global badges: {}", e);
             }
         });
@@ -595,12 +636,11 @@ async fn login(
     // Global + user emotes
     {
         let emote_manager = emote_manager.clone();
-        let emote_settings = state_syncer
-            .snapshot::<Settings>("settings")
-            .normalized()
-            .emotes;
+        let settings = app_settings(state_syncer.inner());
+        let emote_settings = settings.emotes;
+        let provider_settings = settings.providers;
         tauri::async_runtime::spawn(async move {
-            emote_manager.load_global(&emote_settings);
+            emote_manager.load_global(&emote_settings, &provider_settings);
             emote_manager.load_user_emotes();
         });
     }
@@ -614,6 +654,7 @@ async fn login(
         let badge_manager_ref = badge_manager.clone();
         let emote_manager_ref = emote_manager.clone();
         let state_syncer_ref = state_syncer.inner().clone();
+        let eventsub_settings_reader = make_eventsub_settings_reader(state_syncer.inner().clone());
 
         {
             let eventsub_handle_state = app_handle.state::<SharedEventSubHandles>();
@@ -623,13 +664,14 @@ async fn login(
             }
         }
 
-        let eventsub_runtime = match eventsub_manager.start(client, token_manager) {
-            Ok(runtime) => runtime,
-            Err(e) => {
-                error!("failed to start eventsub: {}", e);
-                return Err("failed to start eventsub".to_string());
-            }
-        };
+        let eventsub_runtime =
+            match eventsub_manager.start(client, token_manager, eventsub_settings_reader) {
+                Ok(runtime) => runtime,
+                Err(e) => {
+                    error!("failed to start eventsub: {}", e);
+                    return Err("failed to start eventsub".to_string());
+                }
+            };
         let eventsub::EventSubRuntime { events, handles } = eventsub_runtime;
 
         {
@@ -653,9 +695,7 @@ async fn login(
                                 message: M::Notification(chat_message),
                                 ..
                             }) => {
-                                let settings = state_syncer_ref
-                                    .snapshot::<Settings>("settings")
-                                    .normalized();
+                                let settings = app_settings(&state_syncer_ref);
                                 let channel_msg = types::ChannelMessage::new(
                                     chat_message.clone(),
                                     notification.ts.to_string(),
@@ -689,7 +729,16 @@ async fn login(
         }
 
         loop {
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            let channel_cache_settings =
+                app_settings(poll_app.state::<StateSyncer>().inner()).channel_cache;
+            tokio::time::sleep(channel_cache_settings.poll_interval()).await;
+
+            let channel_cache_settings =
+                app_settings(poll_app.state::<StateSyncer>().inner()).channel_cache;
+            if !channel_cache_settings.recurring_poll_enabled {
+                continue;
+            }
+
             if let Err(e) = poll_channel_cache(&poll_app).await {
                 if handle_channel_cache_poll_error(&poll_app, "recurring", e).await {
                     return;
@@ -774,6 +823,39 @@ fn persist_authorized_token(state_syncer: &StateSyncer, token: types::UserToken)
     );
 }
 
+fn is_stale_authorized_auth(auth_state: &AuthState, has_active_runtime_token: bool) -> bool {
+    matches!(auth_state.phase, types::AuthPhase::Authorized) && !has_active_runtime_token
+}
+
+async fn clear_stale_authorized_auth_if_needed(
+    app_handle: &AppHandle,
+    token_manager: &TokenManager,
+    auth_state: &AuthState,
+) -> bool {
+    if !is_stale_authorized_auth(
+        auth_state,
+        token_manager.active_public_token().await.is_some(),
+    ) {
+        return false;
+    }
+
+    warn!(
+        login = auth_state
+            .token
+            .as_ref()
+            .map(|token| token.login.as_str())
+            .unwrap_or(""),
+        user_id = auth_state
+            .token
+            .as_ref()
+            .map(|token| token.user_id.as_str())
+            .unwrap_or(""),
+        "authorized auth_state has no active runtime token; clearing auth"
+    );
+    clear_auth_async(app_handle, false).await;
+    true
+}
+
 /// Best-effort token maintenance for every token currently loaded by the
 /// manager. A non-blocking `RefreshLock` prevents overlapping refreshes
 /// (supervisor tick vs. focus event).
@@ -795,7 +877,15 @@ async fn refresh_token_if_needed(app_handle: &AppHandle, force_validate: bool) {
         return;
     }
 
-    match token_manager.refresh_all_tokens(force_validate).await {
+    if clear_stale_authorized_auth_if_needed(app_handle, token_manager.inner(), &auth_state).await {
+        return;
+    }
+
+    let auth_settings = app_settings(state_syncer.inner()).auth;
+    match token_manager
+        .refresh_all_tokens(force_validate, auth_settings.refresh_threshold())
+        .await
+    {
         Ok(Some(active_token)) if matches!(auth_state.phase, types::AuthPhase::Authorized) => {
             persist_authorized_token(state_syncer.inner(), active_token);
         }
@@ -809,8 +899,11 @@ async fn token_refresh_supervisor(app_handle: AppHandle) {
     info!("token refresh supervisor started");
     let mut last_validation = Instant::now();
     loop {
-        tokio::time::sleep(Duration::from_secs(15)).await;
-        let force_validate = last_validation.elapsed() > Duration::from_secs(300);
+        let auth_settings = app_settings(app_handle.state::<StateSyncer>().inner()).auth;
+        tokio::time::sleep(auth_settings.refresh_supervisor_tick()).await;
+
+        let auth_settings = app_settings(app_handle.state::<StateSyncer>().inner()).auth;
+        let force_validate = last_validation.elapsed() > auth_settings.validation_interval();
         refresh_token_if_needed(&app_handle, force_validate).await;
         if force_validate {
             last_validation = Instant::now();
@@ -844,10 +937,10 @@ impl inbound::Scrubber<tauri::Wry> for PepoScrubber {
     fn scrub(&self, app: &AppHandle) -> Result<Option<serde_json::Value>, String> {
         let state_syncer = app.state::<StateSyncer>();
         let auth_state = state_syncer.snapshot::<AuthState>("auth_state");
-        let settings = state_syncer.snapshot::<Settings>("settings").normalized();
+        let settings = app_settings(state_syncer.inner());
         let mut value = serde_json::json!({
             "auth_state": auth_state,
-            "settings": settings,
+            "app_settings": settings,
         });
 
         if let Some(auth) = value
@@ -969,16 +1062,15 @@ pub fn run() {
             sync_cfg
                 .persist_keys
                 .insert("channel_cache".to_owned(), true);
-            sync_cfg.persist_keys.insert("settings".to_owned(), true);
+            sync_cfg
+                .persist_keys
+                .insert(APP_SETTINGS_KEY.to_owned(), true);
             let state_syncer = StateSyncer::new(sync_cfg, app.handle().clone());
 
             let _auth_state: AuthState = state_syncer.load("auth_state");
             let mut internal_state: InternalState = state_syncer.load("internal_state");
-            let mut settings: Settings = state_syncer.load("settings");
-            if settings.schema_version == 0 {
-                settings.layout.sidebar_open = internal_state.sidebar_open;
-            }
-            settings = settings.normalized();
+            let settings: AppSettings = state_syncer.load(APP_SETTINGS_KEY);
+            let settings = settings.normalized();
             internal_state.version = app.package_info().version.to_string();
             internal_state.name = app.package_info().name.to_string();
 
@@ -1076,7 +1168,7 @@ pub fn run() {
 
             state_syncer.set("internal_state", internal_state);
             state_syncer.set("channel_cache", ChannelCache::default());
-            state_syncer.set("settings", settings);
+            state_syncer.set(APP_SETTINGS_KEY, settings);
             app.manage::<StateSyncer>(state_syncer);
             app.manage::<SharedPollHandle>(Mutex::new(None));
             app.manage::<RefreshLock>(Mutex::new(()));
@@ -1096,4 +1188,57 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn auth_state(phase: types::AuthPhase, token: Option<types::UserToken>) -> AuthState {
+        AuthState {
+            phase,
+            device_code: String::new(),
+            token,
+        }
+    }
+
+    fn user_token() -> types::UserToken {
+        types::UserToken {
+            access_token: "access".to_owned(),
+            client_id: "client".to_owned(),
+            login: "viewer".to_owned(),
+            user_id: "1234".to_owned(),
+            refresh_token: Some("refresh".to_owned()),
+            expires_in: 3600,
+            profile_image_url: String::new(),
+        }
+    }
+
+    #[test]
+    fn stale_authorized_auth_requires_repair_without_runtime_token() {
+        let auth_state = auth_state(types::AuthPhase::Authorized, Some(user_token()));
+
+        assert!(is_stale_authorized_auth(&auth_state, false));
+    }
+
+    #[test]
+    fn authorized_auth_with_runtime_token_does_not_require_repair() {
+        let auth_state = auth_state(types::AuthPhase::Authorized, Some(user_token()));
+
+        assert!(!is_stale_authorized_auth(&auth_state, true));
+    }
+
+    #[test]
+    fn non_authorized_auth_without_runtime_token_does_not_require_repair() {
+        for phase in [
+            types::AuthPhase::Unauthorized,
+            types::AuthPhase::WaitingForDeviceCode,
+            types::AuthPhase::WaitingForAuth,
+            types::AuthPhase::FailedAuth,
+        ] {
+            let auth_state = auth_state(phase, None);
+
+            assert!(!is_stale_authorized_auth(&auth_state, false));
+        }
+    }
 }

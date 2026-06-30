@@ -21,12 +21,13 @@ use twitch_api::{
 };
 use twitch_oauth2::UserToken;
 
-use crate::{logging, token::TokenManager};
+use crate::{logging, token::TokenManager, types::EventSubSettings};
 
 type SharedMap<V> = Arc<Mutex<HashMap<String, Mutex<HashSet<V>>>>>;
 type DesiredChannels = Arc<Mutex<HashMap<String, UserId>>>;
 type EventSubSocket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+pub type EventSubSettingsReader = Arc<dyn Fn() -> EventSubSettings + Send + Sync>;
 
 #[derive(Debug)]
 pub struct EventNotification {
@@ -120,8 +121,8 @@ fn twitch_eventsub_url() -> String {
         .to_owned()
 }
 
-async fn next_socket_read(socket: &mut EventSubSocket) -> SocketRead {
-    match tokio::time::timeout(Duration::from_secs(30), socket.next()).await {
+async fn next_socket_read(socket: &mut EventSubSocket, settings: EventSubSettings) -> SocketRead {
+    match tokio::time::timeout(settings.socket_idle_timeout(), socket.next()).await {
         Ok(Some(Ok(msg))) => SocketRead::Message(msg),
         Ok(Some(Err(err))) => SocketRead::ReceiveError(err),
         Ok(None) => SocketRead::Closed,
@@ -156,8 +157,8 @@ fn classify_error_text(error: &str) -> EventSubFailure {
     }
 }
 
-fn retry_delay(attempt: u32) -> Duration {
-    let secs = retry_delay_secs(attempt);
+fn retry_delay(attempt: u32, settings: EventSubSettings) -> Duration {
+    let secs = retry_delay_secs(attempt, settings);
     let jitter_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| (duration.subsec_millis() % 1_000) as u64)
@@ -166,9 +167,34 @@ fn retry_delay(attempt: u32) -> Duration {
     Duration::from_secs(secs) + Duration::from_millis(jitter_ms)
 }
 
-fn retry_delay_secs(attempt: u32) -> u64 {
-    let exponent = attempt.min(4);
-    (5u64 * 2u64.pow(exponent)).min(60)
+fn retry_delay_secs(attempt: u32, settings: EventSubSettings) -> u64 {
+    settings.retry_delay_secs(attempt)
+}
+
+fn warn_or_warn_repeated(
+    settings: EventSubSettings,
+    key: String,
+    message: String,
+    throttle: Duration,
+) {
+    if settings.repeated_log_throttle_enabled {
+        logging::warn_repeated(key, message, throttle);
+    } else {
+        warn!("{message}");
+    }
+}
+
+fn error_or_error_repeated(
+    settings: EventSubSettings,
+    key: String,
+    message: String,
+    throttle: Duration,
+) {
+    if settings.repeated_log_throttle_enabled {
+        logging::error_repeated(key, message, throttle);
+    } else {
+        error!("{message}");
+    }
 }
 
 impl EventSubManager {
@@ -426,6 +452,7 @@ impl EventSubManager {
         self,
         client: HelixClient<'static, reqwest::Client>,
         token_manager: TokenManager,
+        settings_reader: EventSubSettingsReader,
     ) -> Result<EventSubRuntime, Report> {
         let (std_tx, std_rx) = std::sync::mpsc::sync_channel::<EventSubMessage>(32);
         let mut handles = Vec::new();
@@ -434,10 +461,17 @@ impl EventSubManager {
         {
             let token_manager = token_manager.clone();
             let client = client.clone();
+            let settings_reader = settings_reader.clone();
             let cost_watcher_handle = tauri::async_runtime::spawn(async move {
                 loop {
+                    let settings = settings_reader();
+                    if !settings.debug_cost_watcher_enabled {
+                        sleep(settings.debug_cost_watcher_interval()).await;
+                        continue;
+                    }
+
                     let Some(current_token) = token_manager.active_twitch_token().await else {
-                        sleep(Duration::from_secs(30)).await;
+                        sleep(settings.debug_cost_watcher_interval()).await;
                         continue;
                     };
                     let chatters: Vec<twitch_api::eventsub::EventSubSubscription> = match client
@@ -469,8 +503,11 @@ impl EventSubManager {
                             sub.id, sub.cost, sub.condition, sub.status
                         )
                     }
-                    debug!("EventSubManger::cost_watcher - tick=30s");
-                    sleep(Duration::from_secs(30)).await;
+                    debug!(
+                        "EventSubManger::cost_watcher - tick={}s",
+                        settings.debug_cost_watcher_interval_secs
+                    );
+                    sleep(settings.debug_cost_watcher_interval()).await;
                 }
             });
             handles.push(cost_watcher_handle);
@@ -478,6 +515,7 @@ impl EventSubManager {
 
         let websocket_handle = tauri::async_runtime::spawn(async move {
             let mut retry_attempt = 0;
+            let settings_reader = settings_reader.clone();
 
             loop {
                 debug!("connecting to websocket mode=fresh");
@@ -485,7 +523,7 @@ impl EventSubManager {
                 let mut s = match connect(twitch_eventsub_url()).await {
                     Ok(s) => s,
                     Err(e) => {
-                        let delay = retry_delay(retry_attempt);
+                        let delay = retry_delay(retry_attempt, settings_reader());
                         retry_attempt = retry_attempt.saturating_add(1);
                         error!("eventsub connect failed, retrying in {:?}: {:?}", delay, e);
                         sleep(delay).await;
@@ -495,14 +533,16 @@ impl EventSubManager {
                 retry_attempt = 0;
 
                 loop {
+                    let settings = settings_reader();
                     match self
                         .clone()
                         .process_socket_read(
-                            next_socket_read(&mut s).await,
+                            next_socket_read(&mut s, settings).await,
                             std_tx.clone(),
                             &client,
                             token_manager.clone(),
                             ConnectionMode::Fresh,
+                            settings,
                         )
                         .await
                     {
@@ -516,6 +556,7 @@ impl EventSubManager {
                                     std_tx.clone(),
                                     &client,
                                     token_manager.clone(),
+                                    settings_reader.clone(),
                                 )
                                 .await
                             {
@@ -550,7 +591,7 @@ impl EventSubManager {
                     }
                 }
 
-                let delay = retry_delay(retry_attempt);
+                let delay = retry_delay(retry_attempt, settings_reader());
                 retry_attempt = retry_attempt.saturating_add(1);
                 debug!("EventSubManger::run - retrying in {:?}", delay);
                 sleep(delay).await;
@@ -571,13 +612,14 @@ impl EventSubManager {
         client: &HelixClient<'static, reqwest::Client>,
         token_manager: TokenManager,
         mode: ConnectionMode,
+        eventsub_settings: EventSubSettings,
     ) -> SocketAction {
         match read {
             SocketRead::Message(msg) => {
                 trace!("message received: {:?}", msg);
                 match self
                     .clone()
-                    .process_message(msg, ts, client, token_manager, mode)
+                    .process_message(msg, ts, client, token_manager, mode, eventsub_settings)
                     .await
                 {
                     Ok(action) => action,
@@ -593,7 +635,10 @@ impl EventSubManager {
                 SocketAction::FreshReconnect
             }
             SocketRead::IdleTimeout => {
-                warn!("eventsub idle >30s (missed keepalives), reconnecting");
+                warn!(
+                    idle_timeout_secs = eventsub_settings.socket_idle_timeout_secs,
+                    "eventsub idle timeout (missed keepalives), reconnecting"
+                );
                 SocketAction::FreshReconnect
             }
             SocketRead::ReceiveError(err) => {
@@ -638,13 +683,15 @@ impl EventSubManager {
         ts: SyncSender<EventSubMessage>,
         client: &HelixClient<'static, reqwest::Client>,
         token_manager: TokenManager,
+        settings_reader: EventSubSettingsReader,
     ) -> Result<EventSubSocket, Report> {
         debug!("connecting to websocket mode=reconnect_handoff");
         let mut new_socket = connect(reconnect_url).await?;
 
         loop {
             tokio::select! {
-                old_read = next_socket_read(old_socket) => {
+                old_read = next_socket_read(old_socket, settings_reader()) => {
+                    let settings = settings_reader();
                     self
                         .clone()
                         .process_old_socket_during_handoff(
@@ -652,16 +699,19 @@ impl EventSubManager {
                             ts.clone(),
                             client,
                             token_manager.clone(),
+                            settings,
                         )
                         .await?;
                 }
-                new_read = next_socket_read(&mut new_socket) => {
+                new_read = next_socket_read(&mut new_socket, settings_reader()) => {
+                    let settings = settings_reader();
                     match self.clone().process_socket_read(
                         new_read,
                         ts.clone(),
                         client,
                         token_manager.clone(),
                         ConnectionMode::ReconnectHandoff,
+                        settings,
                     ).await {
                         SocketAction::Connected => return Ok(new_socket),
                         SocketAction::Continue => {}
@@ -686,6 +736,7 @@ impl EventSubManager {
         ts: SyncSender<EventSubMessage>,
         client: &HelixClient<'static, reqwest::Client>,
         token_manager: TokenManager,
+        eventsub_settings: EventSubSettings,
     ) -> Result<(), Report> {
         match read {
             SocketRead::Message(msg) => {
@@ -696,6 +747,7 @@ impl EventSubManager {
                         client,
                         token_manager,
                         ConnectionMode::ReconnectHandoff,
+                        eventsub_settings,
                     )
                     .await
                 {
@@ -745,6 +797,7 @@ impl EventSubManager {
         client: &HelixClient<'static, reqwest::Client>,
         token_manager: TokenManager,
         mode: ConnectionMode,
+        eventsub_settings: EventSubSettings,
     ) -> Result<SocketAction, Report> {
         match msg {
             tungstenite::Message::Text(s) => {
@@ -753,10 +806,11 @@ impl EventSubManager {
                 let parsed = match Event::parse_websocket(&s) {
                     Ok(p) => p,
                     Err(e) => {
-                        logging::warn_repeated(
+                        warn_or_warn_repeated(
+                            eventsub_settings,
                             format!("eventsub_unparseable:{e}"),
                             format!("process_message - skipping unparseable message: {e}"),
-                            Duration::from_secs(60),
+                            eventsub_settings.unparseable_warning_throttle(),
                         );
                         return Ok(SocketAction::Continue);
                     }
@@ -769,8 +823,14 @@ impl EventSubManager {
                         let Some(current_token) = token_manager.active_twitch_token().await else {
                             return Err(eyre!("AUTH_EXPIRED: no active token"));
                         };
-                        self.process_welcome_message(session, client, current_token, mode)
-                            .await?;
+                        self.process_welcome_message(
+                            session,
+                            client,
+                            current_token,
+                            mode,
+                            eventsub_settings,
+                        )
+                        .await?;
 
                         Ok(SocketAction::Connected)
                     }
@@ -818,6 +878,7 @@ impl EventSubManager {
         client: &HelixClient<'static, reqwest::Client>,
         token: UserToken,
         mode: ConnectionMode,
+        eventsub_settings: EventSubSettings,
     ) -> Result<(), Report> {
         let session_id = data.id.to_string();
         debug!("welcome message - {} mode={:?}", session_id, mode);
@@ -838,14 +899,15 @@ impl EventSubManager {
             if classify_error_text(&err_msg) == EventSubFailure::AuthFailed {
                 return Err(err);
             }
-            logging::error_repeated(
+            error_or_error_repeated(
+                eventsub_settings,
                 format!("eventsub_user_update_subscription:{err_msg}"),
                 format!("failed to create user update EventSub subscription: {err_msg}"),
-                Duration::from_secs(300),
+                eventsub_settings.subscription_error_throttle(),
             );
         }
 
-        self.resubscribe_desired_channels(&session_id, client, &token)
+        self.resubscribe_desired_channels(&session_id, client, &token, eventsub_settings)
             .await?;
 
         Ok(())
@@ -881,6 +943,7 @@ impl EventSubManager {
         session_id: &str,
         client: &HelixClient<'static, reqwest::Client>,
         token: &UserToken,
+        eventsub_settings: EventSubSettings,
     ) -> Result<(), Report> {
         for (channel_name, chat_id) in self.desired_channels_snapshot() {
             if self.has_subscription(&channel_name) {
@@ -902,10 +965,11 @@ impl EventSubManager {
                     EventSubFailure::AuthFailed | EventSubFailure::StaleSession => {
                         return Err(err);
                     }
-                    _ => logging::error_repeated(
+                    _ => error_or_error_repeated(
+                        eventsub_settings,
                         format!("eventsub_channel_resubscribe:{channel_name}:{err_msg}"),
                         format!("failed to resubscribe EventSub channel {channel_name}: {err_msg}"),
-                        Duration::from_secs(300),
+                        eventsub_settings.subscription_error_throttle(),
                     ),
                 }
             }
@@ -947,12 +1011,27 @@ mod tests {
 
     #[test]
     fn retry_delay_caps_at_sixty_seconds() {
-        assert_eq!(retry_delay_secs(0), 5);
-        assert_eq!(retry_delay_secs(1), 10);
-        assert_eq!(retry_delay_secs(2), 20);
-        assert_eq!(retry_delay_secs(3), 40);
-        assert_eq!(retry_delay_secs(4), 60);
-        assert_eq!(retry_delay_secs(30), 60);
+        let settings = EventSubSettings::default();
+        assert_eq!(retry_delay_secs(0, settings), 5);
+        assert_eq!(retry_delay_secs(1, settings), 10);
+        assert_eq!(retry_delay_secs(2, settings), 20);
+        assert_eq!(retry_delay_secs(3, settings), 40);
+        assert_eq!(retry_delay_secs(4, settings), 60);
+        assert_eq!(retry_delay_secs(30, settings), 60);
+    }
+
+    #[test]
+    fn retry_delay_uses_configured_base_and_cap() {
+        let settings = EventSubSettings {
+            retry_base_secs: 2,
+            retry_max_secs: 12,
+            ..Default::default()
+        };
+
+        assert_eq!(retry_delay_secs(0, settings), 2);
+        assert_eq!(retry_delay_secs(1, settings), 4);
+        assert_eq!(retry_delay_secs(2, settings), 8);
+        assert_eq!(retry_delay_secs(3, settings), 12);
     }
 
     #[test]

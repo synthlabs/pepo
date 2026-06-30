@@ -12,12 +12,11 @@ use tracing::{debug, error, warn};
 
 use crate::{
     emote::{cache::EmoteCache, providers::GLOBAL_SCOPE_KEY, Emote},
-    types::EmoteProviderId,
+    types::{EmoteProviderId, ProviderSettings},
 };
 
 const STORE_FILE: &str = "emote-cache.json";
 const SCHEMA_VERSION: u32 = 1;
-const CHANNEL_RETENTION_SECS: u64 = 30 * 24 * 60 * 60;
 
 pub(crate) type SharedEmoteMetadataStore = Arc<dyn EmoteMetadataStore>;
 
@@ -27,9 +26,16 @@ pub(crate) trait EmoteMetadataStore: Send + Sync {
         provider_id: EmoteProviderId,
         scope_key: &str,
         provider_name: &str,
+        provider_settings: &ProviderSettings,
     ) -> Option<HydratedEmoteCache>;
 
-    fn save_cache(&self, provider_id: EmoteProviderId, scope_key: &str, cache: &EmoteCache);
+    fn save_cache(
+        &self,
+        provider_id: EmoteProviderId,
+        scope_key: &str,
+        cache: &EmoteCache,
+        provider_settings: &ProviderSettings,
+    );
 }
 
 pub(crate) struct HydratedEmoteCache {
@@ -66,6 +72,7 @@ impl EmoteMetadataStore for TauriEmoteMetadataStore {
         provider_id: EmoteProviderId,
         scope_key: &str,
         provider_name: &str,
+        provider_settings: &ProviderSettings,
     ) -> Option<HydratedEmoteCache> {
         let key = cache_key(provider_id, scope_key);
         let store = match self.app.store(STORE_FILE) {
@@ -86,7 +93,7 @@ impl EmoteMetadataStore for TauriEmoteMetadataStore {
         };
 
         let now = unix_now();
-        match payload.validate_for(provider_id, scope_key, now) {
+        match payload.validate_for(provider_id, scope_key, now, provider_settings) {
             Ok(()) => Some(payload.into_hydrated(provider_name.to_string(), now)),
             Err(LoadRejection::Expired) => {
                 debug!(%key, "deleting expired persisted emote metadata");
@@ -103,7 +110,13 @@ impl EmoteMetadataStore for TauriEmoteMetadataStore {
         }
     }
 
-    fn save_cache(&self, provider_id: EmoteProviderId, scope_key: &str, cache: &EmoteCache) {
+    fn save_cache(
+        &self,
+        provider_id: EmoteProviderId,
+        scope_key: &str,
+        cache: &EmoteCache,
+        provider_settings: &ProviderSettings,
+    ) {
         let key = cache_key(provider_id, scope_key);
         let store = match self.app.store(STORE_FILE) {
             Ok(store) => store,
@@ -120,7 +133,7 @@ impl EmoteMetadataStore for TauriEmoteMetadataStore {
             unix_now(),
         );
         store.set(&key, serde_json::json!(payload));
-        prune_expired_channel_entries(&store, provider_id, unix_now());
+        prune_expired_channel_entries(&store, provider_id, unix_now(), provider_settings);
 
         if let Err(err) = store.save() {
             error!(%key, "failed to save emote metadata store: {err}");
@@ -158,6 +171,7 @@ impl StoredEmoteCache {
         provider: EmoteProviderId,
         scope_key: &str,
         now_unix_secs: u64,
+        provider_settings: &ProviderSettings,
     ) -> Result<(), LoadRejection> {
         if self.schema_version != SCHEMA_VERSION {
             return Err(LoadRejection::SchemaVersion);
@@ -168,7 +182,12 @@ impl StoredEmoteCache {
         if self.scope_key != scope_key {
             return Err(LoadRejection::Scope);
         }
-        if is_expired_channel_scope(&self.scope_key, self.saved_at_unix_secs, now_unix_secs) {
+        if is_expired_channel_scope(
+            &self.scope_key,
+            self.saved_at_unix_secs,
+            now_unix_secs,
+            provider_settings,
+        ) {
             return Err(LoadRejection::Expired);
         }
         Ok(())
@@ -207,15 +226,23 @@ fn provider_key(provider_id: EmoteProviderId) -> &'static str {
     }
 }
 
-fn is_expired_channel_scope(scope_key: &str, saved_at_unix_secs: u64, now_unix_secs: u64) -> bool {
-    scope_key != GLOBAL_SCOPE_KEY
-        && now_unix_secs.saturating_sub(saved_at_unix_secs) > CHANNEL_RETENTION_SECS
+fn is_expired_channel_scope(
+    scope_key: &str,
+    saved_at_unix_secs: u64,
+    now_unix_secs: u64,
+    provider_settings: &ProviderSettings,
+) -> bool {
+    provider_settings.metadata_retention_enabled
+        && scope_key != GLOBAL_SCOPE_KEY
+        && now_unix_secs.saturating_sub(saved_at_unix_secs)
+            > provider_settings.metadata_retention_secs
 }
 
 fn prune_expired_channel_entries(
     store: &tauri_plugin_store::Store<tauri::Wry>,
     provider_id: EmoteProviderId,
     now_unix_secs: u64,
+    provider_settings: &ProviderSettings,
 ) {
     let prefix = format!(
         "emote_cache:v{SCHEMA_VERSION}:{}:",
@@ -236,6 +263,7 @@ fn prune_expired_channel_entries(
             &payload.scope_key,
             payload.saved_at_unix_secs,
             now_unix_secs,
+            provider_settings,
         ) {
             debug!(%key, "pruning expired emote metadata");
             store.delete(key);
@@ -291,11 +319,12 @@ impl EmoteMetadataStore for MemoryEmoteMetadataStore {
         provider_id: EmoteProviderId,
         scope_key: &str,
         provider_name: &str,
+        provider_settings: &ProviderSettings,
     ) -> Option<HydratedEmoteCache> {
         let key = cache_key(provider_id, scope_key);
         let now = *self.now_unix_secs.lock().unwrap();
         let payload = self.entries.lock().unwrap().get(&key).cloned()?;
-        match payload.validate_for(provider_id, scope_key, now) {
+        match payload.validate_for(provider_id, scope_key, now, provider_settings) {
             Ok(()) => Some(payload.into_hydrated(provider_name.to_string(), now)),
             Err(LoadRejection::Expired) => {
                 self.entries.lock().unwrap().remove(&key);
@@ -305,7 +334,13 @@ impl EmoteMetadataStore for MemoryEmoteMetadataStore {
         }
     }
 
-    fn save_cache(&self, provider_id: EmoteProviderId, scope_key: &str, cache: &EmoteCache) {
+    fn save_cache(
+        &self,
+        provider_id: EmoteProviderId,
+        scope_key: &str,
+        cache: &EmoteCache,
+        _provider_settings: &ProviderSettings,
+    ) {
         let now = *self.now_unix_secs.lock().unwrap();
         self.insert(provider_id, scope_key, cache.emotes(), now);
     }
@@ -341,7 +376,12 @@ mod tests {
 
         assert_eq!(decoded, payload);
         decoded
-            .validate_for(EmoteProviderId::Seventv, GLOBAL_SCOPE_KEY, NOW)
+            .validate_for(
+                EmoteProviderId::Seventv,
+                GLOBAL_SCOPE_KEY,
+                NOW,
+                &ProviderSettings::default(),
+            )
             .unwrap();
     }
 
@@ -358,7 +398,8 @@ mod tests {
             payload.validate_for(
                 EmoteProviderId::Bttv,
                 "1234",
-                NOW + CHANNEL_RETENTION_SECS + 1
+                NOW + ProviderSettings::default().metadata_retention_secs + 1,
+                &ProviderSettings::default(),
             ),
             Err(LoadRejection::Expired)
         );
@@ -377,7 +418,8 @@ mod tests {
             .validate_for(
                 EmoteProviderId::Ffz,
                 GLOBAL_SCOPE_KEY,
-                NOW + CHANNEL_RETENTION_SECS + 1,
+                NOW + ProviderSettings::default().metadata_retention_secs + 1,
+                &ProviderSettings::default(),
             )
             .unwrap();
     }
@@ -393,7 +435,12 @@ mod tests {
         payload.schema_version = SCHEMA_VERSION + 1;
 
         assert_eq!(
-            payload.validate_for(EmoteProviderId::Seventv, GLOBAL_SCOPE_KEY, NOW),
+            payload.validate_for(
+                EmoteProviderId::Seventv,
+                GLOBAL_SCOPE_KEY,
+                NOW,
+                &ProviderSettings::default(),
+            ),
             Err(LoadRejection::SchemaVersion)
         );
     }

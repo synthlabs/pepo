@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 use twitch_api::{client::CompatError, HelixClient};
 use twitch_oauth2::TwitchToken;
 
@@ -12,7 +13,7 @@ use crate::{
     message,
 };
 
-pub const SETTINGS_SCHEMA_VERSION: u32 = 1;
+pub const APP_SETTINGS_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Default)]
 pub struct AuthState {
@@ -39,15 +40,19 @@ impl Default for AuthPhase {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(default)]
-pub struct Settings {
+pub struct AppSettings {
     pub schema_version: u32,
     pub appearance: AppearanceSettings,
     pub layout: LayoutSettings,
     pub chat: ChatSettings,
     pub emotes: EmoteSettings,
+    pub channel_cache: ChannelCacheSettings,
+    pub auth: AuthSettings,
+    pub eventsub: EventSubSettings,
+    pub providers: ProviderSettings,
 }
 
-impl Default for Settings {
+impl Default for AppSettings {
     fn default() -> Self {
         Self {
             schema_version: 0,
@@ -55,16 +60,267 @@ impl Default for Settings {
             layout: LayoutSettings::default(),
             chat: ChatSettings::default(),
             emotes: EmoteSettings::default(),
+            channel_cache: ChannelCacheSettings::default(),
+            auth: AuthSettings::default(),
+            eventsub: EventSubSettings::default(),
+            providers: ProviderSettings::default(),
         }
     }
 }
 
-impl Settings {
+impl AppSettings {
     pub fn normalized(mut self) -> Self {
-        self.schema_version = SETTINGS_SCHEMA_VERSION;
+        self.schema_version = APP_SETTINGS_SCHEMA_VERSION;
         self.chat = self.chat.normalized();
         self.emotes = self.emotes.normalized();
+        self.channel_cache = self.channel_cache.normalized();
+        self.auth = self.auth.normalized();
+        self.eventsub = self.eventsub.normalized();
+        self.providers = self.providers.normalized();
         self
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct ChannelCacheSettings {
+    pub recurring_poll_enabled: bool,
+    pub poll_interval_secs: u64,
+    pub error_log_throttle_enabled: bool,
+    pub error_log_throttle_secs: u64,
+    pub user_lookup_chunk_size: usize,
+}
+
+impl Default for ChannelCacheSettings {
+    fn default() -> Self {
+        Self {
+            recurring_poll_enabled: true,
+            poll_interval_secs: 60,
+            error_log_throttle_enabled: true,
+            error_log_throttle_secs: 300,
+            user_lookup_chunk_size: 100,
+        }
+    }
+}
+
+impl ChannelCacheSettings {
+    pub fn normalized(mut self) -> Self {
+        let defaults = Self::default();
+        self.poll_interval_secs =
+            u64_or_default(self.poll_interval_secs, defaults.poll_interval_secs);
+        self.error_log_throttle_secs = u64_or_default(
+            self.error_log_throttle_secs,
+            defaults.error_log_throttle_secs,
+        );
+        self.user_lookup_chunk_size =
+            usize_or_default(self.user_lookup_chunk_size, defaults.user_lookup_chunk_size);
+        self
+    }
+
+    pub fn poll_interval(self) -> Duration {
+        Duration::from_secs(self.poll_interval_secs)
+    }
+
+    pub fn error_log_throttle(self) -> Duration {
+        Duration::from_secs(self.error_log_throttle_secs)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct AuthSettings {
+    pub login_activation_delay_ms: u64,
+    pub refresh_supervisor_tick_secs: u64,
+    pub validation_interval_secs: u64,
+    pub refresh_if_remaining_lt_secs: u64,
+}
+
+impl Default for AuthSettings {
+    fn default() -> Self {
+        Self {
+            login_activation_delay_ms: 500,
+            refresh_supervisor_tick_secs: 15,
+            validation_interval_secs: 300,
+            refresh_if_remaining_lt_secs: 600,
+        }
+    }
+}
+
+impl AuthSettings {
+    pub fn normalized(mut self) -> Self {
+        let defaults = Self::default();
+        self.login_activation_delay_ms = u64_or_default(
+            self.login_activation_delay_ms,
+            defaults.login_activation_delay_ms,
+        );
+        self.refresh_supervisor_tick_secs = u64_or_default(
+            self.refresh_supervisor_tick_secs,
+            defaults.refresh_supervisor_tick_secs,
+        );
+        self.validation_interval_secs = u64_or_default(
+            self.validation_interval_secs,
+            defaults.validation_interval_secs,
+        );
+        self.refresh_if_remaining_lt_secs = u64_or_default(
+            self.refresh_if_remaining_lt_secs,
+            defaults.refresh_if_remaining_lt_secs,
+        );
+        self
+    }
+
+    pub fn login_activation_delay(self) -> Duration {
+        Duration::from_millis(self.login_activation_delay_ms)
+    }
+
+    pub fn refresh_supervisor_tick(self) -> Duration {
+        Duration::from_secs(self.refresh_supervisor_tick_secs)
+    }
+
+    pub fn validation_interval(self) -> Duration {
+        Duration::from_secs(self.validation_interval_secs)
+    }
+
+    pub fn refresh_threshold(self) -> Duration {
+        Duration::from_secs(self.refresh_if_remaining_lt_secs)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct EventSubSettings {
+    pub socket_idle_timeout_secs: u64,
+    pub retry_base_secs: u64,
+    pub retry_max_secs: u64,
+    pub debug_cost_watcher_enabled: bool,
+    pub debug_cost_watcher_interval_secs: u64,
+    pub repeated_log_throttle_enabled: bool,
+    pub unparseable_warning_throttle_secs: u64,
+    pub subscription_error_throttle_secs: u64,
+}
+
+impl Default for EventSubSettings {
+    fn default() -> Self {
+        Self {
+            socket_idle_timeout_secs: 30,
+            retry_base_secs: 5,
+            retry_max_secs: 60,
+            debug_cost_watcher_enabled: true,
+            debug_cost_watcher_interval_secs: 30,
+            repeated_log_throttle_enabled: true,
+            unparseable_warning_throttle_secs: 60,
+            subscription_error_throttle_secs: 300,
+        }
+    }
+}
+
+impl EventSubSettings {
+    pub fn normalized(mut self) -> Self {
+        let defaults = Self::default();
+        self.socket_idle_timeout_secs = u64_or_default(
+            self.socket_idle_timeout_secs,
+            defaults.socket_idle_timeout_secs,
+        );
+        self.retry_base_secs = u64_or_default(self.retry_base_secs, defaults.retry_base_secs);
+        self.retry_max_secs = u64_or_default(self.retry_max_secs, defaults.retry_max_secs);
+        self.debug_cost_watcher_interval_secs = u64_or_default(
+            self.debug_cost_watcher_interval_secs,
+            defaults.debug_cost_watcher_interval_secs,
+        );
+        self.unparseable_warning_throttle_secs = u64_or_default(
+            self.unparseable_warning_throttle_secs,
+            defaults.unparseable_warning_throttle_secs,
+        );
+        self.subscription_error_throttle_secs = u64_or_default(
+            self.subscription_error_throttle_secs,
+            defaults.subscription_error_throttle_secs,
+        );
+        self
+    }
+
+    pub fn socket_idle_timeout(self) -> Duration {
+        Duration::from_secs(self.socket_idle_timeout_secs)
+    }
+
+    pub fn retry_delay_secs(self, attempt: u32) -> u64 {
+        let exponent = attempt.min(4);
+        self.retry_base_secs
+            .saturating_mul(2u64.pow(exponent))
+            .min(self.retry_max_secs)
+    }
+
+    pub fn debug_cost_watcher_interval(self) -> Duration {
+        Duration::from_secs(self.debug_cost_watcher_interval_secs)
+    }
+
+    pub fn unparseable_warning_throttle(self) -> Duration {
+        Duration::from_secs(self.unparseable_warning_throttle_secs)
+    }
+
+    pub fn subscription_error_throttle(self) -> Duration {
+        Duration::from_secs(self.subscription_error_throttle_secs)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct ProviderSettings {
+    pub http_connect_timeout_secs: u64,
+    pub http_request_timeout_secs: u64,
+    pub metadata_retention_enabled: bool,
+    pub metadata_retention_secs: u64,
+}
+
+impl Default for ProviderSettings {
+    fn default() -> Self {
+        Self {
+            http_connect_timeout_secs: 5,
+            http_request_timeout_secs: 15,
+            metadata_retention_enabled: true,
+            metadata_retention_secs: 30 * 24 * 60 * 60,
+        }
+    }
+}
+
+impl ProviderSettings {
+    pub fn normalized(mut self) -> Self {
+        let defaults = Self::default();
+        self.http_connect_timeout_secs = u64_or_default(
+            self.http_connect_timeout_secs,
+            defaults.http_connect_timeout_secs,
+        );
+        self.http_request_timeout_secs = u64_or_default(
+            self.http_request_timeout_secs,
+            defaults.http_request_timeout_secs,
+        );
+        self.metadata_retention_secs = u64_or_default(
+            self.metadata_retention_secs,
+            defaults.metadata_retention_secs,
+        );
+        self
+    }
+
+    pub fn http_connect_timeout(self) -> Duration {
+        Duration::from_secs(self.http_connect_timeout_secs)
+    }
+
+    pub fn http_request_timeout(self) -> Duration {
+        Duration::from_secs(self.http_request_timeout_secs)
+    }
+}
+
+fn u64_or_default(value: u64, fallback: u64) -> u64 {
+    if value == 0 {
+        fallback
+    } else {
+        value
+    }
+}
+
+fn usize_or_default(value: usize, fallback: usize) -> usize {
+    if value == 0 {
+        fallback
+    } else {
+        value
     }
 }
 
@@ -894,10 +1150,10 @@ mod tests {
     }
 
     #[test]
-    fn default_settings_preserve_current_user_visible_behavior() {
-        let settings = Settings::default().normalized();
+    fn default_app_settings_preserve_current_behavior() {
+        let settings = AppSettings::default().normalized();
 
-        assert_eq!(settings.schema_version, SETTINGS_SCHEMA_VERSION);
+        assert_eq!(settings.schema_version, APP_SETTINGS_SCHEMA_VERSION);
         assert!(matches!(settings.appearance.theme, AppearanceTheme::Dark));
         assert!(settings.layout.sidebar_open);
         assert_eq!(settings.chat.message_limit, 500);
@@ -913,6 +1169,30 @@ mod tests {
                 EmoteProviderId::Ffz,
                 EmoteProviderId::Seventv
             ]
+        );
+        assert!(settings.channel_cache.recurring_poll_enabled);
+        assert_eq!(settings.channel_cache.poll_interval_secs, 60);
+        assert!(settings.channel_cache.error_log_throttle_enabled);
+        assert_eq!(settings.channel_cache.error_log_throttle_secs, 300);
+        assert_eq!(settings.channel_cache.user_lookup_chunk_size, 100);
+        assert_eq!(settings.auth.login_activation_delay_ms, 500);
+        assert_eq!(settings.auth.refresh_supervisor_tick_secs, 15);
+        assert_eq!(settings.auth.validation_interval_secs, 300);
+        assert_eq!(settings.auth.refresh_if_remaining_lt_secs, 600);
+        assert_eq!(settings.eventsub.socket_idle_timeout_secs, 30);
+        assert_eq!(settings.eventsub.retry_base_secs, 5);
+        assert_eq!(settings.eventsub.retry_max_secs, 60);
+        assert!(settings.eventsub.debug_cost_watcher_enabled);
+        assert_eq!(settings.eventsub.debug_cost_watcher_interval_secs, 30);
+        assert!(settings.eventsub.repeated_log_throttle_enabled);
+        assert_eq!(settings.eventsub.unparseable_warning_throttle_secs, 60);
+        assert_eq!(settings.eventsub.subscription_error_throttle_secs, 300);
+        assert_eq!(settings.providers.http_connect_timeout_secs, 5);
+        assert_eq!(settings.providers.http_request_timeout_secs, 15);
+        assert!(settings.providers.metadata_retention_enabled);
+        assert_eq!(
+            settings.providers.metadata_retention_secs,
+            30 * 24 * 60 * 60
         );
     }
 
@@ -987,12 +1267,81 @@ mod tests {
     }
 
     #[test]
-    fn settings_deserialize_missing_fields_from_defaults() {
-        let settings: Settings = serde_json::from_str("{}").unwrap();
+    fn app_settings_deserialize_missing_fields_from_defaults() {
+        let settings: AppSettings = serde_json::from_str("{}").unwrap();
         let settings = settings.normalized();
 
         assert_eq!(settings.chat.message_limit, 500);
         assert!(settings.chat.show_timestamps);
         assert_eq!(settings.emotes.providers.len(), 4);
+        assert_eq!(settings.channel_cache.poll_interval_secs, 60);
+        assert_eq!(settings.auth.refresh_if_remaining_lt_secs, 600);
+        assert_eq!(settings.eventsub.retry_max_secs, 60);
+        assert_eq!(
+            settings.providers.metadata_retention_secs,
+            30 * 24 * 60 * 60
+        );
+    }
+
+    #[test]
+    fn app_settings_zero_numbers_fallback_without_changing_boolean_toggles() {
+        let settings = AppSettings {
+            channel_cache: ChannelCacheSettings {
+                recurring_poll_enabled: false,
+                poll_interval_secs: 0,
+                error_log_throttle_enabled: false,
+                error_log_throttle_secs: 0,
+                user_lookup_chunk_size: 0,
+            },
+            auth: AuthSettings {
+                login_activation_delay_ms: 0,
+                refresh_supervisor_tick_secs: 0,
+                validation_interval_secs: 0,
+                refresh_if_remaining_lt_secs: 0,
+            },
+            eventsub: EventSubSettings {
+                socket_idle_timeout_secs: 0,
+                retry_base_secs: 0,
+                retry_max_secs: 0,
+                debug_cost_watcher_enabled: false,
+                debug_cost_watcher_interval_secs: 0,
+                repeated_log_throttle_enabled: false,
+                unparseable_warning_throttle_secs: 0,
+                subscription_error_throttle_secs: 0,
+            },
+            providers: ProviderSettings {
+                http_connect_timeout_secs: 0,
+                http_request_timeout_secs: 0,
+                metadata_retention_enabled: false,
+                metadata_retention_secs: 0,
+            },
+            ..Default::default()
+        }
+        .normalized();
+
+        assert!(!settings.channel_cache.recurring_poll_enabled);
+        assert_eq!(settings.channel_cache.poll_interval_secs, 60);
+        assert!(!settings.channel_cache.error_log_throttle_enabled);
+        assert_eq!(settings.channel_cache.error_log_throttle_secs, 300);
+        assert_eq!(settings.channel_cache.user_lookup_chunk_size, 100);
+        assert_eq!(settings.auth.login_activation_delay_ms, 500);
+        assert_eq!(settings.auth.refresh_supervisor_tick_secs, 15);
+        assert_eq!(settings.auth.validation_interval_secs, 300);
+        assert_eq!(settings.auth.refresh_if_remaining_lt_secs, 600);
+        assert_eq!(settings.eventsub.socket_idle_timeout_secs, 30);
+        assert_eq!(settings.eventsub.retry_base_secs, 5);
+        assert_eq!(settings.eventsub.retry_max_secs, 60);
+        assert!(!settings.eventsub.debug_cost_watcher_enabled);
+        assert_eq!(settings.eventsub.debug_cost_watcher_interval_secs, 30);
+        assert!(!settings.eventsub.repeated_log_throttle_enabled);
+        assert_eq!(settings.eventsub.unparseable_warning_throttle_secs, 60);
+        assert_eq!(settings.eventsub.subscription_error_throttle_secs, 300);
+        assert_eq!(settings.providers.http_connect_timeout_secs, 5);
+        assert_eq!(settings.providers.http_request_timeout_secs, 15);
+        assert!(!settings.providers.metadata_retention_enabled);
+        assert_eq!(
+            settings.providers.metadata_retention_secs,
+            30 * 24 * 60 * 60
+        );
     }
 }

@@ -10,18 +10,26 @@ use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 use tracing::{debug, error, warn};
 
-use crate::{badgemanager::BadgeSet, emote::providers::GLOBAL_SCOPE_KEY};
+use crate::{badgemanager::BadgeSet, emote::providers::GLOBAL_SCOPE_KEY, types::ProviderSettings};
 
 const STORE_FILE: &str = "badge-cache.json";
 const SCHEMA_VERSION: u32 = 1;
-const CHANNEL_RETENTION_SECS: u64 = 30 * 24 * 60 * 60;
 
 pub(crate) type SharedBadgeMetadataStore = Arc<dyn BadgeMetadataStore>;
 
 pub(crate) trait BadgeMetadataStore: Send + Sync {
-    fn load_scope(&self, scope_key: &str) -> Option<HydratedBadgeScope>;
+    fn load_scope(
+        &self,
+        scope_key: &str,
+        provider_settings: &ProviderSettings,
+    ) -> Option<HydratedBadgeScope>;
 
-    fn save_scope(&self, scope_key: &str, badge_sets: Vec<BadgeSet>);
+    fn save_scope(
+        &self,
+        scope_key: &str,
+        badge_sets: Vec<BadgeSet>,
+        provider_settings: &ProviderSettings,
+    );
 }
 
 pub(crate) struct HydratedBadgeScope {
@@ -53,7 +61,11 @@ impl TauriBadgeMetadataStore {
 }
 
 impl BadgeMetadataStore for TauriBadgeMetadataStore {
-    fn load_scope(&self, scope_key: &str) -> Option<HydratedBadgeScope> {
+    fn load_scope(
+        &self,
+        scope_key: &str,
+        provider_settings: &ProviderSettings,
+    ) -> Option<HydratedBadgeScope> {
         let key = cache_key(scope_key);
         let store = match self.app.store(STORE_FILE) {
             Ok(store) => store,
@@ -73,7 +85,7 @@ impl BadgeMetadataStore for TauriBadgeMetadataStore {
         };
 
         let now = unix_now();
-        match payload.validate_for(scope_key, now) {
+        match payload.validate_for(scope_key, now, provider_settings) {
             Ok(()) => Some(payload.into_hydrated(now)),
             Err(LoadRejection::Expired) => {
                 debug!(%key, "deleting expired persisted badge metadata");
@@ -90,7 +102,12 @@ impl BadgeMetadataStore for TauriBadgeMetadataStore {
         }
     }
 
-    fn save_scope(&self, scope_key: &str, badge_sets: Vec<BadgeSet>) {
+    fn save_scope(
+        &self,
+        scope_key: &str,
+        badge_sets: Vec<BadgeSet>,
+        provider_settings: &ProviderSettings,
+    ) {
         let key = cache_key(scope_key);
         let store = match self.app.store(STORE_FILE) {
             Ok(store) => store,
@@ -103,7 +120,7 @@ impl BadgeMetadataStore for TauriBadgeMetadataStore {
         let now = unix_now();
         let payload = StoredBadgeScope::new(scope_key.to_string(), badge_sets, now);
         store.set(&key, serde_json::json!(payload));
-        prune_expired_channel_entries(&store, now);
+        prune_expired_channel_entries(&store, now, provider_settings);
 
         if let Err(err) = store.save() {
             error!(%key, "failed to save badge metadata store: {err}");
@@ -129,14 +146,24 @@ impl StoredBadgeScope {
         }
     }
 
-    fn validate_for(&self, scope_key: &str, now_unix_secs: u64) -> Result<(), LoadRejection> {
+    fn validate_for(
+        &self,
+        scope_key: &str,
+        now_unix_secs: u64,
+        provider_settings: &ProviderSettings,
+    ) -> Result<(), LoadRejection> {
         if self.schema_version != SCHEMA_VERSION {
             return Err(LoadRejection::SchemaVersion);
         }
         if self.scope_key != scope_key {
             return Err(LoadRejection::Scope);
         }
-        if is_expired_channel_scope(&self.scope_key, self.saved_at_unix_secs, now_unix_secs) {
+        if is_expired_channel_scope(
+            &self.scope_key,
+            self.saved_at_unix_secs,
+            now_unix_secs,
+            provider_settings,
+        ) {
             return Err(LoadRejection::Expired);
         }
         Ok(())
@@ -162,14 +189,22 @@ fn cache_key(scope_key: &str) -> String {
     format!("badge_cache:v{SCHEMA_VERSION}:{scope_key}")
 }
 
-fn is_expired_channel_scope(scope_key: &str, saved_at_unix_secs: u64, now_unix_secs: u64) -> bool {
-    scope_key != GLOBAL_SCOPE_KEY
-        && now_unix_secs.saturating_sub(saved_at_unix_secs) > CHANNEL_RETENTION_SECS
+fn is_expired_channel_scope(
+    scope_key: &str,
+    saved_at_unix_secs: u64,
+    now_unix_secs: u64,
+    provider_settings: &ProviderSettings,
+) -> bool {
+    provider_settings.metadata_retention_enabled
+        && scope_key != GLOBAL_SCOPE_KEY
+        && now_unix_secs.saturating_sub(saved_at_unix_secs)
+            > provider_settings.metadata_retention_secs
 }
 
 fn prune_expired_channel_entries(
     store: &tauri_plugin_store::Store<tauri::Wry>,
     now_unix_secs: u64,
+    provider_settings: &ProviderSettings,
 ) {
     let prefix = format!("badge_cache:v{SCHEMA_VERSION}:");
     for key in store
@@ -187,6 +222,7 @@ fn prune_expired_channel_entries(
             &payload.scope_key,
             payload.saved_at_unix_secs,
             now_unix_secs,
+            provider_settings,
         ) {
             debug!(%key, "pruning expired badge metadata");
             store.delete(key);
@@ -229,17 +265,24 @@ impl MemoryBadgeMetadataStore {
     }
 
     pub(crate) fn has_scope(&self, scope_key: &str) -> bool {
-        self.entries.lock().unwrap().contains_key(&cache_key(scope_key))
+        self.entries
+            .lock()
+            .unwrap()
+            .contains_key(&cache_key(scope_key))
     }
 }
 
 #[cfg(test)]
 impl BadgeMetadataStore for MemoryBadgeMetadataStore {
-    fn load_scope(&self, scope_key: &str) -> Option<HydratedBadgeScope> {
+    fn load_scope(
+        &self,
+        scope_key: &str,
+        provider_settings: &ProviderSettings,
+    ) -> Option<HydratedBadgeScope> {
         let key = cache_key(scope_key);
         let now = *self.now_unix_secs.lock().unwrap();
         let payload = self.entries.lock().unwrap().get(&key).cloned()?;
-        match payload.validate_for(scope_key, now) {
+        match payload.validate_for(scope_key, now, provider_settings) {
             Ok(()) => Some(payload.into_hydrated(now)),
             Err(LoadRejection::Expired) => {
                 self.entries.lock().unwrap().remove(&key);
@@ -249,7 +292,12 @@ impl BadgeMetadataStore for MemoryBadgeMetadataStore {
         }
     }
 
-    fn save_scope(&self, scope_key: &str, badge_sets: Vec<BadgeSet>) {
+    fn save_scope(
+        &self,
+        scope_key: &str,
+        badge_sets: Vec<BadgeSet>,
+        provider_settings: &ProviderSettings,
+    ) {
         let now = *self.now_unix_secs.lock().unwrap();
         self.insert(scope_key, badge_sets, now);
 
@@ -259,8 +307,13 @@ impl BadgeMetadataStore for MemoryBadgeMetadataStore {
             .unwrap()
             .iter()
             .filter_map(|(key, payload)| {
-                is_expired_channel_scope(&payload.scope_key, payload.saved_at_unix_secs, now)
-                    .then_some(key.clone())
+                is_expired_channel_scope(
+                    &payload.scope_key,
+                    payload.saved_at_unix_secs,
+                    now,
+                    provider_settings,
+                )
+                .then_some(key.clone())
             })
             .collect::<Vec<_>>();
 
@@ -303,21 +356,42 @@ mod tests {
         let decoded: StoredBadgeScope = serde_json::from_value(value).unwrap();
 
         assert_eq!(decoded, payload);
-        decoded.validate_for(GLOBAL_SCOPE_KEY, NOW).unwrap();
+        decoded
+            .validate_for(GLOBAL_SCOPE_KEY, NOW, &ProviderSettings::default())
+            .unwrap();
     }
 
     #[test]
     fn channel_metadata_expires_after_retention() {
-        let payload = StoredBadgeScope::new(
-            "1234".to_string(),
-            vec![badge_set("subscriber", "12")],
-            NOW,
-        );
+        let payload =
+            StoredBadgeScope::new("1234".to_string(), vec![badge_set("subscriber", "12")], NOW);
 
         assert_eq!(
-            payload.validate_for("1234", NOW + CHANNEL_RETENTION_SECS + 1),
+            payload.validate_for(
+                "1234",
+                NOW + ProviderSettings::default().metadata_retention_secs + 1,
+                &ProviderSettings::default(),
+            ),
             Err(LoadRejection::Expired)
         );
+    }
+
+    #[test]
+    fn channel_metadata_does_not_expire_when_retention_is_disabled() {
+        let payload =
+            StoredBadgeScope::new("1234".to_string(), vec![badge_set("subscriber", "12")], NOW);
+        let settings = ProviderSettings {
+            metadata_retention_enabled: false,
+            ..Default::default()
+        };
+
+        payload
+            .validate_for(
+                "1234",
+                NOW + ProviderSettings::default().metadata_retention_secs + 1,
+                &settings,
+            )
+            .unwrap();
     }
 
     #[test]
@@ -329,7 +403,11 @@ mod tests {
         );
 
         payload
-            .validate_for(GLOBAL_SCOPE_KEY, NOW + CHANNEL_RETENTION_SECS + 1)
+            .validate_for(
+                GLOBAL_SCOPE_KEY,
+                NOW + ProviderSettings::default().metadata_retention_secs + 1,
+                &ProviderSettings::default(),
+            )
             .unwrap();
     }
 
@@ -343,7 +421,7 @@ mod tests {
         payload.schema_version = SCHEMA_VERSION + 1;
 
         assert_eq!(
-            payload.validate_for(GLOBAL_SCOPE_KEY, NOW),
+            payload.validate_for(GLOBAL_SCOPE_KEY, NOW, &ProviderSettings::default()),
             Err(LoadRejection::SchemaVersion)
         );
     }
@@ -354,11 +432,15 @@ mod tests {
         persistence.insert(
             "old-channel",
             vec![badge_set("subscriber", "12")],
-            NOW - CHANNEL_RETENTION_SECS - 1,
+            NOW - ProviderSettings::default().metadata_retention_secs - 1,
         );
         persistence.insert(GLOBAL_SCOPE_KEY, vec![badge_set("global", "1")], NOW);
 
-        persistence.save_scope("fresh-channel", vec![badge_set("subscriber", "24")]);
+        persistence.save_scope(
+            "fresh-channel",
+            vec![badge_set("subscriber", "24")],
+            &ProviderSettings::default(),
+        );
 
         assert!(!persistence.has_scope("old-channel"));
         assert!(persistence.has_scope(GLOBAL_SCOPE_KEY));

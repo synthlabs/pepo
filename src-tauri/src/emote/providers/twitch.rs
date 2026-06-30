@@ -12,7 +12,7 @@ use crate::emote::{
     Emote,
 };
 use crate::token::TokenManager;
-use crate::types::EmoteProviderId;
+use crate::types::{EmoteProviderId, ProviderSettings};
 
 const USER_EMOTES_SCOPE_KEY: &str = "_user_emotes";
 
@@ -43,7 +43,7 @@ impl EmoteProvider<MultiCache> for TwitchProvider {
         EmoteProviderId::Twitch
     }
 
-    fn load_global_emotes(&self, _client: &reqwest::Client) {
+    fn load_global_emotes(&self, _client: &reqwest::Client, _provider_settings: &ProviderSettings) {
         let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
 
         match tokio::task::block_in_place(|| {
@@ -68,7 +68,12 @@ impl EmoteProvider<MultiCache> for TwitchProvider {
         store.insert(GLOBAL_SCOPE_KEY.to_owned(), cache);
     }
 
-    fn load_channel_emotes(&self, broadcaster_id: String, _client: &reqwest::Client) {
+    fn load_channel_emotes(
+        &self,
+        broadcaster_id: String,
+        _client: &reqwest::Client,
+        _provider_settings: &ProviderSettings,
+    ) {
         let mut store = self.cache.lock().unwrap();
         store
             .entry(broadcaster_id.clone())

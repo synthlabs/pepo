@@ -15,7 +15,7 @@ use crate::emote::{
     Emote,
 };
 use crate::token::TokenManager;
-use crate::types::{EmoteProviderId, EmoteSettings};
+use crate::types::{EmoteProviderId, EmoteSettings, ProviderSettings};
 
 type ProviderRef = Arc<dyn EmoteProvider<MultiCache>>;
 // TODO: switch to a RWLock instead of Mutex
@@ -57,19 +57,28 @@ impl EmoteManager {
         }
     }
 
-    pub fn load_global(&self, emote_settings: &EmoteSettings) {
-        let http_client = provider_client();
+    pub fn load_global(
+        &self,
+        emote_settings: &EmoteSettings,
+        provider_settings: &ProviderSettings,
+    ) {
+        let http_client = provider_client(provider_settings);
 
         let providers = self.ensure_providers(emote_settings);
 
         for p in &providers {
             debug!(provider = %p.get_name(), "loading global emotes");
-            p.load_global_emotes(&http_client);
+            p.load_global_emotes(&http_client, provider_settings);
         }
     }
 
-    pub async fn load_channel(self, broadcaster_id: String, emote_settings: &EmoteSettings) {
-        let http_client = provider_client();
+    pub async fn load_channel(
+        self,
+        broadcaster_id: String,
+        emote_settings: &EmoteSettings,
+        provider_settings: &ProviderSettings,
+    ) {
+        let http_client = provider_client(provider_settings);
         let providers = self.ensure_providers(emote_settings);
 
         debug!(
@@ -86,17 +95,22 @@ impl EmoteManager {
                     provider = %p.get_name(),
                     "loading channel emotes for provider"
                 );
-                p.load_channel_emotes(broadcaster_id.clone(), &http_client)
+                p.load_channel_emotes(broadcaster_id.clone(), &http_client, provider_settings)
             })
             .collect();
     }
 
-    pub fn preload(&self, scope: &str, emote_settings: &EmoteSettings) {
+    pub fn preload(
+        &self,
+        scope: &str,
+        emote_settings: &EmoteSettings,
+        provider_settings: &ProviderSettings,
+    ) {
         let providers = self.ensure_providers(emote_settings);
         for p in &providers {
-            let hydrated_global = p.hydrate_cache(GLOBAL_SCOPE_KEY);
+            let hydrated_global = p.hydrate_cache(GLOBAL_SCOPE_KEY, provider_settings);
             let hydrated_channel =
-                scope != GLOBAL_SCOPE_KEY && p.hydrate_cache(scope);
+                scope != GLOBAL_SCOPE_KEY && p.hydrate_cache(scope, provider_settings);
             if hydrated_global || hydrated_channel {
                 debug!(
                     provider = %p.get_name(),
@@ -237,9 +251,7 @@ impl EmoteManager {
 mod tests {
     use super::*;
     use crate::emote::{
-        cache::EmoteCacheTrait,
-        persist::MemoryEmoteMetadataStore,
-        providers::GLOBAL_SCOPE_KEY,
+        cache::EmoteCacheTrait, persist::MemoryEmoteMetadataStore, providers::GLOBAL_SCOPE_KEY,
     };
 
     const NOW: u64 = 1_800_000_000;
@@ -290,7 +302,7 @@ mod tests {
         let manager = EmoteManager::with_persistence_for_test(persistence);
         let settings = bttv_only_settings();
 
-        manager.preload("1234", &settings);
+        manager.preload("1234", &settings, &ProviderSettings::default());
         manager.ensure_providers(&settings);
 
         let cache = manager.get_emote_cache("1234".to_string(), &settings);
@@ -315,7 +327,7 @@ mod tests {
         let manager = EmoteManager::with_persistence_for_test(persistence);
         let settings = bttv_only_settings();
 
-        manager.preload("1234", &settings);
+        manager.preload("1234", &settings, &ProviderSettings::default());
 
         let cache = manager.get_emote_cache("1234".to_string(), &settings);
         assert!(cache.has_emote("CachedGlobalBTTV".to_string()));

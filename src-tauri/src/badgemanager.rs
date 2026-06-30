@@ -7,6 +7,7 @@ use crate::{
     badgepersist::{SharedBadgeMetadataStore, TauriBadgeMetadataStore},
     emote::providers::GLOBAL_SCOPE_KEY,
     token::TokenManager,
+    types::ProviderSettings,
 };
 use twitch_api::helix::chat::{get_channel_chat_badges, get_global_chat_badges};
 
@@ -100,12 +101,15 @@ impl BadgeManager {
         }
     }
 
-    pub async fn hydrate_global(&self) {
+    pub async fn hydrate_global(&self, provider_settings: &ProviderSettings) {
         if !self.global_badges.lock().await.is_empty() {
             return;
         }
 
-        let Some(hydrated) = self.persistence.load_scope(GLOBAL_SCOPE_KEY) else {
+        let Some(hydrated) = self
+            .persistence
+            .load_scope(GLOBAL_SCOPE_KEY, provider_settings)
+        else {
             return;
         };
         let count = hydrated.count();
@@ -113,12 +117,15 @@ impl BadgeManager {
         *self.global_badges.lock().await = badge_sets_to_scope(hydrated.badge_sets);
         debug!(
             count,
-            age_seconds,
-            "hydrated persisted global badge metadata"
+            age_seconds, "hydrated persisted global badge metadata"
         );
     }
 
-    pub async fn hydrate_channel(&self, broadcaster_id: &str) {
+    pub async fn hydrate_channel(
+        &self,
+        broadcaster_id: &str,
+        provider_settings: &ProviderSettings,
+    ) {
         {
             let scoped_badges = self.scoped_badges.lock().await;
             if scoped_badges.contains_key(broadcaster_id) {
@@ -126,7 +133,10 @@ impl BadgeManager {
             }
         }
 
-        let Some(hydrated) = self.persistence.load_scope(broadcaster_id) else {
+        let Some(hydrated) = self
+            .persistence
+            .load_scope(broadcaster_id, provider_settings)
+        else {
             return;
         };
         let count = hydrated.count();
@@ -137,17 +147,16 @@ impl BadgeManager {
         );
         debug!(
             broadcaster_id,
-            count,
-            age_seconds,
-            "hydrated persisted channel badge metadata"
+            count, age_seconds, "hydrated persisted channel badge metadata"
         );
     }
 
     pub async fn load_global(
         &self,
         client: twitch_api::HelixClient<'static, reqwest::Client>,
+        provider_settings: &ProviderSettings,
     ) -> Result<(), String> {
-        self.hydrate_global().await;
+        self.hydrate_global(provider_settings).await;
 
         let req = get_global_chat_badges::GetGlobalChatBadgesRequest::new();
 
@@ -171,7 +180,8 @@ impl BadgeManager {
                 BadgeSet::from(b)
             })
             .collect();
-        self.store_global_badges(badge_sets).await;
+        self.store_global_badges(badge_sets, provider_settings)
+            .await;
 
         Ok(())
     }
@@ -180,9 +190,11 @@ impl BadgeManager {
         self,
         broadcaster_id: String,
         client: twitch_api::HelixClient<'static, reqwest::Client>,
+        provider_settings: &ProviderSettings,
     ) {
         debug!(broadcaster_id, "loading channel");
-        self.hydrate_channel(&broadcaster_id).await;
+        self.hydrate_channel(&broadcaster_id, provider_settings)
+            .await;
 
         let mut badges: HashMap<String, BadgeSet> = Default::default();
         debug!(broadcaster_id, "refreshing channel badges");
@@ -224,8 +236,12 @@ impl BadgeManager {
             badges.insert(new_b.set_id.clone(), new_b.clone());
         }
 
-        self.store_channel_badges(broadcaster_id, scope_to_badge_sets(badges))
-            .await;
+        self.store_channel_badges(
+            broadcaster_id,
+            scope_to_badge_sets(badges),
+            provider_settings,
+        )
+        .await;
     }
 
     pub async fn get(self, set_id: String, channel: String) -> Option<BadgeSet> {
@@ -242,15 +258,24 @@ impl BadgeManager {
         global_badges.get(&set_id).cloned()
     }
 
-    async fn store_global_badges(&self, badge_sets: Vec<BadgeSet>) {
+    async fn store_global_badges(
+        &self,
+        badge_sets: Vec<BadgeSet>,
+        provider_settings: &ProviderSettings,
+    ) {
         self.persistence
-            .save_scope(GLOBAL_SCOPE_KEY, badge_sets.clone());
+            .save_scope(GLOBAL_SCOPE_KEY, badge_sets.clone(), provider_settings);
         *self.global_badges.lock().await = badge_sets_to_scope(badge_sets);
     }
 
-    async fn store_channel_badges(&self, broadcaster_id: String, badge_sets: Vec<BadgeSet>) {
+    async fn store_channel_badges(
+        &self,
+        broadcaster_id: String,
+        badge_sets: Vec<BadgeSet>,
+        provider_settings: &ProviderSettings,
+    ) {
         self.persistence
-            .save_scope(&broadcaster_id, badge_sets.clone());
+            .save_scope(&broadcaster_id, badge_sets.clone(), provider_settings);
         self.scoped_badges
             .lock()
             .await
@@ -299,7 +324,7 @@ mod tests {
         );
         let manager = BadgeManager::with_persistence_for_test(persistence);
 
-        manager.hydrate_global().await;
+        manager.hydrate_global(&ProviderSettings::default()).await;
 
         let badge_set = manager
             .clone()
@@ -324,7 +349,9 @@ mod tests {
         );
         let manager = BadgeManager::with_persistence_for_test(persistence);
 
-        manager.hydrate_channel("1234").await;
+        manager
+            .hydrate_channel("1234", &ProviderSettings::default())
+            .await;
 
         let badge_set = manager
             .clone()
@@ -350,7 +377,10 @@ mod tests {
         let manager = BadgeManager::with_persistence_for_test(persistence);
         let client = twitch_api::HelixClient::with_client(reqwest::Client::new());
 
-        manager.clone().load_channel("1234".to_string(), client).await;
+        manager
+            .clone()
+            .load_channel("1234".to_string(), client, &ProviderSettings::default())
+            .await;
 
         let badge_set = manager
             .clone()
@@ -374,10 +404,12 @@ mod tests {
             NOW,
         );
         let manager = BadgeManager::with_persistence_for_test(persistence.clone());
-        manager.hydrate_channel("1234").await;
+        manager
+            .hydrate_channel("1234", &ProviderSettings::default())
+            .await;
 
         manager
-            .store_channel_badges("1234".to_string(), Vec::new())
+            .store_channel_badges("1234".to_string(), Vec::new(), &ProviderSettings::default())
             .await;
 
         assert!(manager
@@ -385,7 +417,9 @@ mod tests {
             .get("subscriber".to_string(), "1234".to_string())
             .await
             .is_none());
-        let persisted = persistence.load_scope("1234").unwrap();
+        let persisted = persistence
+            .load_scope("1234", &ProviderSettings::default())
+            .unwrap();
         assert_eq!(persisted.count(), 0);
     }
 }

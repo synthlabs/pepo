@@ -3,19 +3,17 @@
 	import '../app.css';
 	import { checkForAppUpdates } from '$utils/updater';
 	import { Toaster } from '$lib/components/ui/sonner/index.ts';
-	import { SyncedState } from 'tauri-svelte-synced-store';
-	import type { Settings } from '$lib/bindings';
-	import { applyThemePreference, DEFAULT_SETTINGS, normalizeSettings } from '$lib/settings';
+	import { applyThemePreference } from '$lib/settings';
 	import { ErrorToast } from '$utils/inbound';
+	import { appSettings, getNormalizedAppSettings } from '$lib/stores/settings.svelte';
 
 	let { children } = $props();
-	let settings = new SyncedState<Settings>('settings', DEFAULT_SETTINGS);
-	let normalizedSettings = $derived(normalizeSettings(settings.obj));
+	let normalizedAppSettings = $derived(getNormalizedAppSettings());
 
 	$effect(() => {
-		if (!settings.ready || typeof document === 'undefined') return;
+		if (!appSettings.ready || typeof document === 'undefined') return;
 
-		return applyThemePreference(normalizedSettings.appearance.theme);
+		return applyThemePreference(normalizedAppSettings.appearance.theme);
 	});
 
 	onMount(async () => {
@@ -23,7 +21,7 @@
 	});
 </script>
 
-<Toaster theme={normalizedSettings.appearance.theme} position="bottom-right" />
+<Toaster theme={normalizedAppSettings.appearance.theme} position="bottom-right" />
 <ErrorToast />
 
 <div class="h-full w-full">

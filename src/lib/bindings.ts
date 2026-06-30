@@ -95,9 +95,11 @@ async searchEmotes(query: string, broadcasterId: string, limit: number | null) :
 
 /** user-defined types **/
 
+export type AppSettings = { schema_version: number; appearance: AppearanceSettings; layout: LayoutSettings; chat: ChatSettings; emotes: EmoteSettings; channel_cache: ChannelCacheSettings; auth: AuthSettings; eventsub: EventSubSettings; providers: ProviderSettings }
 export type AppearanceSettings = { theme: AppearanceTheme }
 export type AppearanceTheme = "system" | "light" | "dark"
 export type AuthPhase = "unauthorized" | "waitingForDeviceCode" | "waitingForAuth" | "failedAuth" | "authorized"
+export type AuthSettings = { login_activation_delay_ms: number; refresh_supervisor_tick_secs: number; validation_interval_secs: number; refresh_if_remaining_lt_secs: number }
 export type AuthState = { phase: AuthPhase; device_code: string; token: UserToken | null }
 export type Badge = { 
 /**
@@ -162,6 +164,7 @@ login: string;
  */
 display_name: string; profile_image_url: string; offline_image_url: string; description: string; created_at: string }
 export type ChannelCache = { channels: Partial<{ [key in string]: ChannelStatus }> }
+export type ChannelCacheSettings = { recurring_poll_enabled: boolean; poll_interval_secs: number; error_log_throttle_enabled: boolean; error_log_throttle_secs: number; user_lookup_chunk_size: number }
 export type ChannelInfo = { 
 /**
  * Twitch User ID of this channel owner
@@ -355,10 +358,11 @@ export type EmoteFragment = { index: number; emote: Emote }
 export type EmoteProviderId = "twitch" | "bttv" | "ffz" | "seventv"
 export type EmoteProviderPreference = { id: EmoteProviderId; enabled: boolean }
 export type EmoteSettings = { providers: EmoteProviderPreference[]; autocomplete_enabled: boolean; autocomplete_min_chars: number; search_debounce_ms: number; autocomplete_result_limit: number; picker_result_limit: number; picker_columns: number; picker_max_height_px: number; inline_emote_px: number; inline_badge_px: number }
+export type EventSubSettings = { socket_idle_timeout_secs: number; retry_base_secs: number; retry_max_secs: number; debug_cost_watcher_enabled: boolean; debug_cost_watcher_interval_secs: number; repeated_log_throttle_enabled: boolean; unparseable_warning_throttle_secs: number; subscription_error_throttle_secs: number }
 export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment }
 export type InternalState = { version: string; name: string; sidebar_open: boolean }
 export type LayoutSettings = { sidebar_open: boolean }
-export type Settings = { schema_version: number; appearance: AppearanceSettings; layout: LayoutSettings; chat: ChatSettings; emotes: EmoteSettings }
+export type ProviderSettings = { http_connect_timeout_secs: number; http_request_timeout_secs: number; metadata_retention_enabled: boolean; metadata_retention_secs: number }
 export type StateUpdate = { version: number | null; name: string; value: string }
 export type Stream = { 
 /**

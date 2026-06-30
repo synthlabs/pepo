@@ -342,6 +342,7 @@ impl TokenManager {
     pub async fn refresh_all_tokens(
         &self,
         force_validate: bool,
+        refresh_threshold: std::time::Duration,
     ) -> Result<Option<types::UserToken>, String> {
         let snapshots = {
             let state = self.state.lock().await;
@@ -373,7 +374,7 @@ impl TokenManager {
                 expires_in = ?remaining,
                 "token freshness checked"
             );
-            if remaining >= std::time::Duration::from_secs(600) {
+            if remaining >= refresh_threshold {
                 continue;
             }
 
