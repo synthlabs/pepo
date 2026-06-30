@@ -14,6 +14,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 		show_timestamps: true,
 		timestamp_locale: 'en',
 		timestamp_style: 'short',
+		translation_layout: 'message_text',
 		show_badges: true,
 		show_emotes: true,
 		alternate_backgrounds: true
@@ -113,6 +114,12 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 				chat.autoscroll_threshold_px,
 				DEFAULT_APP_SETTINGS.chat.autoscroll_threshold_px
 			),
+			translation_layout:
+				chat.translation_layout === 'language_tag' ||
+				chat.translation_layout === 'message_text' ||
+				chat.translation_layout === 'timestamp_end'
+					? chat.translation_layout
+					: DEFAULT_APP_SETTINGS.chat.translation_layout,
 			timestamp_locale:
 				(chat.timestamp_locale ?? '').trim() || DEFAULT_APP_SETTINGS.chat.timestamp_locale
 		},

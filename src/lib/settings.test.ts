@@ -68,6 +68,38 @@ describe('settings helpers', () => {
 		expect(settings.eventsub.subscription_error_throttle_secs).toBe(300);
 	});
 
+	it('accepts the timestamp-end chat translation layout', () => {
+		const settings = normalizeAppSettings({
+			...DEFAULT_APP_SETTINGS,
+			chat: {
+				...DEFAULT_APP_SETTINGS.chat,
+				translation_layout: 'timestamp_end'
+			}
+		});
+
+		expect(settings.chat.translation_layout).toBe('timestamp_end');
+	});
+
+	it('falls back to the default chat translation layout when missing or invalid', () => {
+		const missingLayout = normalizeAppSettings({
+			...DEFAULT_APP_SETTINGS,
+			chat: {
+				...DEFAULT_APP_SETTINGS.chat,
+				translation_layout: undefined
+			}
+		} as unknown as AppSettings);
+		const invalidLayout = normalizeAppSettings({
+			...DEFAULT_APP_SETTINGS,
+			chat: {
+				...DEFAULT_APP_SETTINGS.chat,
+				translation_layout: 'future_layout'
+			}
+		} as unknown as AppSettings);
+
+		expect(missingLayout.chat.translation_layout).toBe('message_text');
+		expect(invalidLayout.chat.translation_layout).toBe('message_text');
+	});
+
 	it('formats positive layout values', () => {
 		expect(px(0)).toBe('1px');
 		expect(gridTemplateColumns(0)).toBe('repeat(8, minmax(0, 1fr))');

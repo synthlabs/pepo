@@ -7,6 +7,7 @@
 		commands,
 		type ChannelInfo,
 		type ChannelMessage,
+		type ChatTranslationLayout,
 		type ChannelMessageTranslationUpdate
 	} from '$lib/bindings.ts';
 	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
@@ -36,6 +37,7 @@
 		attachPendingTranslation,
 		type PendingTranslations
 	} from '$lib/chat/translation';
+	import { chatBadgePlaceholderWidth } from '$lib/chat/message-layout';
 	import { formatTimestamp } from '$lib/settings';
 	import { authState } from '$lib/stores/auth.svelte';
 	import { getNormalizedAppSettings } from '$lib/stores/settings.svelte';
@@ -67,6 +69,16 @@
 	let normalizedAppSettings = $derived(getNormalizedAppSettings());
 	let chatSettings = $derived(normalizedAppSettings.chat);
 	let emoteSettings = $derived(normalizedAppSettings.emotes);
+	let messageRowGridTemplate = $derived(
+		[
+			chatSettings.show_timestamps ? 'auto' : '',
+			chatSettings.show_badges ? 'auto' : '',
+			'auto',
+			'minmax(0, 1fr)'
+		]
+			.filter(Boolean)
+			.join(' ')
+	);
 
 	// Emote picker state
 	let emotePickerVisible = $state(false);
@@ -569,7 +581,49 @@
 			emoteSearchQuery = '';
 		}
 	};
+
+	const translationStartColumn = (layout: ChatTranslationLayout) => {
+		let prefixColumns = 0;
+		if (chatSettings.show_timestamps) prefixColumns += 1;
+		if (layout !== 'timestamp_end' && chatSettings.show_badges) prefixColumns += 1;
+		return prefixColumns + 1;
+	};
 </script>
+
+{#snippet timestampCell(msg: ChannelMessage, invisible = false)}
+	{#if chatSettings.show_timestamps}
+		<span
+			aria-hidden={invisible ? 'true' : undefined}
+			class={cn(
+				'text-xs whitespace-nowrap text-gray-500',
+				invisible && 'pointer-events-none invisible'
+			)}
+		>
+			{formatTimestamp(msg.ts, normalizedAppSettings)}
+		</span>
+	{/if}
+{/snippet}
+
+{#snippet badgeCell(msg: ChannelMessage, invisible = false)}
+	{#if chatSettings.show_badges}
+		{#if invisible}
+			<span
+				aria-hidden="true"
+				class="pointer-events-none invisible inline-block"
+				style="width: {chatBadgePlaceholderWidth(msg.badges.length, emoteSettings.inline_badge_px)}"
+			></span>
+		{:else}
+			<Badges badges={msg.badges} sizePx={emoteSettings.inline_badge_px} />
+		{/if}
+	{/if}
+{/snippet}
+
+{#snippet translationPrefixCells(msg: ChannelMessage, layout: ChatTranslationLayout)}
+	{@render timestampCell(msg, true)}
+	{#if layout !== 'timestamp_end'}
+		{@render badgeCell(msg, true)}
+	{/if}
+{/snippet}
 
 <Tooltip.Provider delayDuration={200}>
 	<div class="flex h-full w-full flex-col flex-nowrap">
@@ -588,34 +642,53 @@
 					<div
 						data-chat-message-index={msg.index}
 						class={cn(
-							'inline-block w-full px-2 py-1 text-sm text-wrap',
+							'block w-full px-2 py-1 text-sm',
 							chatSettings.alternate_backgrounds &&
 								(msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary')
 						)}
 					>
-						{#if chatSettings.show_timestamps}
-							<span class="text-xs whitespace-nowrap text-gray-500">
-								{formatTimestamp(msg.ts, normalizedAppSettings)}
+						<div
+							class="grid min-w-0 items-baseline gap-x-1"
+							style="grid-template-columns: {messageRowGridTemplate}"
+						>
+							{@render timestampCell(msg)}
+							{@render badgeCell(msg)}
+							<span class="whitespace-nowrap">
+								<span style="color: {msg.color}; font-weight: 700;">{msg.chatter_user_name}</span>:
 							</span>
+							<span class="min-w-0 break-words text-wrap [overflow-wrap:anywhere]">
+								{#each msg.fragments as fragment, i (i)}
+									{#if 'Text' in fragment}
+										{fragment.Text.text}
+									{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
+										{#if chatSettings.show_emotes}
+											<Emote emote={fragment.Emote.emote} sizePx={emoteSettings.inline_emote_px} />
+										{:else}
+											{fragment.Emote.emote.name}
+										{/if}
+									{/if}
+								{/each}
+							</span>
+						</div>
+						{#if msg.translation}
+							<div
+								transition:slide={{ easing: quadInOut, duration: 40 }}
+								class="mt-0.5 grid min-w-0 items-baseline gap-x-1 text-sm"
+								style="grid-template-columns: {messageRowGridTemplate}"
+							>
+								{@render translationPrefixCells(msg, chatSettings.translation_layout)}
+								<span
+									class="min-w-0"
+									style="grid-column: {translationStartColumn(chatSettings.translation_layout)} / -1"
+								>
+									<Translation
+										translation={msg.translation}
+										authorName={msg.chatter_user_name}
+										layout={chatSettings.translation_layout}
+									/>
+								</span>
+							</div>
 						{/if}
-						{#if chatSettings.show_badges}
-							<Badges badges={msg.badges} sizePx={emoteSettings.inline_badge_px} />
-						{/if}
-						<span class="whitespace-nowrap" style="color: {msg.color}; font-weight: 700;"
-							>{msg.chatter_user_name}</span
-						>:
-						{#each msg.fragments as fragment, i (i)}
-							{#if 'Text' in fragment}
-								{fragment.Text.text}
-							{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
-								{#if chatSettings.show_emotes}
-									<Emote emote={fragment.Emote.emote} sizePx={emoteSettings.inline_emote_px} />
-								{:else}
-									{fragment.Emote.emote.name}
-								{/if}
-							{/if}
-						{/each}
-						<Translation translation={msg.translation} />
 					</div>
 					{#if showSeparator}
 						<Separator class="" />

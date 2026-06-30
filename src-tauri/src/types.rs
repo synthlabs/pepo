@@ -372,6 +372,7 @@ pub struct ChatSettings {
     pub show_timestamps: bool,
     pub timestamp_locale: String,
     pub timestamp_style: TimestampStyle,
+    pub translation_layout: ChatTranslationLayout,
     pub show_badges: bool,
     pub show_emotes: bool,
     pub alternate_backgrounds: bool,
@@ -385,6 +386,7 @@ impl Default for ChatSettings {
             show_timestamps: true,
             timestamp_locale: "en".to_string(),
             timestamp_style: TimestampStyle::Short,
+            translation_layout: ChatTranslationLayout::MessageText,
             show_badges: true,
             show_emotes: true,
             alternate_backgrounds: true,
@@ -405,6 +407,20 @@ impl ChatSettings {
             self.timestamp_locale = defaults.timestamp_locale;
         }
         self
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatTranslationLayout {
+    LanguageTag,
+    MessageText,
+    TimestampEnd,
+}
+
+impl Default for ChatTranslationLayout {
+    fn default() -> Self {
+        Self::MessageText
     }
 }
 
@@ -1158,6 +1174,10 @@ mod tests {
         assert!(settings.layout.sidebar_open);
         assert_eq!(settings.chat.message_limit, 500);
         assert_eq!(settings.chat.autoscroll_threshold_px, 32);
+        assert_eq!(
+            settings.chat.translation_layout,
+            ChatTranslationLayout::MessageText
+        );
         assert_eq!(settings.emotes.autocomplete_min_chars, 2);
         assert_eq!(settings.emotes.autocomplete_result_limit, 25);
         assert_eq!(settings.emotes.picker_result_limit, 50);
@@ -1273,6 +1293,10 @@ mod tests {
 
         assert_eq!(settings.chat.message_limit, 500);
         assert!(settings.chat.show_timestamps);
+        assert_eq!(
+            settings.chat.translation_layout,
+            ChatTranslationLayout::MessageText
+        );
         assert_eq!(settings.emotes.providers.len(), 4);
         assert_eq!(settings.channel_cache.poll_interval_secs, 60);
         assert_eq!(settings.auth.refresh_if_remaining_lt_secs, 600);
