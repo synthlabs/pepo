@@ -31,6 +31,13 @@ export interface ScrollStateRefreshOptions {
 	preservePinnedIntent?: boolean;
 }
 
+export type ScrollIntentDirection = 'up' | 'down' | 'unknown';
+
+export interface ScrollIntentSnapshot {
+	scrollTop: number;
+	direction: ScrollIntentDirection;
+}
+
 export function maxScrollTop(container: HTMLElement): number {
 	return Math.max(0, container.scrollHeight - container.clientHeight);
 }
@@ -65,17 +72,6 @@ export function captureScrollSnapshot(
 	};
 }
 
-export function capturePinnedIntent(
-	container: HTMLElement | null | undefined,
-	pendingSnapshot: ScrollSnapshot | null,
-	fallbackPinned: boolean,
-	thresholdPx = DEFAULT_BOTTOM_THRESHOLD
-): boolean {
-	if (pendingSnapshot) return pendingSnapshot.wasAtBottom;
-	if (container) return isAtBottom(container, thresholdPx);
-	return fallbackPinned;
-}
-
 export function getBatchScrollSnapshot(
 	current: ScrollSnapshot | null,
 	container: HTMLElement,
@@ -83,6 +79,38 @@ export function getBatchScrollSnapshot(
 	thresholdPx = DEFAULT_BOTTOM_THRESHOLD
 ): ScrollSnapshot {
 	return current ?? captureScrollSnapshot(container, messageSelector, thresholdPx);
+}
+
+export function getPinnedBatchScrollSnapshot(
+	current: ScrollSnapshot | null,
+	container: HTMLElement,
+	messageSelector: string,
+	preservePinnedIntent: boolean,
+	thresholdPx = DEFAULT_BOTTOM_THRESHOLD
+): ScrollSnapshot {
+	const snapshot = getBatchScrollSnapshot(current, container, messageSelector, thresholdPx);
+	return preservePinnedIntent && !snapshot.wasAtBottom ? { ...snapshot, wasAtBottom: true } : snapshot;
+}
+
+export function isUserScrollMovement(
+	currentScrollTop: number,
+	intent: ScrollIntentSnapshot | null,
+	epsilonPx = 0
+): boolean {
+	if (!intent) return false;
+
+	if (intent.direction === 'up') return currentScrollTop < intent.scrollTop - epsilonPx;
+	if (intent.direction === 'down') return currentScrollTop > intent.scrollTop + epsilonPx;
+	return Math.abs(currentScrollTop - intent.scrollTop) > epsilonPx;
+}
+
+export function isUserScrollPauseIntent(
+	currentScrollTop: number,
+	intent: ScrollIntentSnapshot | null,
+	epsilonPx = 0
+): boolean {
+	if (!intent || intent.direction === 'down') return false;
+	return currentScrollTop < intent.scrollTop - epsilonPx;
 }
 
 export function restoreScrollAfterRender(

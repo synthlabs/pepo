@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-	capturePinnedIntent,
 	captureScrollSnapshot,
 	getBatchScrollSnapshot,
+	getPinnedBatchScrollSnapshot,
 	isAtBottom,
+	isUserScrollMovement,
+	isUserScrollPauseIntent,
 	refreshScrollStateAfterScroll,
 	restoreScrollAfterRender
 } from './autoscroll';
@@ -160,32 +162,33 @@ describe('autoscroll helpers', () => {
 		expect(target.getScrollTop()).toBe(800);
 	});
 
-	it('keeps bottom-pinned intent from a pending snapshot even if the DOM has grown', () => {
-		const target = createContainer({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
-		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
+	it('keeps pinned intent when transition growth temporarily moves the DOM above bottom', () => {
+		const target = createContainer({ scrollTop: 600, scrollHeight: 1100, clientHeight: 400 });
 
-		target.setScrollHeight(1400);
+		const snapshot = getPinnedBatchScrollSnapshot(null, target.container, MESSAGE_SELECTOR, true);
 
-		expect(capturePinnedIntent(target.container, snapshot, false, 32)).toBe(true);
+		expect(snapshot.wasAtBottom).toBe(true);
+
+		target.setScrollHeight(1300);
+		const result = restoreScrollAfterRender(target.container, snapshot, MESSAGE_SELECTOR);
+
+		expect(result.pinned).toBe(true);
+		expect(target.getScrollTop()).toBe(900);
 	});
 
-	it('keeps paused intent from a pending snapshot', () => {
-		const target = createContainer({ scrollTop: 300, scrollHeight: 1000, clientHeight: 400 });
-		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
+	it('keeps a paused snapshot paused when transition growth changes layout', () => {
+		const target = createContainer({ scrollTop: 300, scrollHeight: 1100, clientHeight: 400 });
+		appendMessage(target, '4', 300);
 
-		target.container.scrollTop = 600;
+		const snapshot = getPinnedBatchScrollSnapshot(null, target.container, MESSAGE_SELECTOR, false);
 
-		expect(capturePinnedIntent(target.container, snapshot, true, 32)).toBe(false);
-	});
+		expect(snapshot.wasAtBottom).toBe(false);
 
-	it('uses the current viewport state when no pending snapshot exists', () => {
-		const target = createContainer({ scrollTop: 570, scrollHeight: 1000, clientHeight: 400 });
+		target.setScrollHeight(1300);
+		const result = restoreScrollAfterRender(target.container, snapshot, MESSAGE_SELECTOR);
 
-		expect(capturePinnedIntent(target.container, null, false, 32)).toBe(true);
-
-		target.container.scrollTop = 300;
-		expect(capturePinnedIntent(target.container, null, true, 32)).toBe(false);
-		expect(capturePinnedIntent(null, null, true, 32)).toBe(true);
+		expect(result.pinned).toBe(false);
+		expect(target.getScrollTop()).toBe(300);
 	});
 
 	it('does not let an interim scroll event pause a bottom-pinned burst before restore', () => {
@@ -213,6 +216,28 @@ describe('autoscroll helpers', () => {
 		);
 		expect(result.pinned).toBe(true);
 		expect(target.getScrollTop()).toBe(800);
+	});
+
+	it('does not treat large message growth as user pause intent after recent wheel activity', () => {
+		const target = createContainer({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+		const intent = { scrollTop: target.getScrollTop(), direction: 'up' as const };
+
+		target.setScrollHeight(1800);
+		const userInitiated = isUserScrollPauseIntent(target.getScrollTop(), intent);
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			null,
+			false,
+			0,
+			MESSAGE_SELECTOR,
+			32,
+			{ userInitiated, preservePinnedIntent: true }
+		);
+
+		expect(userInitiated).toBe(false);
+		expect(scrollState.pinned).toBe(true);
+		expect(scrollState.unreadMessageCount).toBe(0);
+		expect(scrollState.deferred).toBe(true);
 	});
 
 	it('keeps bottom pinned when buffer trim causes an interim scroll position before restore', () => {
@@ -335,6 +360,7 @@ describe('autoscroll helpers', () => {
 
 	it('lets explicit user scroll intent pause autoscroll from a previously pinned state', () => {
 		const target = createContainer({ scrollTop: 599, scrollHeight: 1000, clientHeight: 400 });
+		const intent = { scrollTop: 600, direction: 'up' as const };
 
 		const scrollState = refreshScrollStateAfterScroll(
 			target.container,
@@ -343,13 +369,38 @@ describe('autoscroll helpers', () => {
 			0,
 			MESSAGE_SELECTOR,
 			32,
-			{ userInitiated: true, preservePinnedIntent: true }
+			{
+				userInitiated: isUserScrollPauseIntent(target.getScrollTop(), intent),
+				preservePinnedIntent: true
+			}
 		);
 
 		expect(scrollState.pinned).toBe(false);
 		expect(scrollState.pendingSnapshot).toBeNull();
 		expect(scrollState.unreadMessageCount).toBe(0);
 		expect(scrollState.deferred).toBe(false);
+	});
+
+	it('ignores downward wheel intent while preserving pinned autoscroll', () => {
+		const target = createContainer({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+		const intent = { scrollTop: target.getScrollTop(), direction: 'down' as const };
+
+		target.setScrollHeight(1800);
+		target.container.scrollTop = 650;
+		const userInitiated = isUserScrollPauseIntent(target.getScrollTop(), intent);
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			null,
+			false,
+			0,
+			MESSAGE_SELECTOR,
+			32,
+			{ userInitiated, preservePinnedIntent: true }
+		);
+
+		expect(userInitiated).toBe(false);
+		expect(scrollState.pinned).toBe(true);
+		expect(scrollState.deferred).toBe(true);
 	});
 
 	it('keeps explicit user scroll intent pinned at exact bottom', () => {
@@ -369,6 +420,27 @@ describe('autoscroll helpers', () => {
 		expect(scrollState.pendingSnapshot).toBeNull();
 		expect(scrollState.unreadMessageCount).toBe(0);
 		expect(scrollState.deferred).toBe(false);
+	});
+
+	it('detects paused user scroll movement back to bottom', () => {
+		const target = createContainer({ scrollTop: 300, scrollHeight: 1000, clientHeight: 400 });
+		const intent = { scrollTop: target.getScrollTop(), direction: 'down' as const };
+
+		target.container.scrollTop = 600;
+		const userInitiated = isUserScrollMovement(target.getScrollTop(), intent);
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			null,
+			false,
+			2,
+			MESSAGE_SELECTOR,
+			32,
+			{ userInitiated, preservePinnedIntent: false }
+		);
+
+		expect(userInitiated).toBe(true);
+		expect(scrollState.pinned).toBe(true);
+		expect(scrollState.unreadMessageCount).toBe(0);
 	});
 
 	it('does not promote an already paused viewport during layout reflow', () => {
