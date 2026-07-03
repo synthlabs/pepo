@@ -11,11 +11,11 @@
 
 <div
 	class="flex flex-wrap items-center justify-center gap-3"
-	style="max-width: min(92vw, 420px);"
+	style="max-width: min(92vw, 320px);"
 >
-	<div class="flex max-h-[160px] max-w-[240px] shrink-0 items-center justify-center overflow-hidden">
+	<div class="flex max-h-[72px] max-w-[112px] shrink-0 items-center justify-center overflow-hidden">
 		<img
-			class="block h-auto max-h-[160px] w-auto max-w-[240px] object-contain"
+			class="block h-auto max-h-[72px] w-auto max-w-[112px] object-contain"
 			src={emote.url}
 			alt={emote.name}
 		/>

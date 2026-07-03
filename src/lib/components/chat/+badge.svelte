@@ -46,15 +46,19 @@
 {/snippet}
 
 {#snippet tooltipBody()}
-	<div class="p-2">
-		<strong>{tooltipContent.name}</strong>
+	<div class="min-w-0 max-w-[280px] p-1 text-left whitespace-normal">
+		<strong class="block break-words leading-snug [overflow-wrap:anywhere]">{tooltipContent.name}</strong>
 		{#if tooltipContent.description}
-			<br />
-			<span class="text-sm text-muted-foreground">{tooltipContent.description}</span>
+			<span
+				class="mt-1 block break-words text-sm leading-snug text-muted-foreground [overflow-wrap:anywhere]"
+				>{tooltipContent.description}</span
+			>
 		{/if}
 		{#if tooltipContent.detail}
-			<br />
-			<span class="text-xs text-muted-foreground">{tooltipContent.detail}</span>
+			<span
+				class="mt-1 block break-words text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]"
+				>{tooltipContent.detail}</span
+			>
 		{/if}
 	</div>
 {/snippet}
@@ -63,9 +67,9 @@
 	<TooltipTrigger>
 		{@render badgeImage(sizePx)}
 	</TooltipTrigger>
-	<TooltipContent class="flex items-center gap-3 p-2">
-		<div class="flex h-[80px] w-[80px] shrink-0 items-center justify-center">
-			{@render badgeImage(80)}
+	<TooltipContent class="flex max-w-[340px] items-center gap-2 p-2">
+		<div class="flex h-10 w-10 shrink-0 items-center justify-center">
+			{@render badgeImage(40)}
 		</div>
 		{@render tooltipBody()}
 	</TooltipContent>
