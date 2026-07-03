@@ -79,6 +79,110 @@ fn make_eventsub_settings_reader(state_syncer: StateSyncer) -> eventsub::EventSu
     Arc::new(move || app_settings(&state_syncer).eventsub)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ChannelCacheCandidate {
+    broadcaster_id: String,
+    login: String,
+    display_name: String,
+}
+
+impl ChannelCacheCandidate {
+    fn new(broadcaster_id: String, login: String, display_name: String) -> Self {
+        let login = normalize_channel_login(&login);
+        let display_name = if display_name.trim().is_empty() {
+            login.clone()
+        } else {
+            display_name
+        };
+
+        Self {
+            broadcaster_id,
+            login,
+            display_name,
+        }
+    }
+}
+
+fn normalize_channel_login(login: &str) -> String {
+    login.trim().to_lowercase()
+}
+
+fn merge_channel_cache_candidates(
+    followed: Vec<ChannelCacheCandidate>,
+    joined: Vec<ChannelCacheCandidate>,
+) -> Vec<ChannelCacheCandidate> {
+    let mut candidates = HashMap::new();
+
+    for candidate in followed {
+        candidates.insert(candidate.login.clone(), candidate);
+    }
+
+    for candidate in joined {
+        candidates
+            .entry(candidate.login.clone())
+            .or_insert(candidate);
+    }
+
+    let mut candidates: Vec<_> = candidates.into_values().collect();
+    candidates.sort_by(|a, b| a.login.cmp(&b.login));
+    candidates
+}
+
+fn channel_cache_from_candidates(
+    candidates: &[ChannelCacheCandidate],
+    users: &HashMap<String, twitch_api::helix::users::User>,
+    live_streams: &HashMap<String, types::Stream>,
+    previous_cache: &types::ChannelCache,
+) -> types::ChannelCache {
+    let mut cache = types::ChannelCache::default();
+
+    for candidate in candidates {
+        upsert_channel_cache_candidate(
+            &mut cache,
+            candidate,
+            users.get(&candidate.login),
+            live_streams.get(&candidate.login).cloned(),
+            previous_cache.channels.get(&candidate.login),
+        );
+    }
+
+    cache
+}
+
+fn upsert_channel_cache_candidate(
+    cache: &mut types::ChannelCache,
+    candidate: &ChannelCacheCandidate,
+    user: Option<&twitch_api::helix::users::User>,
+    stream: Option<types::Stream>,
+    previous_status: Option<&types::ChannelStatus>,
+) {
+    let display_name = user
+        .map(|user| user.display_name.to_string())
+        .filter(|display_name| !display_name.trim().is_empty())
+        .or_else(|| {
+            (!candidate.display_name.trim().is_empty()).then(|| candidate.display_name.clone())
+        })
+        .or_else(|| previous_status.map(|status| status.display_name.clone()))
+        .unwrap_or_else(|| candidate.login.clone());
+    let profile_image_url = user
+        .and_then(|user| user.profile_image_url.clone())
+        .or_else(|| previous_status.map(|status| status.profile_image_url.clone()))
+        .unwrap_or_default();
+    let is_live = stream.is_some();
+
+    cache.channels.insert(
+        candidate.login.clone(),
+        types::ChannelStatus {
+            broadcaster_id: candidate.broadcaster_id.clone(),
+            login: candidate.login.clone(),
+            display_name,
+            profile_image_url,
+            is_live,
+            stream,
+        },
+    );
+}
+
 #[cfg(debug_assertions)]
 fn repo_root() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -218,7 +322,7 @@ async fn get_channel_info(
 #[specta::specta]
 async fn join_chat(
     channel_name: String,
-    _app_handle: AppHandle,
+    app_handle: AppHandle,
     eventsub_manager_ref: State<'_, SharedEventSubManager>,
     badge_manager_ref: State<'_, SharedBadgeManager>,
     emote_manager_ref: State<'_, SharedEmoteManager>,
@@ -246,9 +350,12 @@ async fn join_chat(
 
     debug!("join: got channel info - {:?}", channel.clone());
 
+    let channel_info = types::ChannelInfo::from(channel.clone());
     let broadcaster_id = channel.broadcaster_id.to_string();
     let emote_settings = settings.emotes;
     let provider_settings = settings.providers;
+
+    spawn_joined_channel_cache_refresh(app_handle, channel_info.clone(), token.clone());
 
     badge_manager.hydrate_global(&provider_settings).await;
     badge_manager
@@ -286,7 +393,7 @@ async fn join_chat(
         tokio::join!(load_badges, load_emotes);
     });
 
-    Ok(types::ChannelInfo::from(channel))
+    Ok(channel_info)
 }
 
 #[tauri::command]
@@ -382,6 +489,93 @@ fn get_followed_channels(
     Ok(users.into_iter().map(types::Broadcaster::from).collect())
 }
 
+fn spawn_joined_channel_cache_refresh(
+    app_handle: AppHandle,
+    channel_info: types::ChannelInfo,
+    token: twitch_oauth2::UserToken,
+) {
+    tauri::async_runtime::spawn(async move {
+        let login = channel_info.broadcaster_login.clone();
+        if let Err(err) = refresh_joined_channel_cache(&app_handle, channel_info, &token).await {
+            warn!(
+                channel = login,
+                "failed to refresh joined channel cache: {}", err
+            );
+        }
+    });
+}
+
+async fn refresh_joined_channel_cache(
+    app_handle: &AppHandle,
+    channel_info: types::ChannelInfo,
+    token: &twitch_oauth2::UserToken,
+) -> Result<(), String> {
+    let client_ref = app_handle.state::<HelixClient<'static, reqwest::Client>>();
+    let client = client_ref.inner();
+    let state_syncer = app_handle.state::<StateSyncer>();
+    let candidate = ChannelCacheCandidate::new(
+        channel_info.broadcaster_id,
+        channel_info.broadcaster_login,
+        channel_info.broadcaster_name,
+    );
+
+    let user = match client
+        .get_user_from_id(candidate.broadcaster_id.as_str(), token)
+        .await
+    {
+        Ok(user) => user,
+        Err(err) => {
+            warn!(
+                channel = candidate.login,
+                "failed to fetch joined channel user metadata: {}", err
+            );
+            None
+        }
+    };
+
+    let live_streams = fetch_live_streams_for_logins(client, &[candidate.login.clone()], token)
+        .await
+        .map_err(|err| format!("failed to get joined channel stream: {err}"))?;
+    let mut cache = state_syncer.snapshot::<types::ChannelCache>("channel_cache");
+    let previous_status = cache.channels.get(&candidate.login).cloned();
+
+    upsert_channel_cache_candidate(
+        &mut cache,
+        &candidate,
+        user.as_ref(),
+        live_streams.get(&candidate.login).cloned(),
+        previous_status.as_ref(),
+    );
+    state_syncer.update::<types::ChannelCache>("channel_cache", cache, true);
+
+    Ok(())
+}
+
+async fn fetch_live_streams_for_logins(
+    client: &HelixClient<'static, reqwest::Client>,
+    logins: &[String],
+    token: &twitch_oauth2::UserToken,
+) -> Result<HashMap<String, types::Stream>, String> {
+    if logins.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let login_collection = twitch_api::types::Collection::from(logins);
+    let streams: Vec<twitch_api::helix::streams::Stream> = client
+        .get_streams_from_logins(&login_collection, token)
+        .try_collect()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(streams
+        .into_iter()
+        .map(|stream| {
+            let stream = types::Stream::from(stream);
+            (normalize_channel_login(&stream.user_login), stream)
+        })
+        .collect())
+}
+
 async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), String> {
     let token = app_handle
         .state::<TokenManager>()
@@ -389,8 +583,18 @@ async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), String> {
         .await
         .ok_or_else(|| "no active token".to_owned())?;
     let client = app_handle.state::<HelixClient<'static, reqwest::Client>>();
+    let client = client.inner();
     let state_syncer = app_handle.state::<StateSyncer>();
     let channel_cache_settings = app_settings(state_syncer.inner()).channel_cache;
+    let previous_cache = state_syncer.snapshot::<types::ChannelCache>("channel_cache");
+    let desired_channels = {
+        let eventsub_manager = app_handle
+            .state::<SharedEventSubManager>()
+            .lock()
+            .await
+            .clone();
+        eventsub_manager.desired_channels_snapshot()
+    };
 
     debug!("polling channel cache");
 
@@ -400,12 +604,39 @@ async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), String> {
         .await
         .map_err(|e| format!("failed to get followed channels: {}", e))?;
 
+    let followed_candidates: Vec<ChannelCacheCandidate> = channels
+        .iter()
+        .map(|channel| {
+            ChannelCacheCandidate::new(
+                channel.broadcaster_id.to_string(),
+                channel.broadcaster_login.to_string(),
+                channel.broadcaster_name.to_string(),
+            )
+        })
+        .collect();
+    let joined_candidates: Vec<ChannelCacheCandidate> = desired_channels
+        .into_iter()
+        .map(|(login, id)| {
+            let login = normalize_channel_login(&login);
+            let display_name = previous_cache
+                .channels
+                .get(&login)
+                .map(|status| status.display_name.clone())
+                .unwrap_or_else(|| login.clone());
+            ChannelCacheCandidate::new(id.to_string(), login, display_name)
+        })
+        .collect();
+    let candidates = merge_channel_cache_candidates(followed_candidates, joined_candidates);
+
     let mut users: HashMap<String, twitch_api::helix::users::User> = HashMap::new();
-    for chunk in channels.chunks(channel_cache_settings.user_lookup_chunk_size) {
-        let ids: Vec<twitch_api::types::UserId> =
-            chunk.iter().map(|b| b.broadcaster_id.clone()).collect();
+    for chunk in candidates.chunks(channel_cache_settings.user_lookup_chunk_size) {
+        let ids: Vec<twitch_api::types::UserId> = chunk
+            .iter()
+            .map(|candidate| twitch_api::types::UserId::new(candidate.broadcaster_id.clone()))
+            .collect();
+        let id_collection = twitch_api::types::Collection::from(ids);
         let chunk_users: Vec<twitch_api::helix::users::User> = client
-            .get_users_from_ids(&twitch_api::types::Collection::from(ids), &token)
+            .get_users_from_ids(&id_collection, &token)
             .try_collect()
             .await
             .map_err(|e| format!("failed to get users: {}", e))?;
@@ -414,38 +645,14 @@ async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), String> {
         }
     }
 
-    let streams: Vec<twitch_api::helix::streams::Stream> = client
-        .get_followed_streams(&token)
-        .try_collect()
-        .await
-        .map_err(|e| format!("failed to get followed streams: {}", e))?;
-
-    let live_streams: HashMap<String, types::Stream> = streams
-        .into_iter()
-        .map(|s| (s.user_login.to_string(), types::Stream::from(s)))
+    let logins: Vec<String> = candidates
+        .iter()
+        .map(|candidate| candidate.login.clone())
         .collect();
-
-    let mut cache = types::ChannelCache::default();
-    for channel in &channels {
-        let login = channel.broadcaster_login.to_string();
-        let user = users.get(&login);
-        let stream = live_streams.get(&login).cloned();
-        let is_live = stream.is_some();
-
-        cache.channels.insert(
-            login.clone(),
-            types::ChannelStatus {
-                broadcaster_id: channel.broadcaster_id.to_string(),
-                login: login.clone(),
-                display_name: channel.broadcaster_name.to_string(),
-                profile_image_url: user
-                    .and_then(|u| u.profile_image_url.clone())
-                    .unwrap_or_default(),
-                is_live,
-                stream,
-            },
-        );
-    }
+    let live_streams = fetch_live_streams_for_logins(client, &logins, &token)
+        .await
+        .map_err(|e| format!("failed to get streams: {}", e))?;
+    let cache = channel_cache_from_candidates(&candidates, &users, &live_streams, &previous_cache);
 
     info!(
         "channel cache updated: {} channels, {} live",
@@ -1212,6 +1419,78 @@ mod tests {
             expires_in: 3600,
             profile_image_url: String::new(),
         }
+    }
+
+    fn stream(login: &str, title: &str) -> types::Stream {
+        types::Stream {
+            game_id: "game-id".to_owned(),
+            game_name: "Game".to_owned(),
+            id: format!("stream-{login}"),
+            language: "en".to_owned(),
+            is_mature: false,
+            started_at: "2026-01-01T00:00:00Z".to_owned(),
+            tags: Vec::new(),
+            thumbnail_url: String::new(),
+            title: title.to_owned(),
+            user_id: format!("user-{login}"),
+            user_name: login.to_owned(),
+            user_login: login.to_owned(),
+            viewer_count: 42,
+        }
+    }
+
+    #[test]
+    fn merged_channel_cache_candidates_keep_followed_metadata() {
+        let candidates = merge_channel_cache_candidates(
+            vec![ChannelCacheCandidate::new(
+                "1".to_owned(),
+                "Maya".to_owned(),
+                "Maya Followed".to_owned(),
+            )],
+            vec![
+                ChannelCacheCandidate::new(
+                    "1".to_owned(),
+                    "maya".to_owned(),
+                    "Maya Joined".to_owned(),
+                ),
+                ChannelCacheCandidate::new(
+                    "2".to_owned(),
+                    "luna".to_owned(),
+                    "Luna Joined".to_owned(),
+                ),
+            ],
+        );
+
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].login, "luna");
+        assert_eq!(candidates[0].display_name, "Luna Joined");
+        assert_eq!(candidates[1].login, "maya");
+        assert_eq!(candidates[1].display_name, "Maya Followed");
+    }
+
+    #[test]
+    fn channel_cache_from_candidates_marks_live_and_offline_channels() {
+        let candidates = vec![
+            ChannelCacheCandidate::new("1".to_owned(), "maya".to_owned(), "Maya".to_owned()),
+            ChannelCacheCandidate::new("2".to_owned(), "luna".to_owned(), "Luna".to_owned()),
+        ];
+        let live_streams = HashMap::from([("maya".to_owned(), stream("maya", "Live title"))]);
+
+        let cache = channel_cache_from_candidates(
+            &candidates,
+            &HashMap::new(),
+            &live_streams,
+            &types::ChannelCache::default(),
+        );
+
+        let live = cache.channels.get("maya").unwrap();
+        assert!(live.is_live);
+        assert_eq!(live.stream.as_ref().unwrap().title, "Live title");
+
+        let offline = cache.channels.get("luna").unwrap();
+        assert!(!offline.is_live);
+        assert!(offline.stream.is_none());
+        assert_eq!(offline.display_name, "Luna");
     }
 
     #[test]

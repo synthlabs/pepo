@@ -13,12 +13,16 @@
 
 <Tooltip.Root>
 	<Tooltip.Trigger>
-		<img
-			class="inline max-w-none"
-			style="height: {sizePx}px; min-width: {sizePx}px;"
-			src={emote.url}
-			alt={emote.name}
-		/>
+		{#snippet child({ props })}
+			<span {...props} class="inline-block cursor-default align-middle leading-none">
+				<img
+					class="block max-w-none"
+					style="height: {sizePx}px; min-width: {sizePx}px;"
+					src={emote.url}
+					alt={emote.name}
+				/>
+			</span>
+		{/snippet}
 	</Tooltip.Trigger>
 	<Tooltip.Content class="p-2">
 		<EmoteTooltip {emote} />

@@ -236,7 +236,7 @@ impl EventSubManager {
         self.desired_channels.lock().unwrap().remove(channel_name);
     }
 
-    fn desired_channels_snapshot(&self) -> Vec<(String, UserId)> {
+    pub(crate) fn desired_channels_snapshot(&self) -> Vec<(String, UserId)> {
         self.desired_channels
             .lock()
             .unwrap()

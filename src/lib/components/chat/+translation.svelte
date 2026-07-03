@@ -29,12 +29,12 @@
 		>
 	{:else}
 		<span
-			class="text-muted-foreground inline-flex max-w-full min-w-0 gap-2 text-[0.8125rem] leading-snug align-baseline"
+			class="text-muted-foreground text-[0.8125rem] leading-snug break-words text-wrap align-baseline [overflow-wrap:anywhere]"
 		>
-			<span class="text-primary shrink-0 font-mono text-xs font-semibold whitespace-nowrap">
+			<span class="text-primary font-mono text-xs font-semibold whitespace-nowrap">
 				{source} -> {target}
-			</span>
-			<span class="min-w-0 break-words text-wrap [overflow-wrap:anywhere]">{text}</span>
+			</span>{' '}
+			<span>{text}</span>
 		</span>
 	{/if}
 {/if}

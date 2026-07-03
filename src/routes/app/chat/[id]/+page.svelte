@@ -647,28 +647,29 @@
 								(msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary')
 						)}
 					>
-						<div
-							class="grid min-w-0 items-baseline gap-x-1"
-							style="grid-template-columns: {messageRowGridTemplate}"
-						>
+						<div class="min-w-0 break-words text-wrap [overflow-wrap:anywhere]">
 							{@render timestampCell(msg)}
+							{#if chatSettings.show_timestamps}
+								{' '}
+							{/if}
 							{@render badgeCell(msg)}
+							{#if chatSettings.show_badges && msg.badges.length > 0}
+								{' '}
+							{/if}
 							<span class="whitespace-nowrap">
-								<span style="color: {msg.color}; font-weight: 700;">{msg.chatter_user_name}</span>:
+								<span style="color: {msg.color}; font-weight: 700;">{msg.chatter_user_name}</span>:{' '}
 							</span>
-							<span class="min-w-0 break-words text-wrap [overflow-wrap:anywhere]">
-								{#each msg.fragments as fragment, i (i)}
-									{#if 'Text' in fragment}
-										{fragment.Text.text}
-									{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
-										{#if chatSettings.show_emotes}
-											<Emote emote={fragment.Emote.emote} sizePx={emoteSettings.inline_emote_px} />
-										{:else}
-											{fragment.Emote.emote.name}
-										{/if}
+							{#each msg.fragments as fragment, i (i)}
+								{#if 'Text' in fragment}
+									{fragment.Text.text}
+								{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
+									{#if chatSettings.show_emotes}
+										<Emote emote={fragment.Emote.emote} sizePx={emoteSettings.inline_emote_px} />
+									{:else}
+										{fragment.Emote.emote.name}
 									{/if}
-								{/each}
-							</span>
+								{/if}
+							{/each}
 						</div>
 						{#if msg.translation}
 							<div
@@ -678,7 +679,7 @@
 							>
 								{@render translationPrefixCells(msg, chatSettings.translation_layout)}
 								<span
-									class="min-w-0"
+									class="min-w-0 break-words text-wrap [overflow-wrap:anywhere]"
 									style="grid-column: {translationStartColumn(chatSettings.translation_layout)} / -1"
 								>
 									<Translation

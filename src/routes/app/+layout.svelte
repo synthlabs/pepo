@@ -14,6 +14,7 @@
 	import { hasUsableAuth } from '$lib/auth';
 	import { appSettings, getNormalizedAppSettings } from '$lib/stores/settings.svelte';
 	import { InternalRoot } from '$internal';
+	import { channelHeader } from '$lib/chat/channel-header';
 
 	let { children } = $props();
 	let normalizedAppSettings = $derived(getNormalizedAppSettings());
@@ -30,6 +31,7 @@
 	let channelStatus = $derived(
 		page.params.id ? (channelCache.obj.channels[page.params.id] ?? null) : null
 	);
+	let header = $derived(channelHeader(page.params.id, channelStatus));
 </script>
 
 <Sidebar.Provider
@@ -48,23 +50,25 @@
 				<Separator orientation="vertical" class="mr-2 h-4" />
 			{/if}
 
-			{#if channelStatus?.stream}
+			{#if header}
 				<Tooltip.Provider>
 					<Tooltip.Root>
 						<Tooltip.Trigger
 							class="text-muted-foreground min-w-0 flex-1 cursor-default truncate text-left text-sm"
 						>
-							{channelStatus.stream.title}
+							{header.text}
 						</Tooltip.Trigger>
 						<Tooltip.Content>
-							{channelStatus.stream.title}
+							{header.text}
 						</Tooltip.Content>
 					</Tooltip.Root>
 				</Tooltip.Provider>
-				<span class="text-muted-foreground flex shrink-0 items-center gap-1 text-sm">
-					<Users class="size-3.5" />
-					{channelStatus.stream.viewer_count.toLocaleString()}
-				</span>
+				{#if header.viewerCount !== null}
+					<span class="text-muted-foreground flex shrink-0 items-center gap-1 text-sm">
+						<Users class="size-3.5" />
+						{header.viewerCount.toLocaleString()}
+					</span>
+				{/if}
 			{/if}
 		</header>
 		<div class={cn('flex w-full grow overflow-hidden', isTauriMobile && 'mb-10')}>
