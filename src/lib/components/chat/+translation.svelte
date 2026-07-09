@@ -15,25 +15,27 @@
 
 {#if text}
 	{#if layout === 'message_text'}
-		<span class="relative inline-block whitespace-nowrap align-baseline">
+		<span class="relative inline-block align-baseline whitespace-nowrap">
 			<span aria-hidden="true" class="invisible">
-				<span class="font-bold">{authorName}</span>:{' '}
+				<span class="font-bold">{authorName}</span>:&#32;
 			</span>
-			<span class="text-primary absolute top-0 right-2 font-mono text-xs font-semibold whitespace-nowrap">
+			<span
+				class="text-primary absolute top-0 right-2 font-mono text-[0.75rem] font-semibold whitespace-nowrap"
+			>
 				{source} -> {target}
 			</span>
 		</span>
 		<span
-			class="text-muted-foreground text-[0.8125rem] leading-snug break-words text-wrap align-baseline [overflow-wrap:anywhere]"
+			class="text-muted-foreground align-baseline text-[0.75rem] leading-snug text-wrap wrap-anywhere"
 			>{text}</span
 		>
 	{:else}
 		<span
-			class="text-muted-foreground text-[0.8125rem] leading-snug break-words text-wrap align-baseline [overflow-wrap:anywhere]"
+			class="text-muted-foreground align-baseline text-[0.75rem] leading-snug text-wrap wrap-anywhere"
 		>
-			<span class="text-primary font-mono text-xs font-semibold whitespace-nowrap">
+			<span class="text-primary font-mono text-[0.75rem] font-semibold whitespace-nowrap">
 				{source} -> {target}
-			</span>{' '}
+			</span>&#32;
 			<span>{text}</span>
 		</span>
 	{/if}

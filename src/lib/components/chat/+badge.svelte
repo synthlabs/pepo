@@ -46,17 +46,15 @@
 {/snippet}
 
 {#snippet tooltipBody()}
-	<div class="min-w-0 max-w-[280px] p-1 text-left whitespace-normal">
-		<strong class="block break-words leading-snug [overflow-wrap:anywhere]">{tooltipContent.name}</strong>
+	<div class="max-w-[280px] min-w-0 p-1 text-left whitespace-normal">
+		<strong class="block leading-snug wrap-anywhere">{tooltipContent.name}</strong>
 		{#if tooltipContent.description}
-			<span
-				class="mt-1 block break-words text-sm leading-snug text-muted-foreground [overflow-wrap:anywhere]"
+			<span class="text-muted-foreground mt-1 block text-sm leading-snug wrap-anywhere"
 				>{tooltipContent.description}</span
 			>
 		{/if}
 		{#if tooltipContent.detail}
-			<span
-				class="mt-1 block break-words text-xs leading-snug text-muted-foreground [overflow-wrap:anywhere]"
+			<span class="text-muted-foreground mt-1 block text-xs leading-snug wrap-anywhere"
 				>{tooltipContent.detail}</span
 			>
 		{/if}

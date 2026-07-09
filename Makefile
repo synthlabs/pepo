@@ -29,6 +29,14 @@ build-internal: export PEPO_LOG := debug
 build-internal:
 	$(TOKE) -v $(PNPM) tauri build
 
+.PHONY: format
+format:
+	$(TOKE) -v $(PNPM) run format
+
+.PHONY: lint
+lint:
+	$(TOKE) -v $(PNPM) run lint
+
 .PHONY: patch
 patch:
 	$(PATCH_CMD)

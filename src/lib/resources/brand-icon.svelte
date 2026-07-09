@@ -42,7 +42,7 @@
 	{#if title}
 		<title>{title}</title>
 	{/if}
-	{#each iconNode as [tag, attrs]}
+	{#each iconNode as [tag, attrs], index (index)}
 		<svelte:element this={tag} {...attrs} />
 	{/each}
 	{@render children?.()}

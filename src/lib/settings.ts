@@ -152,10 +152,7 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 				emotes.inline_emote_px,
 				DEFAULT_APP_SETTINGS.emotes.inline_emote_px
 			),
-			inline_badge_px: positive(
-				emotes.inline_badge_px,
-				DEFAULT_APP_SETTINGS.emotes.inline_badge_px
-			)
+			inline_badge_px: positive(emotes.inline_badge_px, DEFAULT_APP_SETTINGS.emotes.inline_badge_px)
 		},
 		channel_cache: {
 			...DEFAULT_APP_SETTINGS.channel_cache,

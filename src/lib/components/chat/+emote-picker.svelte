@@ -42,7 +42,7 @@
 
 {#if visible && (showSearch || emotes.length > 0)}
 	<div
-		class="absolute bottom-full left-0 right-0 z-50 overflow-y-auto border rounded-lg bg-popover p-2 shadow-md"
+		class="bg-popover absolute right-0 bottom-full left-0 z-50 overflow-y-auto rounded-lg border p-2 shadow-md"
 		style="max-height: {px(maxHeightPx)};"
 	>
 		{#if showSearch}
@@ -61,7 +61,7 @@
 						<Tooltip.Trigger>
 							<button
 								bind:this={itemRefs[i]}
-									class="cursor-pointer rounded p-1 hover:bg-accent {i === selectedIndex
+								class="hover:bg-accent cursor-pointer rounded p-1 {i === selectedIndex
 									? 'bg-accent'
 									: ''}"
 								onclick={() => onselect(emote)}

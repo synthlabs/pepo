@@ -5,7 +5,7 @@ export default mergeConfig(
 	base,
 	defineConfig({
 		test: {
-			include: ['src/**/*.{test,spec}.ts', 'utils/js/**/*.{test,spec}.ts'],
-		},
-	}),
+			include: ['src/**/*.{test,spec}.ts', 'utils/js/**/*.{test,spec}.ts']
+		}
+	})
 );

@@ -66,12 +66,7 @@ function createContainer({
 	};
 }
 
-function appendMessage(
-	target: TestContainer,
-	key: string,
-	top: number,
-	height = 50
-): HTMLElement {
+function appendMessage(target: TestContainer, key: string, top: number, height = 50): HTMLElement {
 	const message = document.createElement('div');
 	message.dataset.chatMessageIndex = key;
 	target.layouts.set(message, { top, height });

@@ -8,4 +8,4 @@
 	];
 </script>
 
-<BrandIcon name="youtube" title="YouTube" viewBox="0 0 24 18" {...props} iconNode={iconNode} />
+<BrandIcon name="youtube" title="YouTube" viewBox="0 0 24 18" {...props} {iconNode} />

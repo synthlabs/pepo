@@ -89,7 +89,9 @@ export function getPinnedBatchScrollSnapshot(
 	thresholdPx = DEFAULT_BOTTOM_THRESHOLD
 ): ScrollSnapshot {
 	const snapshot = getBatchScrollSnapshot(current, container, messageSelector, thresholdPx);
-	return preservePinnedIntent && !snapshot.wasAtBottom ? { ...snapshot, wasAtBottom: true } : snapshot;
+	return preservePinnedIntent && !snapshot.wasAtBottom
+		? { ...snapshot, wasAtBottom: true }
+		: snapshot;
 }
 
 export function isUserScrollMovement(
@@ -129,7 +131,10 @@ export function restoreScrollAfterRender(
 		if (anchor) {
 			const containerTop = container.getBoundingClientRect().top;
 			const currentTopOffset = anchor.getBoundingClientRect().top - containerTop;
-			setScrollTopClamped(container, container.scrollTop + currentTopOffset - snapshot.anchor.topOffset);
+			setScrollTopClamped(
+				container,
+				container.scrollTop + currentTopOffset - snapshot.anchor.topOffset
+			);
 
 			return { pinned: isAtBottom(container, thresholdPx), anchored: true };
 		}

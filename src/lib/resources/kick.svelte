@@ -14,4 +14,4 @@
 	];
 </script>
 
-<BrandIcon name="kick" title="Kick" viewBox="0 0 100 112.5" color="#53FC18" {...props} iconNode={iconNode} />
+<BrandIcon name="kick" title="Kick" viewBox="0 0 100 112.5" color="#53FC18" {...props} {iconNode} />

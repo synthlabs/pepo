@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppSettings } from '$lib/bindings';
-import {
-	DEFAULT_APP_SETTINGS,
-	gridTemplateColumns,
-	normalizeAppSettings,
-	px
-} from './settings';
+import { DEFAULT_APP_SETTINGS, gridTemplateColumns, normalizeAppSettings, px } from './settings';
 
 describe('settings helpers', () => {
 	it('dedupes provider preferences and appends missing defaults', () => {

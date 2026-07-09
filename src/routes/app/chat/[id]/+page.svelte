@@ -758,17 +758,18 @@
 								(msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary')
 						)}
 					>
-						<div class="min-w-0 break-words text-wrap [overflow-wrap:anywhere]">
+						<div class="min-w-0 text-wrap wrap-anywhere">
 							{@render timestampCell(msg)}
 							{#if chatSettings.show_timestamps}
-								{' '}
+								<span aria-hidden="true"> </span>
 							{/if}
 							{@render badgeCell(msg)}
 							{#if chatSettings.show_badges && msg.badges.length > 0}
-								{' '}
+								<span aria-hidden="true"> </span>
 							{/if}
 							<span class="whitespace-nowrap">
-								<span style="color: {msg.color}; font-weight: 700;">{msg.chatter_user_name}</span>:{' '}
+								<span style="color: {msg.color}; font-weight: 700;">{msg.chatter_user_name}</span
+								>:&#32;
 							</span>
 							{#each msg.fragments as fragment, i (i)}
 								{#if 'Text' in fragment}
@@ -785,13 +786,15 @@
 						{#if msg.translation}
 							<div
 								transition:slide={{ easing: quadInOut, duration: 40 }}
-								class="mt-0.5 grid min-w-0 items-baseline gap-x-1 text-sm"
+								class="grid min-w-0 items-baseline gap-x-1"
 								style="grid-template-columns: {messageRowGridTemplate}"
 							>
 								{@render translationPrefixCells(msg, chatSettings.translation_layout)}
 								<span
-									class="min-w-0 break-words text-wrap [overflow-wrap:anywhere]"
-									style="grid-column: {translationStartColumn(chatSettings.translation_layout)} / -1"
+									class="min-w-0 text-wrap wrap-anywhere"
+									style="grid-column: {translationStartColumn(
+										chatSettings.translation_layout
+									)} / -1"
 								>
 									<Translation
 										translation={msg.translation}

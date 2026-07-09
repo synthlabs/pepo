@@ -200,7 +200,7 @@
 					<DropdownMenu.Separator class="my-1" />
 				{/if}
 				<DropdownMenu.Item
-					class="text-red-600 focus:text-red-600 data-highlighted:text-red-600 dark:text-red-400 dark:focus:text-red-400 dark:data-highlighted:text-red-400 rounded-md px-2 py-2"
+					class="rounded-md px-2 py-2 text-red-600 focus:text-red-600 data-highlighted:text-red-600 dark:text-red-400 dark:focus:text-red-400 dark:data-highlighted:text-red-400"
 					onclick={onlogout}
 				>
 					<LogOut />

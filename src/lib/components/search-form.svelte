@@ -60,7 +60,7 @@
 		<Sidebar.GroupContent class="flex justify-center">
 			<Popover.Root bind:open={popoverOpen}>
 				<Popover.Trigger
-					class="flex size-8 items-center justify-center rounded-md hover:bg-sidebar-accent"
+					class="hover:bg-sidebar-accent flex size-8 items-center justify-center rounded-md"
 					onpointerenter={() => (popoverOpen = true)}
 				>
 					<SearchIcon class="size-4 opacity-50" />

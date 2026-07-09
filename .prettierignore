@@ -1,11 +1,17 @@
 .DS_Store
 node_modules
+.pnpm-store
 /build
 /.svelte-kit
 /package
 .env
 .env.*
 !.env.example
+
+# Generated output
+/src/lib/bindings.ts
+/src-tauri/gen
+/src-tauri/target
 
 # Ignore files for PNPM, NPM and YARN
 pnpm-lock.yaml

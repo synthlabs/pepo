@@ -11,7 +11,7 @@
 		xmlns="http://www.w3.org/2000/svg"
 		viewBox="0 0 24 24"
 		stroke-width="1.5"
-		class="inline-block stroke-cyan-600 fill-cyan-950"
+		class="inline-block fill-cyan-950 stroke-cyan-600"
 		style="width: {sizePx}px;"
 	>
 		<title>Partner</title>
