@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { slide } from 'svelte/transition';
+	import { fade, slide } from 'svelte/transition';
 	import { quadInOut } from 'svelte/easing';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import { onDestroy, onMount, tick } from 'svelte';
@@ -18,6 +18,8 @@
 	import Emote from '$lib/components/chat/+emote.svelte';
 	import EmotePicker from '$lib/components/chat/+emote-picker.svelte';
 	import Translation from '$lib/components/chat/+translation.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import Smile from '@lucide/svelte/icons/smile';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
@@ -58,10 +60,15 @@
 	let autoScrollPinned = $state(true);
 	let unreadMessageCount = $state(0);
 	let showJumpToBottom = $derived(!autoScrollPinned);
+	let jumpToBottomText = $derived(
+		unreadMessageCount > 0
+			? `chat paused: ${unreadMessageCount} new message${unreadMessageCount === 1 ? '' : 's'}`
+			: 'chat paused'
+	);
 	let jumpToBottomLabel = $derived(
 		unreadMessageCount > 0
-			? `${unreadMessageCount} New Message${unreadMessageCount === 1 ? '' : 's'} Below`
-			: 'More Messages Below'
+			? `Jump to ${unreadMessageCount} new message${unreadMessageCount === 1 ? '' : 's'} below`
+			: 'Jump to more messages below'
 	);
 	let showSeparator: boolean = $state(false);
 	let channel_name: string = $derived(page.params.id ?? '');
@@ -724,83 +731,93 @@
 
 <Tooltip.Provider delayDuration={200}>
 	<div class="flex h-full w-full flex-col flex-nowrap">
-		<div
-			class="grow overflow-x-hidden overflow-y-auto [overflow-anchor:none]"
-			aria-label="Chat messages"
-			bind:this={chatDIV}
-			onpointerdown={handleScrollbarPointerIntent}
-			role="region"
-			onscroll={refreshScrollState}
-			ontouchcancel={handleTouchEndIntent}
-			ontouchend={handleTouchEndIntent}
-			ontouchmove={handleTouchMoveIntent}
-			ontouchstart={handleTouchStartIntent}
-			onwheel={handleWheelIntent}
-		>
-			<div bind:this={messageListDIV}>
-				{#each msgs as msg (msg.index)}
-					<div
-						data-chat-message-index={msg.index}
-						class={cn(
-							'block w-full px-2 py-1 text-sm',
-							chatSettings.alternate_backgrounds &&
-								(msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary')
-						)}
-					>
-						<div class="min-w-0 text-wrap wrap-anywhere">
-							{@render timestampCell(msg)}
-							{#if chatSettings.show_timestamps}
-								<span aria-hidden="true"> </span>
-							{/if}
-							{@render badgeCell(msg)}
-							{#if chatSettings.show_badges && msg.badges.length > 0}
-								<span aria-hidden="true"> </span>
-							{/if}
-							<span class="whitespace-nowrap">
-								<span style="color: {msg.color}; font-weight: 700;">{msg.chatter_user_name}</span
-								>:&#32;
-							</span>
-							{#each msg.fragments as fragment, i (i)}
-								{#if 'Text' in fragment}
-									{fragment.Text.text}
-								{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
-									{#if chatSettings.show_emotes}
-										<Emote emote={fragment.Emote.emote} sizePx={emoteSettings.inline_emote_px} />
-									{:else}
-										{fragment.Emote.emote.name}
-									{/if}
-								{/if}
-							{/each}
-						</div>
-						{#if msg.translation}
-							<div
-								transition:slide={{ easing: quadInOut, duration: 40 }}
-								class="min-w-0 text-wrap wrap-anywhere"
-							>
-								{@render translationPrefix(msg, chatSettings.translation_layout)}
-								<Translation
-									translation={msg.translation}
-									authorName={msg.chatter_user_name}
-									layout={chatSettings.translation_layout}
-								/>
-							</div>
-						{/if}
-					</div>
-					{#if showSeparator}
-						<Separator class="" />
-					{/if}
-				{/each}
-			</div>
-		</div>
-		{#if showJumpToBottom}
-			<button
-				class="bg-primary w-full cursor-pointer text-center"
-				type="button"
-				onclick={jumpToBottom}
+		<div class="relative min-h-0 grow">
+			<div
+				class="h-full overflow-x-hidden overflow-y-auto [overflow-anchor:none]"
+				aria-label="Chat messages"
+				bind:this={chatDIV}
+				onpointerdown={handleScrollbarPointerIntent}
+				role="region"
+				onscroll={refreshScrollState}
+				ontouchcancel={handleTouchEndIntent}
+				ontouchend={handleTouchEndIntent}
+				ontouchmove={handleTouchMoveIntent}
+				ontouchstart={handleTouchStartIntent}
+				onwheel={handleWheelIntent}
 			>
-				{jumpToBottomLabel}
-			</button>
-		{/if}
+				<div bind:this={messageListDIV}>
+					{#each msgs as msg (msg.index)}
+						<div
+							data-chat-message-index={msg.index}
+							class={cn(
+								'block w-full px-2 py-1 text-sm',
+								chatSettings.alternate_backgrounds &&
+									(msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary')
+							)}
+						>
+							<div class="min-w-0 text-wrap wrap-anywhere">
+								{@render timestampCell(msg)}
+								{#if chatSettings.show_timestamps}
+									<span aria-hidden="true"> </span>
+								{/if}
+								{@render badgeCell(msg)}
+								{#if chatSettings.show_badges && msg.badges.length > 0}
+									<span aria-hidden="true"> </span>
+								{/if}
+								<span class="whitespace-nowrap">
+									<span style="color: {msg.color}; font-weight: 700;">{msg.chatter_user_name}</span
+									>:&#32;
+								</span>
+								{#each msg.fragments as fragment, i (i)}
+									{#if 'Text' in fragment}
+										{fragment.Text.text}
+									{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
+										{#if chatSettings.show_emotes}
+											<Emote emote={fragment.Emote.emote} sizePx={emoteSettings.inline_emote_px} />
+										{:else}
+											{fragment.Emote.emote.name}
+										{/if}
+									{/if}
+								{/each}
+							</div>
+							{#if msg.translation}
+								<div
+									transition:slide={{ easing: quadInOut, duration: 40 }}
+									class="min-w-0 text-wrap wrap-anywhere"
+								>
+									{@render translationPrefix(msg, chatSettings.translation_layout)}
+									<Translation
+										translation={msg.translation}
+										authorName={msg.chatter_user_name}
+										layout={chatSettings.translation_layout}
+									/>
+								</div>
+							{/if}
+						</div>
+						{#if showSeparator}
+							<Separator class="" />
+						{/if}
+					{/each}
+				</div>
+			</div>
+			{#if showJumpToBottom}
+				<div
+					transition:fade={{ duration: 120 }}
+					class="pointer-events-none absolute inset-x-0 bottom-2 z-10 flex justify-center"
+				>
+					<Button
+						variant="outline"
+						size="sm"
+						class="bg-background/90 text-muted-foreground hover:text-foreground pointer-events-auto h-7 w-56 rounded-full pr-4 pl-3 text-xs tabular-nums shadow-sm backdrop-blur-sm"
+						aria-label={jumpToBottomLabel}
+						onclick={jumpToBottom}
+					>
+						<ArrowDown />
+						{jumpToBottomText}
+					</Button>
+				</div>
+			{/if}
+		</div>
 		{#if errorState.active}
 			<div
 				transition:slide={{ easing: quadInOut, duration: 250 }}
