@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+	beginManualScrollInteraction,
 	captureScrollSnapshot,
 	getBatchScrollSnapshot,
 	getPinnedBatchScrollSnapshot,
 	isAtBottom,
+	isManualScrollInteractionActive,
 	isUserScrollMovement,
 	isUserScrollPauseIntent,
+	releaseManualScrollInteraction,
 	refreshScrollStateAfterScroll,
-	restoreScrollAfterRender
+	restoreScrollAfterRender,
+	shouldOwnManualScroll
 } from './autoscroll';
 
 const MESSAGE_SELECTOR = '[data-chat-message-index]';
@@ -95,6 +99,33 @@ function rect(top: number, height: number): DOMRect {
 }
 
 describe('autoscroll helpers', () => {
+	it('gives upward wheel, touch, and scrollbar input immediate viewport ownership', () => {
+		expect(shouldOwnManualScroll(true, 'wheel', 'up')).toBe(true);
+		expect(shouldOwnManualScroll(true, 'touch', 'up')).toBe(true);
+		expect(shouldOwnManualScroll(true, 'scrollbar', 'unknown')).toBe(true);
+		expect(shouldOwnManualScroll(true, 'wheel', 'down')).toBe(false);
+		expect(shouldOwnManualScroll(false, 'wheel', 'down')).toBe(true);
+	});
+
+	it('keeps repeated manual input active until the latest quiet deadline', () => {
+		let interaction = beginManualScrollInteraction(null, 'wheel', 'up', 100, 250);
+		expect(isManualScrollInteractionActive(interaction, 349)).toBe(true);
+
+		interaction = beginManualScrollInteraction(interaction, 'wheel', 'up', 300, 250);
+		expect(isManualScrollInteractionActive(interaction, 500)).toBe(true);
+		expect(isManualScrollInteractionActive(interaction, 551)).toBe(false);
+	});
+
+	it('keeps scrollbar ownership until release, then uses the quiet deadline', () => {
+		let interaction: ReturnType<typeof releaseManualScrollInteraction> =
+			beginManualScrollInteraction(null, 'scrollbar', 'unknown', 100, 250);
+		expect(isManualScrollInteractionActive(interaction, 1000)).toBe(true);
+
+		interaction = releaseManualScrollInteraction(interaction, 1000, 250);
+		expect(isManualScrollInteractionActive(interaction, 1249)).toBe(true);
+		expect(isManualScrollInteractionActive(interaction, 1251)).toBe(false);
+	});
+
 	it('keeps a bottom-pinned viewport pinned after content grows', () => {
 		const target = createContainer({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
 		const snapshot = captureScrollSnapshot(target.container, MESSAGE_SELECTOR);
@@ -184,6 +215,20 @@ describe('autoscroll helpers', () => {
 
 		expect(result.pinned).toBe(false);
 		expect(target.getScrollTop()).toBe(300);
+	});
+
+	it('keeps a paused snapshot paused inside the normal bottom threshold', () => {
+		const target = createContainer({ scrollTop: 590, scrollHeight: 1000, clientHeight: 400 });
+
+		const snapshot = getPinnedBatchScrollSnapshot(
+			null,
+			target.container,
+			MESSAGE_SELECTOR,
+			false,
+			32
+		);
+
+		expect(snapshot.wasAtBottom).toBe(false);
 	});
 
 	it('does not let an interim scroll event pause a bottom-pinned burst before restore', () => {
@@ -436,6 +481,40 @@ describe('autoscroll helpers', () => {
 		expect(userInitiated).toBe(true);
 		expect(scrollState.pinned).toBe(true);
 		expect(scrollState.unreadMessageCount).toBe(0);
+	});
+
+	it('keeps manual scrolling paused until it reaches the exact bottom', () => {
+		const target = createContainer({ scrollTop: 590, scrollHeight: 1000, clientHeight: 400 });
+
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			null,
+			false,
+			2,
+			MESSAGE_SELECTOR,
+			32,
+			{ userInitiated: true, preservePinnedIntent: false }
+		);
+
+		expect(scrollState.pinned).toBe(false);
+		expect(scrollState.unreadMessageCount).toBe(2);
+	});
+
+	it('does not let a non-user scroll event resume an already paused viewport', () => {
+		const target = createContainer({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+
+		const scrollState = refreshScrollStateAfterScroll(
+			target.container,
+			null,
+			false,
+			2,
+			MESSAGE_SELECTOR,
+			32,
+			{ preservePinnedIntent: false }
+		);
+
+		expect(scrollState.pinned).toBe(false);
+		expect(scrollState.unreadMessageCount).toBe(2);
 	});
 
 	it('does not promote an already paused viewport during layout reflow', () => {

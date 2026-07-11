@@ -33,9 +33,65 @@ export interface ScrollStateRefreshOptions {
 
 export type ScrollIntentDirection = 'up' | 'down' | 'unknown';
 
+export type ManualScrollSource = 'wheel' | 'touch' | 'scrollbar';
+
+export interface ManualScrollInteraction {
+	activeUntil: number;
+	direction: ScrollIntentDirection;
+	moved: boolean;
+	scrollbarHeld: boolean;
+}
+
 export interface ScrollIntentSnapshot {
 	scrollTop: number;
 	direction: ScrollIntentDirection;
+}
+
+export function shouldOwnManualScroll(
+	pinned: boolean,
+	source: ManualScrollSource,
+	direction: ScrollIntentDirection
+): boolean {
+	if (source === 'scrollbar') return true;
+	if (direction === 'unknown') return false;
+	return direction === 'up' || !pinned;
+}
+
+export function beginManualScrollInteraction(
+	current: ManualScrollInteraction | null,
+	source: ManualScrollSource,
+	direction: ScrollIntentDirection,
+	now: number,
+	settleDelayMs: number
+): ManualScrollInteraction {
+	return {
+		activeUntil: now + settleDelayMs,
+		direction: source === 'scrollbar' ? 'unknown' : direction,
+		moved: current?.moved ?? false,
+		scrollbarHeld: current?.scrollbarHeld === true || source === 'scrollbar'
+	};
+}
+
+export function releaseManualScrollInteraction(
+	current: ManualScrollInteraction | null,
+	now: number,
+	settleDelayMs: number
+): ManualScrollInteraction | null {
+	if (!current) return null;
+
+	return {
+		activeUntil: now + settleDelayMs,
+		direction: current.direction,
+		moved: current.moved,
+		scrollbarHeld: false
+	};
+}
+
+export function isManualScrollInteractionActive(
+	interaction: ManualScrollInteraction | null,
+	now: number
+): boolean {
+	return interaction !== null && (interaction.scrollbarHeld || now <= interaction.activeUntil);
 }
 
 export function maxScrollTop(container: HTMLElement): number {
@@ -89,9 +145,10 @@ export function getPinnedBatchScrollSnapshot(
 	thresholdPx = DEFAULT_BOTTOM_THRESHOLD
 ): ScrollSnapshot {
 	const snapshot = getBatchScrollSnapshot(current, container, messageSelector, thresholdPx);
-	return preservePinnedIntent && !snapshot.wasAtBottom
-		? { ...snapshot, wasAtBottom: true }
-		: snapshot;
+	if (preservePinnedIntent) {
+		return snapshot.wasAtBottom ? snapshot : { ...snapshot, wasAtBottom: true };
+	}
+	return snapshot.wasAtBottom ? { ...snapshot, wasAtBottom: false } : snapshot;
 }
 
 export function isUserScrollMovement(
@@ -171,10 +228,7 @@ export function refreshScrollStateAfterScroll(
 		};
 	}
 
-	const pinned =
-		options.userInitiated && options.preservePinnedIntent
-			? distanceFromBottom(container) === 0
-			: isAtBottom(container, thresholdPx);
+	const pinned = options.userInitiated && distanceFromBottom(container) === 0;
 	if (pinned) {
 		return {
 			pinned: true,
