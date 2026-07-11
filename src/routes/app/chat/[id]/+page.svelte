@@ -76,16 +76,6 @@
 	let normalizedAppSettings = $derived(getNormalizedAppSettings());
 	let chatSettings = $derived(normalizedAppSettings.chat);
 	let emoteSettings = $derived(normalizedAppSettings.emotes);
-	let messageRowGridTemplate = $derived(
-		[
-			chatSettings.show_timestamps ? 'auto' : '',
-			chatSettings.show_badges ? 'auto' : '',
-			'auto',
-			'minmax(0, 1fr)'
-		]
-			.filter(Boolean)
-			.join(' ')
-	);
 
 	// Emote picker state
 	let emotePickerVisible = $state(false);
@@ -689,13 +679,6 @@
 			emoteSearchQuery = '';
 		}
 	};
-
-	const translationStartColumn = (layout: ChatTranslationLayout) => {
-		let prefixColumns = 0;
-		if (chatSettings.show_timestamps) prefixColumns += 1;
-		if (layout !== 'timestamp_end' && chatSettings.show_badges) prefixColumns += 1;
-		return prefixColumns + 1;
-	};
 </script>
 
 {#snippet timestampCell(msg: ChannelMessage, invisible = false)}
@@ -726,10 +709,16 @@
 	{/if}
 {/snippet}
 
-{#snippet translationPrefixCells(msg: ChannelMessage, layout: ChatTranslationLayout)}
+{#snippet translationPrefix(msg: ChannelMessage, layout: ChatTranslationLayout)}
 	{@render timestampCell(msg, true)}
+	{#if chatSettings.show_timestamps}
+		<span aria-hidden="true"> </span>
+	{/if}
 	{#if layout !== 'timestamp_end'}
 		{@render badgeCell(msg, true)}
+		{#if chatSettings.show_badges && msg.badges.length > 0}
+			<span aria-hidden="true"> </span>
+		{/if}
 	{/if}
 {/snippet}
 
@@ -786,22 +775,14 @@
 						{#if msg.translation}
 							<div
 								transition:slide={{ easing: quadInOut, duration: 40 }}
-								class="grid min-w-0 items-baseline gap-x-1"
-								style="grid-template-columns: {messageRowGridTemplate}"
+								class="min-w-0 text-wrap wrap-anywhere"
 							>
-								{@render translationPrefixCells(msg, chatSettings.translation_layout)}
-								<span
-									class="min-w-0 text-wrap wrap-anywhere"
-									style="grid-column: {translationStartColumn(
-										chatSettings.translation_layout
-									)} / -1"
-								>
-									<Translation
-										translation={msg.translation}
-										authorName={msg.chatter_user_name}
-										layout={chatSettings.translation_layout}
-									/>
-								</span>
+								{@render translationPrefix(msg, chatSettings.translation_layout)}
+								<Translation
+									translation={msg.translation}
+									authorName={msg.chatter_user_name}
+									layout={chatSettings.translation_layout}
+								/>
 							</div>
 						{/if}
 					</div>
