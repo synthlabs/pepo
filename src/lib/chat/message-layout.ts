@@ -1,3 +1,5 @@
+import type { ChatTranslationLayout } from '$lib/bindings';
+
 const CHAT_BADGE_GAP_PX = 4;
 
 export function chatBadgePlaceholderWidth(badgeCount: number, badgeSizePx: number): string {
@@ -6,6 +8,14 @@ export function chatBadgePlaceholderWidth(badgeCount: number, badgeSizePx: numbe
 
 	const sizePx = positiveInteger(badgeSizePx, 1);
 	return `${count * sizePx + (count - 1) * CHAT_BADGE_GAP_PX}px`;
+}
+
+export function translationHasTimestampPlaceholder(layout: ChatTranslationLayout): boolean {
+	return layout !== 'connector';
+}
+
+export function translationHasBadgePlaceholder(layout: ChatTranslationLayout): boolean {
+	return layout !== 'connector' && layout !== 'timestamp_end';
 }
 
 function positiveInteger(value: number, fallback: number): number {

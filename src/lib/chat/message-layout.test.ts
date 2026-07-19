@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { chatBadgePlaceholderWidth } from './message-layout';
+import {
+	chatBadgePlaceholderWidth,
+	translationHasBadgePlaceholder,
+	translationHasTimestampPlaceholder
+} from './message-layout';
 
 describe('chat message layout helpers', () => {
 	it('returns zero width when there are no badges', () => {
@@ -18,5 +22,16 @@ describe('chat message layout helpers', () => {
 
 	it('uses the configured badge size', () => {
 		expect(chatBadgePlaceholderWidth(2, 24)).toBe('52px');
+	});
+
+	it('maps translation layouts to their placeholder behavior', () => {
+		expect(translationHasTimestampPlaceholder('language_tag')).toBe(true);
+		expect(translationHasBadgePlaceholder('language_tag')).toBe(true);
+		expect(translationHasTimestampPlaceholder('message_text')).toBe(true);
+		expect(translationHasBadgePlaceholder('message_text')).toBe(true);
+		expect(translationHasTimestampPlaceholder('timestamp_end')).toBe(true);
+		expect(translationHasBadgePlaceholder('timestamp_end')).toBe(false);
+		expect(translationHasTimestampPlaceholder('connector')).toBe(false);
+		expect(translationHasBadgePlaceholder('connector')).toBe(false);
 	});
 });

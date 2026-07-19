@@ -117,7 +117,8 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 			translation_layout:
 				chat.translation_layout === 'language_tag' ||
 				chat.translation_layout === 'message_text' ||
-				chat.translation_layout === 'timestamp_end'
+				chat.translation_layout === 'timestamp_end' ||
+				chat.translation_layout === 'connector'
 					? chat.translation_layout
 					: DEFAULT_APP_SETTINGS.chat.translation_layout,
 			timestamp_locale:

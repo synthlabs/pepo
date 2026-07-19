@@ -45,7 +45,11 @@
 		attachPendingTranslation,
 		type PendingTranslations
 	} from '$lib/chat/translation';
-	import { chatBadgePlaceholderWidth } from '$lib/chat/message-layout';
+	import {
+		chatBadgePlaceholderWidth,
+		translationHasBadgePlaceholder,
+		translationHasTimestampPlaceholder
+	} from '$lib/chat/message-layout';
 	import { formatTimestamp } from '$lib/settings';
 	import { authState } from '$lib/stores/auth.svelte';
 	import { getNormalizedAppSettings } from '$lib/stores/settings.svelte';
@@ -587,12 +591,7 @@
 
 		pausedReflowFrame = requestAnimationFrame(() => {
 			pausedReflowFrame = undefined;
-			if (
-				!chatDIV ||
-				!pausedReflowSnapshot ||
-				autoScrollPinned ||
-				manualScrollOwnsViewport()
-			)
+			if (!chatDIV || !pausedReflowSnapshot || autoScrollPinned || manualScrollOwnsViewport())
 				return;
 
 			const snapshot = pausedReflowSnapshot;
@@ -621,9 +620,7 @@
 			CHAT_MESSAGE_SELECTOR,
 			chatSettings.autoscroll_threshold_px
 		);
-		pausedReflowSnapshot = autoScrollPinned
-			? snapshot
-			: { ...snapshot, wasAtBottom: false };
+		pausedReflowSnapshot = autoScrollPinned ? snapshot : { ...snapshot, wasAtBottom: false };
 		if (pausedReflowTimer !== undefined) clearTimeout(pausedReflowTimer);
 		pausedReflowTimer = setTimeout(() => {
 			pausedReflowTimer = undefined;
@@ -833,11 +830,13 @@
 {/snippet}
 
 {#snippet translationPrefix(msg: ChannelMessage, layout: ChatTranslationLayout)}
-	{@render timestampCell(msg, true)}
-	{#if chatSettings.show_timestamps}
-		<span aria-hidden="true"> </span>
+	{#if translationHasTimestampPlaceholder(layout)}
+		{@render timestampCell(msg, true)}
+		{#if chatSettings.show_timestamps}
+			<span aria-hidden="true"> </span>
+		{/if}
 	{/if}
-	{#if layout !== 'timestamp_end'}
+	{#if translationHasBadgePlaceholder(layout)}
 		{@render badgeCell(msg, true)}
 		{#if chatSettings.show_badges && msg.badges.length > 0}
 			<span aria-hidden="true"> </span>

@@ -75,6 +75,18 @@ describe('settings helpers', () => {
 		expect(settings.chat.translation_layout).toBe('timestamp_end');
 	});
 
+	it('accepts the connector chat translation layout', () => {
+		const settings = normalizeAppSettings({
+			...DEFAULT_APP_SETTINGS,
+			chat: {
+				...DEFAULT_APP_SETTINGS.chat,
+				translation_layout: 'connector'
+			}
+		});
+
+		expect(settings.chat.translation_layout).toBe('connector');
+	});
+
 	it('falls back to the default chat translation layout when missing or invalid', () => {
 		const missingLayout = normalizeAppSettings({
 			...DEFAULT_APP_SETTINGS,

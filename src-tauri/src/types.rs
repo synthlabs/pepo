@@ -416,6 +416,7 @@ pub enum ChatTranslationLayout {
     LanguageTag,
     MessageText,
     TimestampEnd,
+    Connector,
 }
 
 impl Default for ChatTranslationLayout {
@@ -1214,6 +1215,15 @@ mod tests {
             settings.providers.metadata_retention_secs,
             30 * 24 * 60 * 60
         );
+    }
+
+    #[test]
+    fn chat_translation_layout_connector_uses_snake_case_serde_value() {
+        let serialized = serde_json::to_string(&ChatTranslationLayout::Connector).unwrap();
+        assert_eq!(serialized, "\"connector\"");
+
+        let deserialized: ChatTranslationLayout = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, ChatTranslationLayout::Connector);
     }
 
     #[test]

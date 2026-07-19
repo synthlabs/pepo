@@ -33,9 +33,22 @@
 		<span
 			class="text-muted-foreground align-baseline text-[0.75rem] leading-snug text-wrap wrap-anywhere"
 		>
-			<span class="text-primary font-mono text-[0.75rem] font-semibold whitespace-nowrap">
-				{source} -> {target}
-			</span>&#32;
+			{#if layout === 'connector'}
+				<span class="inline-flex items-baseline whitespace-nowrap">
+					<span class="inline-flex pr-2 pl-1">
+						<span
+							aria-hidden="true"
+							data-translation-connector
+							class="border-primary inline-block h-2.5 w-[18px] -translate-y-0.5 rounded-bl-xl border-b-2 border-l-2 align-baseline"
+						></span>
+					</span>
+					<span class="text-primary pr-1 font-mono text-[0.75rem] font-semibold">
+						{source} -> {target}
+					</span>
+				</span>{:else}
+				<span class="text-primary font-mono text-[0.75rem] font-semibold whitespace-nowrap">
+					{source} -> {target}
+				</span>{/if}
 			<span>{text}</span>
 		</span>
 	{/if}
