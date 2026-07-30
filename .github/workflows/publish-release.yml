@@ -5,7 +5,72 @@ on:
       - main
 
 jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: latest
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+          run_install: false
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+
+      - name: install system dependencies
+        run: ./utils/scripts/install_deps.sh --ci
+
+      - name: install pnpm dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: frontend tests
+        run: pnpm test:run
+
+      - name: frontend checks
+        run: pnpm check
+
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  verify-install:
+    strategy:
+      fail-fast: true
+      matrix:
+        platform:
+          - ubuntu-24.04
+          - windows-latest
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Linux install command tests
+        if: runner.os == 'Linux'
+        run: ./utils/packaging/tauri/test.sh
+
+      - name: Windows install command tests
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\utils\packaging\tauri\install.test.ps1
+
   publish-tauri:
+    needs:
+      - verify
+      - verify-install
     permissions:
       contents: write
     strategy:
@@ -91,3 +156,127 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  publish-arch:
+    needs: publish-tauri
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      filename: ${{ steps.package.outputs.filename }}
+      pkgrel: ${{ steps.metadata.outputs.pkgrel }}
+      release-tag: ${{ steps.metadata.outputs.release-tag }}
+      sha256: ${{ steps.package.outputs.sha256 }}
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Read package metadata
+        id: metadata
+        shell: bash
+        run: |
+          version="$(jq -r '.version' src-tauri/tauri.conf.json)"
+          short_sha="$(git rev-parse --short HEAD)"
+          pkgrel="${GITHUB_RUN_NUMBER}"
+          {
+            echo "version=${version}"
+            echo "pkgrel=${pkgrel}"
+            echo "release-tag=app-${version}-${short_sha}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Build and verify Arch package
+        run: |
+          ./utils/packaging/tauri/arch/container-build.sh \
+            --project-root "${PWD}" \
+            --container-runtime docker \
+            --pkgrel "${{ steps.metadata.outputs.pkgrel }}"
+
+      - name: Read package output
+        id: package
+        shell: bash
+        run: |
+          filename="pepo-${{ steps.metadata.outputs.version }}-${{ steps.metadata.outputs.pkgrel }}-x86_64.pkg.tar.zst"
+          sha256="$(sha256sum "package/${filename}" | cut -d' ' -f1)"
+          {
+            echo "filename=${filename}"
+            echo "sha256=${sha256}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Upload package to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload \
+            "${{ steps.metadata.outputs.release-tag }}" \
+            "package/${{ steps.package.outputs.filename }}" \
+            --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: package/${{ steps.package.outputs.filename }}
+          if-no-files-found: error
+
+  publish-aur:
+    needs: publish-arch
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: arch-package
+          path: package
+
+      - name: Configure AUR SSH access
+        id: aur-ssh
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          if [[ -z "${AUR_SSH_PRIVATE_KEY}" ]]; then
+            echo 'AUR_SSH_PRIVATE_KEY is not configured' >&2
+            exit 1
+          fi
+
+          ssh_dir="${RUNNER_TEMP}/aur-ssh"
+          mkdir -p "${ssh_dir}"
+          chmod 700 "${ssh_dir}"
+          printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" >"${ssh_dir}/id_ed25519"
+          chmod 600 "${ssh_dir}/id_ed25519"
+
+          ssh-keyscan -t ed25519 aur.archlinux.org >"${ssh_dir}/known_hosts"
+          fingerprint="$(ssh-keygen -lf "${ssh_dir}/known_hosts" -E sha256 | awk '{print $2}')"
+          expected='SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4'
+          if [[ "${fingerprint}" != "${expected}" ]]; then
+            echo "Unexpected AUR SSH host fingerprint: ${fingerprint}" >&2
+            exit 1
+          fi
+
+          cat >"${ssh_dir}/config" <<'EOF'
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+          EOF
+          chmod 600 "${ssh_dir}/config"
+          echo "directory=${ssh_dir}" >>"${GITHUB_OUTPUT}"
+
+      - name: Publish pepo-bin
+        run: |
+          ./utils/packaging/tauri/aur/container-publish.sh \
+            --project-root "${PWD}" \
+            --container-runtime docker \
+            --package "${PWD}/package/${{ needs.publish-arch.outputs.filename }}" \
+            --release-tag "${{ needs.publish-arch.outputs.release-tag }}" \
+            --pkgver "${{ needs.publish-arch.outputs.version }}" \
+            --pkgrel "${{ needs.publish-arch.outputs.pkgrel }}" \
+            --aur-repository ssh://aur@aur.archlinux.org/pepo-bin.git \
+            --ssh-dir "${{ steps.aur-ssh.outputs.directory }}" \
+            --git-user-name Jerod \
+            --git-user-email jerod@synth.sh

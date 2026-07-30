@@ -46,7 +46,25 @@ Download the latest release for your platform from the [GitHub Releases](https:/
 | Linux (Fedora/RHEL)   | `Pepo-x.x.x-1.x86_64.rpm`         |
 | Linux (AppImage)      | `Pepo_x.x.x_amd64.AppImage`       |
 
-Once installed, Pepo will notify you when updates are available and can update itself in-place.
+DEB, RPM, and AppImage installations can update in place. Pacman-managed installations notify you
+about new versions and open the [`pepo-bin` AUR page](https://aur.archlinux.org/packages/pepo-bin)
+so your package manager remains responsible for installation.
+
+### Arch Linux and CachyOS
+
+Install `pepo-bin` with an AUR helper:
+
+```bash
+paru -S pepo-bin
+```
+
+Or build it with the standard AUR workflow:
+
+```bash
+git clone https://aur.archlinux.org/pepo-bin.git
+cd pepo-bin
+makepkg -si
+```
 
 ### Build from Source
 
@@ -61,7 +79,31 @@ make build
 make install
 ```
 
-The built application will be in `src-tauri/target/release/bundle/`.
+`make build` creates an NSIS installer on Windows, a DEB on Debian-family Linux, and an x86_64
+pacman package on Arch-family Linux. Other platforms keep Tauri's normal bundle behavior.
+`make install` builds first, then installs that artifact. Linux package installation uses `sudo`
+and runs apt-get or pacman without a package confirmation prompt; the Windows installer displays
+its normal UI and `make` waits for it to finish.
+
+Internal builds have matching commands:
+
+```bash
+make build-internal
+make install-internal
+```
+
+To install an existing local artifact without rebuilding, pass any local path with the expected
+platform extension:
+
+```bash
+make install TAURI_PACKAGING_INSTALL_ARTIFACT=/path/to/Pepo.deb
+```
+
+Windows and Debian-family builds use the host's native architecture. Arch-family build and install
+support is currently limited to x86_64. `make install` is not yet available on macOS, RPM-family
+Linux, or generic AppImage systems.
+
+Tauri bundles are written under `target/release/bundle/`; Arch packages are written to `package/`.
 
 ### Development Logging
 
