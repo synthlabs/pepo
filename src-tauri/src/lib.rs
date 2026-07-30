@@ -32,6 +32,8 @@ mod eventsub;
 mod internal;
 mod logging;
 mod message;
+#[cfg(target_os = "linux")]
+mod platform;
 mod token;
 mod types;
 
@@ -1194,6 +1196,9 @@ fn logout(app_handle: AppHandle, _state_syncer: State<'_, StateSyncer>) -> Resul
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    let nvidia_wayland_workaround_applied = platform::apply_nvidia_wayland_workaround();
+
     color_eyre::install().expect("failed to install color_eyre");
     let pepo_log_level = logging::pepo_log_level();
     let inbound_build = inbound_build_info();
@@ -1252,6 +1257,11 @@ pub fn run() {
     let _builder = builder
         .invoke_handler(public_handlers.invoke_handler())
         .setup(move |app| {
+            #[cfg(target_os = "linux")]
+            if nvidia_wayland_workaround_applied {
+                info!("NVIDIA on Wayland detected; disabled EGL explicit sync");
+            }
+
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())
