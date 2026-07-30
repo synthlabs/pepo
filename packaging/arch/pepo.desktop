@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Pepo
+Comment=Desktop chat client for Twitch with third-party emote support.
+Exec=pepo
+Icon=pepo
+Terminal=false
+Categories=Network;Chat;

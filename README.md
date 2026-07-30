@@ -37,25 +37,28 @@ It has already gone through one major overhaul, which you can go back and see th
 
 Download the latest release for your platform from the [GitHub Releases](https://github.com/synthlabs/pepo/releases/latest) page.
 
-| Platform              | File                        |
-| --------------------- | --------------------------- |
-| macOS                 | `Pepo_x.x.x_universal.dmg`  |
-| Windows               | `Pepo_x.x.x_x64-setup.exe`  |
-| Linux (Debian/Ubuntu) | `Pepo_x.x.x_amd64.deb`      |
-| Linux (Fedora/RHEL)   | `Pepo-x.x.x-1.x86_64.rpm`   |
-| Linux (AppImage)      | `Pepo_x.x.x_amd64.AppImage` |
+| Platform              | File                              |
+| --------------------- | --------------------------------- |
+| macOS                 | `Pepo_x.x.x_universal.dmg`        |
+| Windows               | `Pepo_x.x.x_x64-setup.exe`        |
+| Linux (Arch/CachyOS)  | `pepo-x.x.x-r-x86_64.pkg.tar.zst` |
+| Linux (Debian/Ubuntu) | `Pepo_x.x.x_amd64.deb`            |
+| Linux (Fedora/RHEL)   | `Pepo-x.x.x-1.x86_64.rpm`         |
+| Linux (AppImage)      | `Pepo_x.x.x_amd64.AppImage`       |
 
 Once installed, Pepo will notify you when updates are available and can update itself in-place.
 
 ### Build from Source
 
-Requires [Rust](https://www.rust-lang.org/tools/install), [Node.js](https://nodejs.org/), and [pnpm](https://pnpm.io/).
+Requires [Rust](https://www.rust-lang.org/tools/install), [Node.js](https://nodejs.org/),
+[pnpm](https://pnpm.io/), GNU Make, and `toke`. Arch-family builds also require Docker or Podman.
 
 ```bash
 git clone --recurse-submodules https://github.com/synthlabs/pepo.git
 cd pepo
 pnpm install
-pnpm tauri build
+make build
+make install
 ```
 
 The built application will be in `src-tauri/target/release/bundle/`.

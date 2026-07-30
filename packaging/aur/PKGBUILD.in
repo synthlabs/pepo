@@ -1,0 +1,36 @@
+# Maintainer: Jerod <jerod@synth.sh>
+
+pkgname=pepo-bin
+pkgver=@PKGVER@
+pkgrel=@PKGREL@
+pkgdesc='Desktop chat client for Twitch with third-party emote support.'
+arch=('x86_64')
+url='https://github.com/synthlabs/pepo'
+license=('AGPL-3.0-only')
+depends=(
+  'cairo'
+  'dbus'
+  'gdk-pixbuf2'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libgcc'
+  'libsoup3'
+  'openssl'
+  'webkit2gtk-4.1'
+  'xdg-utils'
+)
+provides=("pepo=${pkgver}")
+conflicts=('pepo')
+options=('!debug' '!strip')
+source=("@ASSET_NAME@::https://github.com/synthlabs/pepo/releases/download/@RELEASE_TAG@/@ASSET_NAME@")
+noextract=('@ASSET_NAME@')
+sha256sums=('@SHA256@')
+
+package() {
+  bsdtar -xf "${srcdir}/@ASSET_NAME@" -C "${pkgdir}" \
+    --exclude=.BUILDINFO \
+    --exclude=.MTREE \
+    --exclude=.PKGINFO
+}

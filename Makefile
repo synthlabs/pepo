@@ -9,6 +9,12 @@ else
 PATCH_CMD := "$(ROOT)/utils/scripts/patch.sh"
 endif
 
+TAURI_PACKAGING_PROJECT_ROOT := $(ROOT)
+TAURI_PACKAGING_TOKE := $(TOKE)
+TAURI_PACKAGING_PNPM := $(PNPM)
+TAURI_PACKAGING_POWERSHELL := $(POWERSHELL)
+TAURI_PACKAGING_PASSTHROUGH_VARS := ENABLE_INTERNAL PEPO_LOG
+
 .PHONY: dev
 dev:
 	$(TOKE) -v $(PNPM) tauri dev
@@ -19,15 +25,10 @@ dev-internal: export PEPO_LOG := debug
 dev-internal:
 	$(TOKE) -v $(PNPM) tauri dev
 
-.PHONY: build
-build:
-	$(TOKE) -v $(PNPM) tauri build
-
-.PHONY: build-internal
 build-internal: export ENABLE_INTERNAL := 1
 build-internal: export PEPO_LOG := debug
-build-internal:
-	$(TOKE) -v $(PNPM) tauri build
+
+include utils/packaging/tauri/tauri.mk
 
 .PHONY: format
 format:

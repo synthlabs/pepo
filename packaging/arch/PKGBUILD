@@ -1,0 +1,85 @@
+# Maintainer: Jerod <jerod@synth.sh>
+
+pkgname=pepo
+pkgver=${TAURI_PACKAGING_PKGVER:-0.2.26}
+pkgrel=${TAURI_PACKAGING_PKGREL:-1}
+pkgdesc='Desktop chat client for Twitch with third-party emote support.'
+arch=('x86_64')
+url='https://github.com/synthlabs/pepo'
+license=('AGPL-3.0-only')
+depends=(
+  'cairo'
+  'dbus'
+  'gdk-pixbuf2'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libgcc'
+  'libsoup3'
+  'openssl'
+  'webkit2gtk-4.1'
+  'xdg-utils'
+)
+makedepends=(
+  'appmenu-gtk-module'
+  'corepack'
+  'git'
+  'libappindicator'
+  'librsvg'
+  'nodejs'
+  'pkgconf'
+  'rust'
+  'xdotool'
+)
+options=('!debug' '!strip' '!lto')
+
+_tauri_binary=pepo
+_tauri_expected_files=(
+  'usr/bin/pepo'
+  'usr/share/applications/pepo.desktop'
+  'usr/share/icons/hicolor/32x32/apps/pepo.png'
+  'usr/share/icons/hicolor/128x128/apps/pepo.png'
+  'usr/share/icons/hicolor/256x256/apps/pepo.png'
+  'usr/share/licenses/pepo/LICENSE'
+)
+_tauri_smoke_enabled=1
+_tauri_smoke_timeout=15
+_tauri_smoke_env=('WEBKIT_DISABLE_COMPOSITING_MODE=1')
+
+build() {
+  cd "${TAURI_PACKAGING_SOURCE_DIR:?TAURI_PACKAGING_SOURCE_DIR must point to the Tauri checkout}"
+
+  export CI=true
+  export PUBLIC_UPDATE_INSTALL_MODE=package-manager
+  local corepack_bin="${srcdir}/corepack-bin"
+
+  export COREPACK_HOME="${srcdir}/corepack-home"
+  export COREPACK_ENABLE_PROJECT_SPEC=0
+  export CARGO_TARGET_DIR="${srcdir}/cargo-target"
+  export npm_config_store_dir="${srcdir}/pnpm-store"
+
+  mkdir -p "${corepack_bin}"
+  corepack install --global pnpm@10.33.2
+  corepack enable --install-directory "${corepack_bin}" pnpm
+  export PATH="${corepack_bin}:${PATH}"
+
+  test "$(pnpm --version)" = '10.33.2'
+  pnpm install --frozen-lockfile
+  pnpm tauri build --no-bundle
+}
+
+package() {
+  local source_dir="${TAURI_PACKAGING_SOURCE_DIR:?TAURI_PACKAGING_SOURCE_DIR must point to the Tauri checkout}"
+
+  install -Dm755 "${srcdir}/cargo-target/release/pepo" "${pkgdir}/usr/bin/pepo"
+  install -Dm644 "${source_dir}/packaging/arch/pepo.desktop" \
+    "${pkgdir}/usr/share/applications/pepo.desktop"
+  install -Dm644 "${source_dir}/src-tauri/icons/32x32.png" \
+    "${pkgdir}/usr/share/icons/hicolor/32x32/apps/pepo.png"
+  install -Dm644 "${source_dir}/src-tauri/icons/128x128.png" \
+    "${pkgdir}/usr/share/icons/hicolor/128x128/apps/pepo.png"
+  install -Dm644 "${source_dir}/src-tauri/icons/128x128@2x.png" \
+    "${pkgdir}/usr/share/icons/hicolor/256x256/apps/pepo.png"
+  install -Dm644 "${source_dir}/LICENSE" "${pkgdir}/usr/share/licenses/pepo/LICENSE"
+}
