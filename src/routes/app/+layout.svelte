@@ -35,6 +35,7 @@
 </script>
 
 <Sidebar.Provider
+	class="h-dvh min-h-0 overflow-hidden"
 	open={normalizedAppSettings.layout.sidebar_open}
 	onOpenChange={(open) => {
 		appSettings.obj.layout.sidebar_open = open;
@@ -42,7 +43,7 @@
 	}}
 >
 	<AppSidebar collapsible="icon"></AppSidebar>
-	<main class="flex max-h-dvh w-full max-w-full min-w-0 flex-col flex-nowrap">
+	<main class="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col flex-nowrap overflow-hidden">
 		<header class="flex h-12 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b px-4">
 			<Sidebar.Trigger class="-ml-1" />
 
@@ -71,7 +72,7 @@
 				{/if}
 			{/if}
 		</header>
-		<div class={cn('flex w-full grow overflow-hidden', isTauriMobile && 'mb-10')}>
+		<div class={cn('flex min-h-0 w-full grow overflow-hidden', isTauriMobile && 'mb-10')}>
 			{#key page.params.id}
 				{@render children?.()}
 			{/key}

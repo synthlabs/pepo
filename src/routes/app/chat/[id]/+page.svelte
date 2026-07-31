@@ -845,7 +845,7 @@
 {/snippet}
 
 <Tooltip.Provider delayDuration={200}>
-	<div class="flex h-full w-full flex-col flex-nowrap">
+	<div class="flex h-full min-h-0 w-full flex-col flex-nowrap overflow-hidden">
 		<div class="relative min-h-0 grow">
 			<div
 				class="h-full overflow-x-hidden overflow-y-auto [overflow-anchor:none]"
@@ -936,12 +936,12 @@
 		{#if errorState.active}
 			<div
 				transition:slide={{ easing: quadInOut, duration: 250 }}
-				class=" cursor-not-allowed bg-red-950 text-center"
+				class="shrink-0 cursor-not-allowed bg-red-950 text-center"
 			>
 				{errorState.msg}
 			</div>
 		{/if}
-		<div class="relative border-t">
+		<div class="relative shrink-0 border-t">
 			<EmotePicker
 				emotes={emoteResults}
 				selectedIndex={selectedEmoteIndex}
@@ -959,7 +959,7 @@
 					bind:value={chatInput}
 					onkeydown={handleKeydown}
 					type="text"
-					class="bg-background placeholder:text-muted-foreground h-full flex-1 p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+					class="bg-background placeholder:text-muted-foreground h-full min-w-0 flex-1 p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
 					placeholder={username ? `Send message as ${username}` : 'Sign in to chat'}
 				/>
 				<button

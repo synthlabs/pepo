@@ -3,6 +3,8 @@ pub const COMMANDS: &[&str] = &["internal_ping"];
 #[cfg(feature = "runtime")]
 mod runtime {
     use tauri::{plugin::TauriPlugin, Runtime};
+
+    #[cfg(debug_assertions)]
     use tauri_specta::collect_commands;
 
     #[tauri::command]
@@ -17,8 +19,25 @@ mod runtime {
             .build()
     }
 
-    pub fn apply_plugins<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+    pub struct InternalBuildInfo {
+        pub app_version: String,
+        pub app_commit: String,
+        pub build_time: String,
+    }
+
+    pub fn apply_plugins<R: Runtime>(
+        builder: tauri::Builder<R>,
+        _build_info: InternalBuildInfo,
+    ) -> tauri::Builder<R> {
         builder.plugin(init())
+    }
+
+    pub fn detect_language(
+        _app_handle: tauri::AppHandle,
+        _channel_login: &str,
+        _message_id: &str,
+        _text: &str,
+    ) {
     }
 
     #[cfg(debug_assertions)]
@@ -34,7 +53,7 @@ mod runtime {
 }
 
 #[cfg(feature = "runtime")]
-pub use runtime::{apply_plugins, setup};
+pub use runtime::{apply_plugins, detect_language, setup, InternalBuildInfo};
 
 #[cfg(all(debug_assertions, feature = "runtime"))]
 pub use runtime::specta_builder;

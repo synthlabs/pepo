@@ -32,6 +32,8 @@ Add every internal plugin command to `COMMANDS`, the Tauri invoke handler, and t
 pub const COMMANDS: &[&str] = &["internal_ping"];
 
 use tauri::{plugin::TauriPlugin, Runtime};
+
+#[cfg(debug_assertions)]
 use tauri_specta::collect_commands;
 
 #[tauri::command]
@@ -46,8 +48,25 @@ fn init<R: Runtime>() -> TauriPlugin<R> {
         .build()
 }
 
-pub fn apply_plugins<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+pub struct InternalBuildInfo {
+    pub app_version: String,
+    pub app_commit: String,
+    pub build_time: String,
+}
+
+pub fn apply_plugins<R: Runtime>(
+    builder: tauri::Builder<R>,
+    _build_info: InternalBuildInfo,
+) -> tauri::Builder<R> {
     builder.plugin(init())
+}
+
+pub fn detect_language(
+    _app_handle: tauri::AppHandle,
+    _channel_login: &str,
+    _message_id: &str,
+    _text: &str,
+) {
 }
 
 #[cfg(debug_assertions)]
