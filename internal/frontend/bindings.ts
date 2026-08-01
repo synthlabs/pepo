@@ -3,53 +3,37 @@
 
 /** user-defined commands **/
 
-
 export const commands = {
-async internalBuildInfo() : Promise<InternalBuildInfo> {
-    return await TAURI_INVOKE("plugin:internal|internal_build_info");
-}
-}
+	async internalBuildInfo(): Promise<InternalBuildInfo> {
+		return await TAURI_INVOKE('plugin:internal|internal_build_info');
+	}
+};
 
 /** user-defined events **/
 
-
-
 /** user-defined constants **/
-
-
 
 /** user-defined types **/
 
-export type InternalBuildInfo = { app_version: string; app_commit: string; build_time: string }
+export type InternalBuildInfo = { app_version: string; app_commit: string; build_time: string };
 
 /** tauri-specta globals **/
 
-import {
-	invoke as TAURI_INVOKE,
-	Channel as TAURI_CHANNEL,
-} from "@tauri-apps/api/core";
-import * as TAURI_API_EVENT from "@tauri-apps/api/event";
-import { type WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
+import { invoke as TAURI_INVOKE, Channel as TAURI_CHANNEL } from '@tauri-apps/api/core';
+import * as TAURI_API_EVENT from '@tauri-apps/api/event';
+import { type WebviewWindow as __WebviewWindow__ } from '@tauri-apps/api/webviewWindow';
 
 type __EventObj__<T> = {
-	listen: (
-		cb: TAURI_API_EVENT.EventCallback<T>,
-	) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
-	once: (
-		cb: TAURI_API_EVENT.EventCallback<T>,
-	) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
+	listen: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
+	once: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
 	emit: null extends T
 		? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
 		: (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
 };
 
-export type Result<T, E> =
-	| { status: "ok"; data: T }
-	| { status: "error"; error: E };
+export type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error: E };
 
-function __makeEvents__<T extends Record<string, any>>(
-	mappings: Record<keyof T, string>,
-) {
+function __makeEvents__<T extends Record<string, any>>(mappings: Record<keyof T, string>) {
 	return new Proxy(
 		{} as unknown as {
 			[K in keyof T]: __EventObj__<T[K]> & {
@@ -64,20 +48,20 @@ function __makeEvents__<T extends Record<string, any>>(
 					apply: (_, __, [window]: [__WebviewWindow__]) => ({
 						listen: (arg: any) => window.listen(name, arg),
 						once: (arg: any) => window.once(name, arg),
-						emit: (arg: any) => window.emit(name, arg),
+						emit: (arg: any) => window.emit(name, arg)
 					}),
 					get: (_, command: keyof __EventObj__<any>) => {
 						switch (command) {
-							case "listen":
+							case 'listen':
 								return (arg: any) => TAURI_API_EVENT.listen(name, arg);
-							case "once":
+							case 'once':
 								return (arg: any) => TAURI_API_EVENT.once(name, arg);
-							case "emit":
+							case 'emit':
 								return (arg: any) => TAURI_API_EVENT.emit(name, arg);
 						}
-					},
+					}
 				});
-			},
-		},
+			}
+		}
 	);
 }

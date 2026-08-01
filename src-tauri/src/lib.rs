@@ -1300,6 +1300,9 @@ pub fn run() {
                 .visible(false)
                 .background_color(tauri::webview::Color(20, 26, 39, 255));
 
+            #[cfg(target_os = "linux")]
+            let win_builder = win_builder.theme(Some(tauri::Theme::Dark));
+
             // set transparent title bar only when building for macOS
             #[cfg(target_os = "macos")]
             let win_builder = win_builder.title_bar_style(TitleBarStyle::Transparent);

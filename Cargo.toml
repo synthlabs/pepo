@@ -3,3 +3,7 @@ resolver = "2"
 members = [
     "src-tauri",
 ]
+
+# Remove once stable Tauri resolves Tao 0.36 or newer.
+[patch.crates-io]
+tao = { git = "https://github.com/tauri-apps/tao", rev = "07f3742b1833b64be27b1ef991e38d557d4276c9" }

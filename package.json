@@ -6,6 +6,7 @@
 		"build": "pnpm run check && vite build",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:chat-layout": "node scripts/check-chat-layout.mjs",
+		"check:window-controls": "node scripts/check-window-controls.mjs",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"dev": "vite dev",
 		"format": "node scripts/format.mjs --write",
@@ -15,7 +16,7 @@
 		"preview": "vite preview",
 		"tauri": "tauri",
 		"test": "svelte-kit sync && vitest",
-		"test:run": "svelte-kit sync && vitest run && node --test scripts/check-chat-layout.test.mjs"
+		"test:run": "svelte-kit sync && vitest run && node --test scripts/check-chat-layout.test.mjs scripts/check-window-controls.test.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.1.0",
