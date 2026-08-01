@@ -1,6 +1,6 @@
 packages:
   - .
 
-onlyBuiltDependencies:
-  - esbuild
-  - tauri-svelte-synced-store
+allowBuilds:
+  esbuild: true
+  tauri-svelte-synced-store@https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/c0da70678f056f587a1f0afe5ef6a683fd9d60bb: true

@@ -31,7 +31,7 @@ importers:
         version: 2.4.1
       tauri-svelte-synced-store:
         specifier: github:synthlabs/tauri-svelte-synced-store
-        version: https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/685af777341a8135eb7824eb1c13593fd34d3fe1(@tauri-apps/api@2.11.0)(svelte@5.56.3(@typescript-eslint/types@8.61.0))
+        version: https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/c0da70678f056f587a1f0afe5ef6a683fd9d60bb(@tauri-apps/api@2.11.0)(svelte@5.56.3(@typescript-eslint/types@8.61.0))
     devDependencies:
       '@eslint/compat':
         specifier: ^2.1.0
@@ -1889,8 +1889,8 @@ packages:
     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
 
-  tauri-svelte-synced-store@https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/685af777341a8135eb7824eb1c13593fd34d3fe1:
-    resolution: {tarball: https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/685af777341a8135eb7824eb1c13593fd34d3fe1}
+  tauri-svelte-synced-store@https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/c0da70678f056f587a1f0afe5ef6a683fd9d60bb:
+    resolution: {gitHosted: true, integrity: sha512-4tzELbwCh8JPGdlEiSifAGalQVSndOArLgC5LWLFxCGx7eKNj/KHQM2GCMWhoujU56xZvBjGdeGBp3tn7tkPKA==, tarball: https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/c0da70678f056f587a1f0afe5ef6a683fd9d60bb}
     version: 0.0.2
     peerDependencies:
       '@tauri-apps/api': ^2.7.0
@@ -3684,7 +3684,7 @@ snapshots:
 
   tapable@2.3.3: {}
 
-  tauri-svelte-synced-store@https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/685af777341a8135eb7824eb1c13593fd34d3fe1(@tauri-apps/api@2.11.0)(svelte@5.56.3(@typescript-eslint/types@8.61.0)):
+  tauri-svelte-synced-store@https://codeload.github.com/synthlabs/tauri-svelte-synced-store/tar.gz/c0da70678f056f587a1f0afe5ef6a683fd9d60bb(@tauri-apps/api@2.11.0)(svelte@5.56.3(@typescript-eslint/types@8.61.0)):
     dependencies:
       '@tauri-apps/api': 2.11.0
       svelte: 5.56.3(@typescript-eslint/types@8.61.0)

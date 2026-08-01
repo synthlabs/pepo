@@ -16,7 +16,7 @@ Without `ENABLE_INTERNAL=1`, the app uses tracked no-op hooks and builds as the 
 The frontend entrypoint is `internal/frontend/index.ts`.
 
 ```ts
-export { default as InternalRoot } from "./InternalRoot.svelte";
+export { default as InternalRoot } from './InternalRoot.svelte';
 export const navItems = [];
 ```
 
@@ -28,58 +28,7 @@ The Rust entrypoint is the `pepo-internal` crate in `internal/rust`.
 `src-tauri/build.rs` imports `pepo_internal::COMMANDS` to generate the `internal:default` permission.
 Add every internal plugin command to `COMMANDS`, the Tauri invoke handler, and the Specta command list.
 
-```rust
-pub const COMMANDS: &[&str] = &["internal_ping"];
-
-use tauri::{plugin::TauriPlugin, Runtime};
-
-#[cfg(debug_assertions)]
-use tauri_specta::collect_commands;
-
-#[tauri::command]
-#[specta::specta]
-fn internal_ping() -> String {
-    "pong from internal".to_owned()
-}
-
-fn init<R: Runtime>() -> TauriPlugin<R> {
-    tauri::plugin::Builder::<R>::new("internal")
-        .invoke_handler(tauri::generate_handler![internal_ping])
-        .build()
-}
-
-pub struct InternalBuildInfo {
-    pub app_version: String,
-    pub app_commit: String,
-    pub build_time: String,
-}
-
-pub fn apply_plugins<R: Runtime>(
-    builder: tauri::Builder<R>,
-    _build_info: InternalBuildInfo,
-) -> tauri::Builder<R> {
-    builder.plugin(init())
-}
-
-pub fn detect_language(
-    _app_handle: tauri::AppHandle,
-    _channel_login: &str,
-    _message_id: &str,
-    _text: &str,
-) {
-}
-
-#[cfg(debug_assertions)]
-pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
-    tauri_specta::Builder::<tauri::Wry>::new()
-        .plugin_name("internal")
-        .commands(collect_commands![internal_ping])
-}
-
-pub fn setup(_app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    Ok(())
-}
-```
+The starter command is `internal_build_info`, which returns app build metadata from internal plugin state.
 
 Debug internal builds export internal-inclusive bindings to `internal/frontend/bindings.ts`. The tracked `src/lib/bindings.ts` remains public-only.
 

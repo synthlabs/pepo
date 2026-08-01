@@ -60,11 +60,11 @@ build() {
   export npm_config_store_dir="${srcdir}/pnpm-store"
 
   mkdir -p "${corepack_bin}"
-  corepack install --global pnpm@10.33.2
+  corepack install --global pnpm@11.18.0
   corepack enable --install-directory "${corepack_bin}" pnpm
   export PATH="${corepack_bin}:${PATH}"
 
-  test "$(pnpm --version)" = '10.33.2'
+  test "$(pnpm --version)" = '11.18.0'
   pnpm install --frozen-lockfile
   pnpm tauri build --no-bundle
 }

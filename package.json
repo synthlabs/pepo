@@ -65,5 +65,5 @@
 		"@tauri-apps/plugin-window-state": "^2.4.1",
 		"tauri-svelte-synced-store": "github:synthlabs/tauri-svelte-synced-store"
 	},
-	"packageManager": "pnpm@10.33.2"
+	"packageManager": "pnpm@11.18.0"
 }

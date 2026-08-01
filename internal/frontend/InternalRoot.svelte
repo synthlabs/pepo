@@ -1,26 +1,27 @@
 <script lang="ts">
-    import { commands } from "./bindings";
+	import { onMount } from 'svelte';
+	import { commands } from './bindings';
 
-    let message = $state("");
-    let pending = $state(false);
+	let commit = $state('unknown');
+	let label = $derived(`internal * ${commit}`);
 
-    async function ping() {
-        pending = true;
-        try {
-            message = await commands.internalPing();
-        } catch (error) {
-            message = error instanceof Error ? error.message : String(error);
-        } finally {
-            pending = false;
-        }
-    }
+	onMount(() => {
+		void loadBuildInfo();
+	});
+
+	async function loadBuildInfo() {
+		try {
+			const buildInfo = await commands.internalBuildInfo();
+			commit = buildInfo.app_commit || 'unknown';
+		} catch {
+			commit = 'unknown';
+		}
+	}
 </script>
 
-<div class="bg-background/95 fixed right-3 bottom-3 z-50 flex items-center gap-2 rounded-md border p-2 text-xs shadow">
-    <button class="rounded border px-2 py-1 disabled:opacity-50" disabled={pending} onclick={ping}>
-        Ping
-    </button>
-    {#if message}
-        <span>{message}</span>
-    {/if}
+<div
+	class="text-muted-foreground/45 pointer-events-none fixed top-14 right-3 z-50 px-2 py-1 font-mono text-[8px] opacity-70 select-none"
+	aria-label={label}
+>
+	{label}
 </div>
