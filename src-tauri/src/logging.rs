@@ -18,7 +18,9 @@ pub(crate) fn pepo_log_level() -> LevelFilter {
     match std::env::var("PEPO_LOG").as_deref() {
         Ok("trace") | Ok("TRACE") => LevelFilter::Trace,
         Ok("debug") | Ok("DEBUG") | Ok("1") | Ok("true") | Ok("TRUE") => LevelFilter::Debug,
-        _ => LevelFilter::Info,
+        Ok(_) => LevelFilter::Info,
+        Err(_) if cfg!(internal_enabled) => LevelFilter::Debug,
+        Err(_) => LevelFilter::Info,
     }
 }
 
