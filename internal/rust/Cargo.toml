@@ -7,11 +7,6 @@ version = "0.1.0"
 default = []
 runtime = ["dep:specta", "dep:tauri", "dep:tauri-specta"]
 
-[dependencies.reqwest]
-default-features = false
-features = ["json", "rustls-tls"]
-version = "0.12"
-
 [dependencies.serde]
 features = ["derive"]
 version = "1"
@@ -29,22 +24,3 @@ version = "2"
 features = ["derive", "typescript"]
 optional = true
 version = "=2.0.0-rc.21"
-
-[dependencies.thiserror]
-version = "2"
-
-[dependencies.tracing]
-version = "0.1"
-
-[dependencies.whatlang]
-version = "0.18"
-
-[dev-dependencies.httpmock]
-version = "0.7"
-
-[dev-dependencies.serde_json]
-version = "1"
-
-[dev-dependencies.tokio]
-features = ["macros", "rt-multi-thread"]
-version = "1"
