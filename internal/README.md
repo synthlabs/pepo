@@ -1,36 +1,39 @@
 # Internal Features
 
-`internal/` contains a small tracked starter set plus ignored local-only experiment files.
-New clones and CI use the tracked starter files; private experiments should remain untracked unless explicitly force-added.
+This repository is checked out at `internal/` in Pepo and Scrybe.
+
+- `main` contains the private implementation used for local development.
+- `starter` contains the OSS-safe implementation copied into both public repositories.
+
+The branch is a superset: Pepo consumes the Rust crate while Scrybe consumes `rust/mod.rs`. Both
+apps share the frontend entrypoint, generated binding, command list, and build-info plugin contract.
 
 ## Run
 
+From either app root:
+
 ```sh
-ENABLE_INTERNAL=1 pnpm tauri dev
+make dev-internal
 ```
 
-Without `ENABLE_INTERNAL=1`, the app uses tracked no-op hooks and builds as the public open-source app.
+Without `ENABLE_INTERNAL=1`, each app uses its tracked public no-op hooks.
 
-## Frontend
+## Update the public starter
 
-The frontend entrypoint is `internal/frontend/index.ts`.
+Commit the OSS-safe interface change on `starter`, then synchronize it from each app checkout:
 
-```ts
-export { default as InternalRoot } from './InternalRoot.svelte';
-export const navItems = [];
+```sh
+cd internal
+git switch starter
+git pull --ff-only
+sh scripts/starter-sync.sh stage pepo ..
 ```
 
-`InternalRoot` is mounted by the public layout. Keep feature UI inside `internal/frontend` and import public app modules with normal aliases like `$lib`.
+Use `scrybe` instead of `pepo` in the Scrybe checkout. The script stages only the approved manifest
+and writes `.starter-revision`; it never commits or pushes. Review the parent repository's staged
+diff, run `sh internal/verify.sh`, and commit from the parent repository.
 
-## Rust
-
-The Rust entrypoint is the `pepo-internal` crate in `internal/rust`.
-`src-tauri/build.rs` imports `pepo_internal::COMMANDS` to generate the `internal:default` permission.
-Add every internal plugin command to `COMMANDS`, the Tauri invoke handler, and the Specta command list.
-
-The starter command is `internal_build_info`, which returns app build metadata from internal plugin state.
-
-Debug internal builds export internal-inclusive bindings to `internal/frontend/bindings.ts`. The tracked `src/lib/bindings.ts` remains public-only.
+Switch the nested checkout back to `main` for private development.
 
 ## Verify
 
@@ -38,4 +41,5 @@ Debug internal builds export internal-inclusive bindings to `internal/frontend/b
 sh internal/verify.sh
 ```
 
-The command should finish with a clean tracked worktree. Generated files under `internal/` are ignored.
+The verification runs public and internal-enabled frontend and Rust checks. Private CI repeats the
+same coverage against clean Pepo and Scrybe checkouts.

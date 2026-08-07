@@ -1,4 +1,4 @@
-pub const COMMANDS: &[&str] = &["internal_build_info"];
+include!("../commands.rs");
 
 #[derive(Clone, Debug, serde::Serialize)]
 #[cfg_attr(feature = "runtime", derive(specta::Type))]
