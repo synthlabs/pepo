@@ -114,11 +114,7 @@ export type AppSettings = {
 export type AppearanceSettings = { theme: AppearanceTheme };
 export type AppearanceTheme = 'system' | 'light' | 'dark';
 export type AuthPhase =
-	| 'unauthorized'
-	| 'waitingForDeviceCode'
-	| 'waitingForAuth'
-	| 'failedAuth'
-	| 'authorized';
+	'unauthorized' | 'waitingForDeviceCode' | 'waitingForAuth' | 'failedAuth' | 'authorized';
 export type AuthSettings = {
 	login_activation_delay_ms: number;
 	refresh_supervisor_tick_secs: number;

@@ -782,7 +782,7 @@ async fn login(
         auth_state.token = Some(user_token.clone());
     }
 
-    // Create empty managers — no network calls, just register state so
+    // Create empty managers - no network calls, just register state so
     // other Tauri commands can access them immediately.
     let eventsub_manager = EventSubManager::new();
     let badge_manager = BadgeManager::empty(token_manager.clone(), app_handle.clone());
@@ -1359,7 +1359,7 @@ pub fn run() {
                 }
             }
 
-            // Revalidate/refresh the token whenever the window regains focus —
+            // Revalidate/refresh the token whenever the window regains focus -
             // covers returning to the app after the machine has slept.
             {
                 let focus_app = app.handle().clone();

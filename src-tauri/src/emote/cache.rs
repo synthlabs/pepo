@@ -155,7 +155,7 @@ impl EmoteCacheTrait for MultiCache {
 
     fn search_emotes(&self, query: &str, limit: usize) -> Vec<Emote> {
         // Earlier caches win on name collisions (mirrors `get_emote`'s first-hit semantics).
-        // `dedup_by` won't do here — `flat_map` output is unsorted, so non-adjacent dupes
+        // `dedup_by` won't do here - `flat_map` output is unsorted, so non-adjacent dupes
         // would survive.
         let mut seen: HashSet<String> = HashSet::new();
         self.caches
@@ -239,7 +239,7 @@ mod tests {
         let a = cache_with("g", "A", &["LUL"]);
         let b = cache_with("g", "B", &["LUL"]);
         // Mark which one is which by giving them different ids via the helper.
-        // Both have id "id-LUL" though, so equality by id won't help here —
+        // Both have id "id-LUL" though, so equality by id won't help here -
         // assert provider-membership by reading the chain order instead.
         let multi = MultiCache::new(vec![a, b]);
         assert!(multi.has_emote("LUL".to_string()));
