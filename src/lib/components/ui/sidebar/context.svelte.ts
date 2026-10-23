@@ -3,6 +3,7 @@ import { getContext, setContext } from 'svelte';
 import { SIDEBAR_KEYBOARD_SHORTCUT } from './constants.js';
 
 type Getter<T> = () => T;
+export type SidebarVisualState = 'expanded' | 'expanding' | 'collapsing' | 'collapsed';
 
 export type SidebarStateProps = {
 	/**
@@ -26,12 +27,30 @@ class SidebarState {
 	openMobile = $state(false);
 	setOpen: SidebarStateProps['setOpen'];
 	#isMobile: IsMobile;
-	state = $derived.by(() => (this.open ? 'expanded' : 'collapsed'));
+	#settledOpen = $state(true);
+	#widthTransitioning = $state(false);
+	state: 'expanded' | 'collapsed' = $derived.by(() => (this.open ? 'expanded' : 'collapsed'));
+	visualState: SidebarVisualState = $derived.by(() => {
+		if (!this.isMobile && (this.#widthTransitioning || this.open !== this.#settledOpen)) {
+			return this.open ? 'expanding' : 'collapsing';
+		}
+		return this.state;
+	});
 
 	constructor(props: SidebarStateProps) {
 		this.setOpen = props.setOpen;
 		this.#isMobile = new IsMobile();
 		this.props = props;
+		this.#settledOpen = props.open();
+	}
+
+	beginWidthTransition() {
+		this.#widthTransitioning = true;
+	}
+
+	settleWidthTransition(open: boolean) {
+		this.#settledOpen = open;
+		this.#widthTransitioning = false;
 	}
 
 	// Convenience getter for checking if the sidebar is mobile

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { cn } from '$lib/utils.js';
 	import type { WithElementRef } from 'bits-ui';
@@ -21,6 +22,42 @@
 	} = $props();
 
 	const sidebar = useSidebar();
+	let panelRef = $state<HTMLDivElement | null>(null);
+
+	$effect(() => {
+		const open = sidebar.open;
+		const panel = panelRef;
+		if (sidebar.isMobile || collapsible !== 'icon' || !panel) {
+			sidebar.settleWidthTransition(open);
+			return;
+		}
+
+		let cancelled = false;
+		async function trackWidthTransition(panel: HTMLDivElement) {
+			await tick();
+			while (!cancelled) {
+				const transitions = panel
+					.getAnimations()
+					.filter(
+						(animation) =>
+							'transitionProperty' in animation &&
+							animation.transitionProperty === 'width' &&
+							animation.playState !== 'finished' &&
+							animation.playState !== 'idle'
+					);
+				if (transitions.length === 0) {
+					sidebar.settleWidthTransition(open);
+					return;
+				}
+				sidebar.beginWidthTransition();
+				await Promise.allSettled(transitions.map((animation) => animation.finished));
+			}
+		}
+		void trackWidthTransition(panel);
+		return () => {
+			cancelled = true;
+		};
+	});
 </script>
 
 {#if collapsible === 'none'}
@@ -69,6 +106,8 @@
 			)}
 		></div>
 		<div
+			bind:this={panelRef}
+			data-sidebar="panel"
 			class={cn(
 				'fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex',
 				side === 'left'
