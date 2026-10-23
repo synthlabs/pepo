@@ -16,6 +16,24 @@
 
 	const sidebar = useSidebar();
 	let popoverOpen = $state(false);
+	let inputRef = $state<HTMLInputElement | null>(null);
+	let isFloatingSearch = $derived(sidebar.state === 'collapsed' && !sidebar.isMobile);
+
+	function handlePopoverOpenChange(open: boolean) {
+		if (!open) value = '';
+	}
+
+	function clearSearch() {
+		value = '';
+		inputRef?.focus();
+	}
+
+	function handleInputKeydown(event: KeyboardEvent) {
+		if (event.key !== 'Escape' || isFloatingSearch) return;
+		event.preventDefault();
+		event.stopPropagation();
+		value = '';
+	}
 
 	function handleSubmit() {
 		if (value.trim() && onsubmit) {
@@ -33,10 +51,12 @@
 			{id}
 			type="search"
 			placeholder="Chat..."
-			class="h-8 ps-8 {inputClass ?? ''}"
+			class="h-8 ps-8 pe-8 [&::-webkit-search-cancel-button]:hidden {inputClass ?? ''}"
 			autocomplete="off"
 			autocapitalize="none"
 			spellcheck={false}
+			onkeydown={handleInputKeydown}
+			bind:ref={inputRef}
 			bind:value
 		/>
 		<SearchIcon
@@ -45,7 +65,7 @@
 		{#if value}
 			<button
 				type="button"
-				onclick={() => (value = '')}
+				onclick={clearSearch}
 				class="absolute inset-e-2 top-1/2 size-4 -translate-y-1/2 cursor-pointer opacity-50 hover:opacity-100"
 			>
 				<XIcon class="size-4" />
@@ -55,23 +75,17 @@
 	</div>
 {/snippet}
 
-{#if sidebar.state === 'collapsed' && !sidebar.isMobile}
+{#if isFloatingSearch}
 	<Sidebar.Group class="py-0">
 		<Sidebar.GroupContent class="flex justify-center">
-			<Popover.Root bind:open={popoverOpen}>
+			<Popover.Root bind:open={popoverOpen} onOpenChange={handlePopoverOpenChange}>
 				<Popover.Trigger
-					class="hover:bg-sidebar-accent flex size-8 items-center justify-center rounded-md"
-					onpointerenter={() => (popoverOpen = true)}
+					class="hover:bg-sidebar-accent flex size-8 cursor-pointer items-center justify-center rounded-md"
 				>
 					<SearchIcon class="size-4 opacity-50" />
 					<span class="sr-only">Search</span>
 				</Popover.Trigger>
-				<Popover.Content
-					side="right"
-					align="start"
-					class="w-64 p-2"
-					onpointerleave={() => (popoverOpen = false)}
-				>
+				<Popover.Content side="right" align="start" class="w-64 p-2">
 					<form
 						onsubmit={(e) => {
 							e.preventDefault();
