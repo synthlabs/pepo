@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import {
 	CONTROL_CHECKS,
 	LAUNCHES,
@@ -83,11 +84,12 @@ test('accepts KDE Wayland and rejects other interactive baselines', () => {
 });
 
 test('isolates every XDG state directory under one temporary root', () => {
-	const environment = isolatedEnvironment({ PATH: '/usr/bin' }, '/tmp/pepo-window-test');
+	const stateRoot = path.join(tmpdir(), 'pepo-window-test');
+	const environment = isolatedEnvironment({ PATH: '/usr/bin' }, stateRoot);
 
 	assert.equal(environment.PATH, '/usr/bin');
 	for (const key of ['XDG_CACHE_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME']) {
-		assert.equal(path.dirname(environment[key]), '/tmp/pepo-window-test');
+		assert.equal(path.dirname(environment[key]), stateRoot);
 	}
 });
 

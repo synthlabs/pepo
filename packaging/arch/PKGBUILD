@@ -66,7 +66,7 @@ build() {
 
   test "$(pnpm --version)" = '11.18.0'
   pnpm install --frozen-lockfile
-  pnpm tauri build --no-bundle
+  pnpm tauri build --no-bundle -- --locked
 }
 
 package() {

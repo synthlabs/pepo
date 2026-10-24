@@ -105,6 +105,28 @@ Linux, or generic AppImage systems.
 
 Tauri bundles are written under `target/release/bundle/`; Arch packages are written to `package/`.
 
+### CI validation
+
+Run the local checks with:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm test:run
+pnpm lint
+cargo test --manifest-path src-tauri/Cargo.toml --locked
+pnpm tauri build --no-bundle -- --locked
+```
+
+Pull requests run frontend and Rust tests on Linux, Windows, and macOS, plus lint, installer checks,
+and the AUR SSH container fixtures. Repository branch pushes also build signed desktop bundles,
+the macOS universal app, and the Arch package, then check AUR access without publishing. Only pushes
+to `main` enable release and AUR publication. Branch artifacts are available from the Actions run.
+
+Dependency updates include their manifests and lockfiles together; CI rejects lockfile changes.
+When shared utils changes are needed, push that commit first, then commit Pepo's updated submodule
+pointer. The SSH fixtures require Docker and can be run with
+`bash utils/packaging/tauri/aur/container-ssh.test.sh`.
+
 ### Development Logging
 
 Pepo defaults to `info` logs for app code and suppresses noisy dependency debug logs. During development, set `PEPO_LOG` before starting Tauri:

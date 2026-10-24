@@ -1,62 +1,19 @@
-name: 'test-on-push'
+name: test-on-push
 on:
   push:
-    branches-ignore:
-      - main
+    branches-ignore: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  test-tauri:
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [macos-latest, ubuntu-24.04, windows-latest]
-
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: 'recursive'
-
-      - name: setup node
-        uses: actions/setup-node@v6
-        with:
-          node-version: latest
-
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
-        id: pnpm-install
-        with:
-          run_install: true
-
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: '. -> target'
-
-      - name: install system dependencies (ubuntu only)
-        if: startsWith(matrix.platform, 'ubuntu')
-        run: ./utils/scripts/install_deps.sh --ci
-
-      - name: Set short SHA
-        id: short-sha
-        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-        shell: bash
-
-      - name: Set version id
-        id: tauri-version
-        run: echo "VERSION=$(cat ./src-tauri/tauri.conf.json | grep version | cut -d\" -f 4)" >> "$GITHUB_OUTPUT"
-        shell: bash
-
-      - name: Var check
-        run: echo "SHORT_SHA=${{ steps.short-sha.outputs.SHORT_SHA }}, VERSION=${{ steps.tauri-version.outputs.VERSION }}"
-        shell: bash
-
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INBOUND_WEBHOOK_PEPO: ${{ secrets.INBOUND_WEBHOOK_PEPO }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+  validation:
+    uses: ./.github/workflows/validation.yml
+    with:
+      packages: true
+      aur-access: true
+    secrets:
+      TAURI_PEPO_SIGNING_KEY: ${{ secrets.TAURI_PEPO_SIGNING_KEY }}
+      TAURI_PEPO_SIGNING_KEY_PASSWORD: ${{ secrets.TAURI_PEPO_SIGNING_KEY_PASSWORD }}
+      INBOUND_WEBHOOK_PEPO: ${{ secrets.INBOUND_WEBHOOK_PEPO }}
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}

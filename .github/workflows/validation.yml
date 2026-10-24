@@ -1,0 +1,270 @@
+name: validation
+on:
+  workflow_call:
+    inputs:
+      packages:
+        type: boolean
+        default: false
+      publish:
+        type: boolean
+        default: false
+      aur-access:
+        type: boolean
+        default: false
+    secrets:
+      TAURI_PEPO_SIGNING_KEY:
+        required: false
+      TAURI_PEPO_SIGNING_KEY_PASSWORD:
+        required: false
+      INBOUND_WEBHOOK_PEPO:
+        required: false
+      AUR_SSH_PRIVATE_KEY:
+        required: false
+
+env:
+  PUBLISH_RELEASE: ${{ inputs.publish && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+jobs:
+  verify:
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: latest
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: ./utils/scripts/install_deps.sh --ci
+      - run: pnpm install --frozen-lockfile
+      - name: Frontend and script tests
+        run: pnpm test:run
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Check dependency locks
+        if: always()
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml
+
+  lint:
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: latest
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - name: Check dependency locks
+        if: always()
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml
+
+  verify-install:
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Linux packaging integration tests
+        if: runner.os == 'Linux'
+        run: bash scripts/packaging-integration.test.sh
+      - name: Windows installer tests
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\utils\packaging\tauri\install.test.ps1
+
+  verify-ssh:
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: AUR SSH container regression tests
+        run: bash utils/packaging/tauri/aur/container-ssh.test.sh
+
+  build:
+    if: inputs.packages
+    needs: [verify, lint, verify-install, verify-ssh]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin -- --locked
+            bundle-dir: target/universal-apple-darwin/release/bundle
+          - platform: ubuntu-24.04
+            args: -- --locked
+            bundle-dir: target/release/bundle
+          - platform: windows-latest
+            args: -- --locked
+            bundle-dir: target/release/bundle
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: latest
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+      - name: Install macOS targets
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: ./utils/scripts/install_deps.sh --ci
+      - run: pnpm install --frozen-lockfile
+      - name: Read release metadata
+        id: metadata
+        run: node scripts/ci-metadata.mjs
+      - name: Build signed packages
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INBOUND_WEBHOOK_PEPO: ${{ secrets.INBOUND_WEBHOOK_PEPO }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PEPO_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_PEPO_SIGNING_KEY_PASSWORD }}
+        with:
+          tagName: ${{ env.PUBLISH_RELEASE == 'true' && steps.metadata.outputs.release-tag || '' }}
+          releaseName: ${{ env.PUBLISH_RELEASE == 'true' && format('Pepo v{0}-{1}', steps.metadata.outputs.version, steps.metadata.outputs.short-sha) || '' }}
+          releaseBody: ${{ steps.metadata.outputs.release-body }}
+          includeUpdaterJson: ${{ env.PUBLISH_RELEASE == 'true' }}
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
+      - name: Verify bundles and updater signatures
+        id: artifacts
+        run: node scripts/ci-artifacts.mjs "${{ matrix.bundle-dir }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.platform }}
+          path: ${{ steps.artifacts.outputs.paths }}
+          if-no-files-found: error
+      - name: Check dependency locks
+        if: always()
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml
+
+  arch:
+    if: inputs.packages
+    needs: build
+    runs-on: ubuntu-24.04
+    outputs:
+      filename: ${{ steps.metadata.outputs.filename }}
+      pkgrel: ${{ steps.metadata.outputs.pkgrel }}
+      release-tag: ${{ steps.metadata.outputs.release-tag }}
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Read release metadata
+        id: metadata
+        run: node scripts/ci-metadata.mjs
+      - name: Build, install, and smoke-test Arch package
+        run: |
+          bash utils/packaging/tauri/arch/container-build.sh \
+            --project-root "$PWD" --container-runtime docker \
+            --pkgrel "${{ steps.metadata.outputs.pkgrel }}"
+      - name: Upload Arch package to release
+        if: env.PUBLISH_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.metadata.outputs.release-tag }}
+          PACKAGE_FILE: package/${{ steps.metadata.outputs.filename }}
+        run: gh release upload "$RELEASE_TAG" "$PACKAGE_FILE" --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: package/${{ steps.metadata.outputs.filename }}
+          if-no-files-found: error
+      - name: Check dependency locks
+        if: always()
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml
+
+  aur:
+    if: inputs.aur-access && inputs.packages && github.event_name == 'push'
+    needs: arch
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/download-artifact@v4
+        with:
+          name: arch-package
+          path: package
+      - name: Configure AUR SSH access
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$AUR_SSH_PRIVATE_KEY" || { echo 'AUR_SSH_PRIVATE_KEY is not configured' >&2; exit 1; }
+          ssh_dir="$RUNNER_TEMP/aur-ssh"
+          mkdir -p "$ssh_dir"
+          chmod 700 "$ssh_dir"
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" >"$ssh_dir/id_ed25519"
+          chmod 600 "$ssh_dir/id_ed25519"
+          ssh-keyscan -t ed25519 aur.archlinux.org >"$ssh_dir/known_hosts"
+          fingerprint="$(ssh-keygen -lf "$ssh_dir/known_hosts" -E sha256 | awk '{print $2}')"
+          test "$fingerprint" = 'SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4'
+          cat >"$ssh_dir/config" <<'EOF'
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            BatchMode yes
+          EOF
+          chmod 600 "$ssh_dir/config"
+      - name: Verify read-only AUR access
+        env:
+          PACKAGE_FILE: ${{ needs.arch.outputs.filename }}
+          PACKAGE_VERSION: ${{ needs.arch.outputs.version }}
+          PACKAGE_RELEASE: ${{ needs.arch.outputs.pkgrel }}
+          RELEASE_TAG: ${{ needs.arch.outputs.release-tag }}
+        run: bash scripts/ci-aur.sh --check-access
+      - name: Publish pepo-bin
+        if: env.PUBLISH_RELEASE == 'true'
+        env:
+          PACKAGE_FILE: ${{ needs.arch.outputs.filename }}
+          PACKAGE_VERSION: ${{ needs.arch.outputs.version }}
+          PACKAGE_RELEASE: ${{ needs.arch.outputs.pkgrel }}
+          RELEASE_TAG: ${{ needs.arch.outputs.release-tag }}
+        run: bash scripts/ci-aur.sh

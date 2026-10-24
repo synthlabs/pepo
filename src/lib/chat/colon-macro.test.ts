@@ -1,50 +1,50 @@
-import { describe, expect, it } from "vitest";
-import { parseColonMacro } from "./colon-macro";
+import { describe, expect, it } from 'vitest';
+import { parseColonMacro } from './colon-macro';
 
-describe("parseColonMacro", () => {
-  it("returns null for empty input", () => {
-    expect(parseColonMacro("")).toBeNull();
-  });
+describe('parseColonMacro', () => {
+	it('returns null for empty input', () => {
+		expect(parseColonMacro('')).toBeNull();
+	});
 
-  it("returns null when there is no colon", () => {
-    expect(parseColonMacro("hello world")).toBeNull();
-  });
+	it('returns null when there is no colon', () => {
+		expect(parseColonMacro('hello world')).toBeNull();
+	});
 
-  it("returns null for one-character queries (regex requires \\w{2,})", () => {
-    expect(parseColonMacro(":a")).toBeNull();
-  });
+	it('returns null for one-character queries (regex requires \\w{2,})', () => {
+		expect(parseColonMacro(':a')).toBeNull();
+	});
 
-  it("uses the configured minimum query length", () => {
-    expect(parseColonMacro(":a", 1)).toBe("a");
-    expect(parseColonMacro(":ab", 3)).toBeNull();
-    expect(parseColonMacro(":abc", 3)).toBe("abc");
-  });
+	it('uses the configured minimum query length', () => {
+		expect(parseColonMacro(':a', 1)).toBe('a');
+		expect(parseColonMacro(':ab', 3)).toBeNull();
+		expect(parseColonMacro(':abc', 3)).toBe('abc');
+	});
 
-  it("matches a colon-prefixed query at the start of the string", () => {
-    expect(parseColonMacro(":foo")).toBe("foo");
-  });
+	it('matches a colon-prefixed query at the start of the string', () => {
+		expect(parseColonMacro(':foo')).toBe('foo');
+	});
 
-  it("matches a colon-prefixed query after whitespace", () => {
-    expect(parseColonMacro("hello :foo")).toBe("foo");
-  });
+	it('matches a colon-prefixed query after whitespace', () => {
+		expect(parseColonMacro('hello :foo')).toBe('foo');
+	});
 
-  it("returns null when the colon is glued to a preceding word (e.g. URL ports, time)", () => {
-    expect(parseColonMacro("http://example.com:foo")).toBeNull();
-  });
+	it('returns null when the colon is glued to a preceding word (e.g. URL ports, time)', () => {
+		expect(parseColonMacro('http://example.com:foo')).toBeNull();
+	});
 
-  it("returns null when the colon-query is not at the end", () => {
-    expect(parseColonMacro(":foo bar")).toBeNull();
-  });
+	it('returns null when the colon-query is not at the end', () => {
+		expect(parseColonMacro(':foo bar')).toBeNull();
+	});
 
-  it("only returns the most recent colon-query", () => {
-    expect(parseColonMacro(":first word :second")).toBe("second");
-  });
+	it('only returns the most recent colon-query', () => {
+		expect(parseColonMacro(':first word :second')).toBe('second');
+	});
 
-  it("returns null for trailing non-word characters", () => {
-    expect(parseColonMacro(":foo!")).toBeNull();
-  });
+	it('returns null for trailing non-word characters', () => {
+		expect(parseColonMacro(':foo!')).toBeNull();
+	});
 
-  it("locks current ASCII-only \\w behavior - non-ASCII trailing chars do not match", () => {
-    expect(parseColonMacro(":café")).toBeNull();
-  });
+	it('locks current ASCII-only \\w behavior - non-ASCII trailing chars do not match', () => {
+		expect(parseColonMacro(':café')).toBeNull();
+	});
 });
