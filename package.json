@@ -61,7 +61,7 @@
         "@tauri-apps/plugin-opener": "^2.7.1",
         "@tauri-apps/plugin-process": "^2.4.0",
         "@tauri-apps/plugin-store": "^2.5.0",
-        "@tauri-apps/plugin-updater": "^2.13.3",
+        "@tauri-apps/plugin-updater": "^2.14.0",
         "@tauri-apps/plugin-window-state": "^2.5.0",
         "tauri-svelte-synced-store": "github:synthlabs/tauri-svelte-synced-store"
     },
