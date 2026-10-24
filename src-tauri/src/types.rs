@@ -735,6 +735,8 @@ pub struct ChannelStatus {
     pub display_name: String,
     pub profile_image_url: String,
     pub is_live: bool,
+    #[serde(default)]
+    pub is_partner: bool,
     pub stream: Option<Stream>,
 }
 

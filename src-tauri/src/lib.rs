@@ -171,6 +171,10 @@ fn upsert_channel_cache_candidate(
         .or_else(|| previous_status.map(|status| status.profile_image_url.clone()))
         .unwrap_or_default();
     let is_live = stream.is_some();
+    let is_partner = user
+        .map(|user| user.broadcaster_type == Some(twitch_api::types::BroadcasterType::Partner))
+        .or_else(|| previous_status.map(|status| status.is_partner))
+        .unwrap_or_default();
 
     cache.channels.insert(
         candidate.login.clone(),
@@ -180,6 +184,7 @@ fn upsert_channel_cache_candidate(
             display_name,
             profile_image_url,
             is_live,
+            is_partner,
             stream,
         },
     );
@@ -1504,6 +1509,55 @@ mod tests {
         assert!(!offline.is_live);
         assert!(offline.stream.is_none());
         assert_eq!(offline.display_name, "Luna");
+    }
+
+    #[test]
+    fn channel_cache_tracks_partner_status_and_preserves_it_without_user_metadata() {
+        let candidate =
+            ChannelCacheCandidate::new("1".to_owned(), "maya".to_owned(), "Maya".to_owned());
+        let mut cache = types::ChannelCache::default();
+        for (broadcaster_type, expected) in [("partner", true), ("affiliate", false), ("", false)] {
+            let user: twitch_api::helix::users::User = serde_json::from_value(serde_json::json!({
+                "id": "1", "login": "maya", "display_name": "Maya", "type": "",
+                "broadcaster_type": broadcaster_type, "description": "", "profile_image_url": "",
+                "offline_image_url": "", "view_count": 0, "created_at": "2026-01-01T00:00:00Z"
+            }))
+            .unwrap();
+            upsert_channel_cache_candidate(&mut cache, &candidate, Some(&user), None, None);
+            assert_eq!(cache.channels["maya"].is_partner, expected);
+            let previous = cache.channels["maya"].clone();
+            upsert_channel_cache_candidate(&mut cache, &candidate, None, None, Some(&previous));
+            assert_eq!(cache.channels["maya"].is_partner, expected);
+        }
+    }
+
+    #[test]
+    fn channel_cache_refresh_clears_previous_partner_status_for_a_non_partner() {
+        let candidate =
+            ChannelCacheCandidate::new("1".to_owned(), "maya".to_owned(), "Maya".to_owned());
+        let previous = types::ChannelStatus {
+            is_partner: true,
+            ..Default::default()
+        };
+        let user: twitch_api::helix::users::User = serde_json::from_value(serde_json::json!({
+            "id": "1", "login": "maya", "display_name": "Maya", "type": "",
+            "broadcaster_type": "affiliate", "description": "", "profile_image_url": "",
+            "offline_image_url": "", "view_count": 0, "created_at": "2026-01-01T00:00:00Z"
+        }))
+        .unwrap();
+        let mut cache = types::ChannelCache::default();
+        upsert_channel_cache_candidate(&mut cache, &candidate, Some(&user), None, Some(&previous));
+        assert!(!cache.channels["maya"].is_partner);
+    }
+
+    #[test]
+    fn channel_cache_without_partner_field_remains_readable() {
+        let cache: types::ChannelCache = serde_json::from_value(serde_json::json!({
+            "channels": { "maya": { "broadcaster_id": "1", "login": "maya", "display_name": "Maya",
+                "profile_image_url": "", "is_live": false, "stream": null } }
+        }))
+        .unwrap();
+        assert!(!cache.channels["maya"].is_partner);
     }
 
     #[test]

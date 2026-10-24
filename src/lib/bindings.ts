@@ -301,7 +301,7 @@ export type ChannelMessageType =
  * A message sent with effects
  */
 "power_ups_message_effect"
-export type ChannelStatus = { broadcaster_id: string; login: string; display_name: string; profile_image_url: string; is_live: boolean; stream: Stream | null }
+export type ChannelStatus = { broadcaster_id: string; login: string; display_name: string; profile_image_url: string; is_live: boolean; is_partner?: boolean; stream: Stream | null }
 export type ChatSettings = { message_limit: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; translation_layout: ChatTranslationLayout; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean }
 export type ChatTranslationLayout = "language_tag" | "message_text" | "timestamp_end" | "connector"
 export type CheerFragment = { index: number; text: string }

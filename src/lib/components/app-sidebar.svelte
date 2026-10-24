@@ -6,7 +6,7 @@
 	import * as Sidebar from '$lib/components/ui/sidebar/index.ts';
 	import * as Avatar from '$lib/components/ui/avatar/index.ts';
 	import NavUser from '$lib/components/nav-user.svelte';
-	import SearchForm from '$lib/components/search-form.svelte';
+	import SidebarControls from '$lib/components/sidebar-controls.svelte';
 	import { Separator } from '$lib/components/ui/separator/index.ts';
 	import {
 		commands,
@@ -154,9 +154,7 @@
 {/snippet}
 
 <Sidebar.Root bind:ref {collapsible} {...restProps}>
-	<Sidebar.Header>
-		<SearchForm bind:value={search} onsubmit={joinChannel} />
-	</Sidebar.Header>
+	<SidebarControls bind:value={search} onsubmit={joinChannel} />
 	<Sidebar.Content class="overscroll-none">
 		{#if is_extra && extra_channel && extra_channel.broadcaster_login === current_channel}
 			<Sidebar.Group>

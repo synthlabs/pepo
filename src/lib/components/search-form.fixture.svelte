@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as Sidebar from './ui/sidebar/index';
-	import SearchForm from './search-form.svelte';
+	import SidebarControls from './sidebar-controls.svelte';
 
 	let {
 		open = $bindable(true),
@@ -10,13 +10,11 @@
 </script>
 
 <Sidebar.Provider bind:open>
-	<Sidebar.Trigger />
 	<Sidebar.Root collapsible="icon">
-		<Sidebar.Header>
-			<SearchForm bind:value {onsubmit} />
-		</Sidebar.Header>
+		<SidebarControls bind:value {onsubmit} />
 		<Sidebar.Rail />
 	</Sidebar.Root>
+	<Sidebar.Trigger class="md:hidden" />
 	<button type="button" data-outside>Outside</button>
 	<output data-query>{value}</output>
 </Sidebar.Provider>
