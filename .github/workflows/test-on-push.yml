@@ -11,9 +11,7 @@ jobs:
     uses: ./.github/workflows/validation.yml
     with:
       packages: true
-      aur-access: true
     secrets:
       TAURI_PEPO_SIGNING_KEY: ${{ secrets.TAURI_PEPO_SIGNING_KEY }}
       TAURI_PEPO_SIGNING_KEY_PASSWORD: ${{ secrets.TAURI_PEPO_SIGNING_KEY_PASSWORD }}
       INBOUND_WEBHOOK_PEPO: ${{ secrets.INBOUND_WEBHOOK_PEPO }}
-      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}

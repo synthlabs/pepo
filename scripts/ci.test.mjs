@@ -42,12 +42,12 @@ test('pull requests share validation without packaging or secrets', () => {
 	}
 });
 
-test('branch builds validate packages and AUR access without requesting publication', () => {
+test('branch builds validate packages without requesting publication', () => {
 	const branch = workflow('test-on-push.yml');
 	assert.deepEqual(branch.on.push['branches-ignore'], ['main']);
 	assert.equal(branch.permissions.contents, 'read');
 	assert.equal(branch.jobs.validation.uses, './.github/workflows/validation.yml');
-	assert.deepEqual(branch.jobs.validation.with, { packages: true, 'aur-access': true });
+	assert.deepEqual(branch.jobs.validation.with, { packages: true });
 	assert.equal(
 		branch.jobs.validation.secrets.TAURI_PEPO_SIGNING_KEY,
 		'${{ secrets.TAURI_PEPO_SIGNING_KEY }}'
@@ -56,6 +56,23 @@ test('branch builds validate packages and AUR access without requesting publicat
 	assert.deepEqual(main.on.push.branches, ['main']);
 	assert.equal(main.jobs.validation.uses, './.github/workflows/validation.yml');
 	assert.equal(main.jobs.validation.with.publish, true);
+});
+
+test('live AUR access and publication remain disabled until credentials are configured', () => {
+	for (const name of ['test-on-push.yml', 'publish-release.yml']) {
+		const caller = workflow(name).jobs.validation;
+		const aurAccess =
+			caller.with['aur-access'] ?? validation.on.workflow_call.inputs['aur-access'].default;
+		assert.equal(aurAccess, false);
+		assert.equal(caller.secrets.AUR_SSH_PRIVATE_KEY, undefined);
+		assert.equal(
+			evaluate(validation.jobs.aur.if, {
+				inputs: { ...caller.with, 'aur-access': aurAccess },
+				github: { event_name: 'push' }
+			}),
+			false
+		);
+	}
 });
 
 test('publication requires the input, push event, and main ref together', () => {

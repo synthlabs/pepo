@@ -119,8 +119,12 @@ pnpm tauri build --no-bundle -- --locked
 
 Pull requests run frontend and Rust tests on Linux, Windows, and macOS, plus lint, installer checks,
 and the AUR SSH container fixtures. Repository branch pushes also build signed desktop bundles,
-the macOS universal app, and the Arch package, then check AUR access without publishing. Only pushes
-to `main` enable release and AUR publication. Branch artifacts are available from the Actions run.
+the macOS universal app, and the Arch package. Only pushes to `main` enable GitHub release publication.
+Branch artifacts are available from the Actions run.
+
+Live AUR access and publication are disabled until the CI key is registered with AUR. To enable
+them, set `aur-access: true` and forward `AUR_SSH_PRIVATE_KEY` in both the branch and publish workflow
+callers. The SSH fixtures continue to run without AUR credentials.
 
 Dependency updates include their manifests and lockfiles together; CI rejects lockfile changes.
 When shared utils changes are needed, push that commit first, then commit Pepo's updated submodule
