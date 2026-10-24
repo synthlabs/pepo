@@ -190,8 +190,8 @@
 			</Sidebar.GroupContent>
 		</Sidebar.Group>
 	</Sidebar.Content>
-	<Sidebar.Footer>
-		<Separator class="" />
+	<Sidebar.Footer class="group-data-[collapsible=icon]:px-0">
+		<Separator class="group-data-[collapsible=icon]:mx-2 group-data-[collapsible=icon]:w-auto" />
 		<NavUser {accounts} {activeAccountId} {authPhase} onlogout={logout} />
 	</Sidebar.Footer>
 	<Sidebar.Rail />

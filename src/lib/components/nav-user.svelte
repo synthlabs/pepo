@@ -82,7 +82,7 @@
 				{#snippet child({ props })}
 					<Sidebar.MenuButton
 						size="sm"
-						class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground mb-1"
+						class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground mb-1 group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:p-2"
 						{...props}
 					>
 						<div class="relative shrink-0">

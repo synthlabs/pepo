@@ -12,10 +12,8 @@
 	let now = $state(Date.now());
 	let uptime = $derived(streamUptime(header?.startedAt ?? null, now));
 	let visibility = $state({ tagCount: 0, showCategory: false, showUptime: false });
-	let showLanguage = $derived(Boolean(header?.language) && visibility.tagCount > 0);
-	let showTags = $derived(
-		Boolean(header?.tags.length) && visibility.tagCount > (header?.language ? 1 : 0)
-	);
+	let pillLabel = $derived(header?.language ?? (header?.tags.length ? 'Tags' : null));
+	let showPill = $derived(Boolean(pillLabel) && visibility.tagCount > 0);
 
 	$effect(() => {
 		const startedAt = header?.startedAt;
@@ -40,9 +38,7 @@
 					Math.min(width('title'), 128) +
 					width('viewers') +
 					24,
-				tagWidths: measures
-					.filter((el) => ['language', 'tags'].includes(el.dataset.headerMeasure ?? ''))
-					.map((el) => el.getBoundingClientRect().width),
+				tagWidths: pillLabel ? [width('pill')] : [],
 				categoryWidth: width('category'),
 				uptimeWidth: width('uptime')
 			});
@@ -129,18 +125,18 @@
 							data-header-category>{header.category}</span
 						>
 					{/if}
-					{#if showLanguage || showTags}
+					{#if showPill}
 						<div class="flex items-center gap-1" data-header-tags>
-							{#if showLanguage && header.language}
-								<span data-header-language>{@render tagPill(header.language)}</span>
-							{/if}
-							{#if showTags}
+							{#if header.tags.length}
 								<Tooltip.Provider delayDuration={0}>
 									<Tooltip.Root>
 										<Tooltip.Trigger
-											class="bg-muted text-muted-foreground focus-visible:ring-ring cursor-default rounded-full px-2 py-1 text-xs leading-none focus-visible:ring-2 focus-visible:outline-hidden"
-											aria-label="Show stream tags"
-											data-header-tags-trigger>Tags</Tooltip.Trigger
+											class="bg-muted text-muted-foreground focus-visible:ring-ring max-w-32 cursor-default truncate rounded-full px-2 py-1 text-xs leading-none focus-visible:ring-2 focus-visible:outline-hidden"
+											aria-label={header.language
+												? `${header.language}: show stream tags`
+												: 'Show stream tags'}
+											data-header-language={header.language ? '' : undefined}
+											data-header-tags-trigger>{pillLabel}</Tooltip.Trigger
 										>
 										<Tooltip.Content
 											side="bottom"
@@ -156,6 +152,8 @@
 										</Tooltip.Content>
 									</Tooltip.Root>
 								</Tooltip.Provider>
+							{:else if header.language}
+								<span data-header-language>{@render tagPill(header.language)}</span>
 							{/if}
 						</div>
 					{/if}
@@ -196,13 +194,10 @@
 						>{header.category}</span
 					>
 				{/if}
-				{#if header.language}
-					<div class="shrink-0" data-header-measure="language">
-						{@render tagPill(header.language)}
+				{#if pillLabel}
+					<div class="shrink-0" data-header-measure="pill">
+						{@render tagPill(pillLabel)}
 					</div>
-				{/if}
-				{#if header.tags.length}
-					<div class="shrink-0" data-header-measure="tags">{@render tagPill('Tags')}</div>
 				{/if}
 				<span class="flex items-center gap-1 font-medium tabular-nums" data-header-measure="viewers"
 					>{@render viewers(header.viewerCount)}</span

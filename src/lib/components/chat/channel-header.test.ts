@@ -36,8 +36,7 @@ beforeEach(() => {
 						title: 300,
 						viewers: 60,
 						category: 80,
-						language: 48,
-						tags: 48,
+						pill: 48,
 						uptime: 72
 					} as Record<string, number>
 				)[name ?? ''] ?? 0;
@@ -79,6 +78,8 @@ afterEach(async () => {
 async function flushUi() {
 	flushSync();
 	await tick();
+	await vi.advanceTimersByTimeAsync(0);
+	await tick();
 }
 
 async function render(
@@ -111,9 +112,12 @@ describe('channel header', () => {
 		expect(text('[data-header-title]')).toBe('Original title 🦊');
 		expect(element('[data-header-title]')?.title).toBe('Original title 🦊');
 		expect(text('[data-header-category]')).toBe('Terraria');
-		expect(element('[data-header-tags]')?.children).toHaveLength(2);
+		expect(element('[data-header-tags]')?.children).toHaveLength(1);
 		expect(text('[data-header-language]')).toBe('English');
-		expect(text('[data-header-tags-trigger]')).toBe('Tags');
+		expect(text('[data-header-tags-trigger]')).toBe('English');
+		expect(element('[data-header-tags-trigger]')?.getAttribute('aria-label')).toBe(
+			'English: show stream tags'
+		);
 		expect(element('[data-header-tags-tooltip]')).toBeNull();
 		expect(text('[data-header-viewers]')).toBe('4,646');
 		expect(text('[data-header-uptime]')).toBe('2:47:45');
@@ -123,12 +127,17 @@ describe('channel header', () => {
 		expect(document.querySelector('a')).toBeNull();
 	});
 
-	it.each(['hover', 'focus'])(
-		'shows every remaining tag on %s without truncating long names',
-		async (method) => {
+	it.each(
+		['hover', 'focus'].flatMap((method) =>
+			['English', null].map((language) => ({ method, language }))
+		)
+	)(
+		'shows every remaining tag on $method with language $language',
+		async ({ method, language }) => {
 			const tags = ['Hair', 'DropsEnabled', 'AnExceptionallyLongTagThatShouldRemainFullyReadable'];
-			await render({ ...live, tags });
+			await render({ ...live, language, tags });
 			const trigger = element('[data-header-tags-trigger]')!;
+			expect(trigger.textContent).toBe(language ?? 'Tags');
 			if (method === 'hover') {
 				trigger.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
 			} else {
@@ -141,7 +150,7 @@ describe('channel header', () => {
 			const tooltip = element('[data-header-tags-tooltip]');
 			expect(tooltip).not.toBeNull();
 			expect(Array.from(tooltip!.children).map((tag) => tag.textContent)).toEqual(tags);
-			expect(text('[data-header-language]')).toBe('English');
+			expect(text('[data-header-language]')).toBe(language ?? undefined);
 		}
 	);
 
@@ -149,22 +158,31 @@ describe('channel header', () => {
 		await render({ ...live, tags: [] });
 		expect(text('[data-header-language]')).toBe('English');
 		expect(element('[data-header-tags-trigger]')).toBeNull();
+		expect(element('[data-header-language]')?.querySelector('button')).toBeNull();
 	});
 
 	it('supports tags without stream language metadata', async () => {
 		await render({ ...live, language: null });
 		expect(element('[data-header-language]')).toBeNull();
 		expect(text('[data-header-tags-trigger]')).toBe('Tags');
+		expect(element('[data-header-tags]')?.children).toHaveLength(1);
+		expect(element('[data-header-tags-trigger]')?.getAttribute('aria-label')).toBe(
+			'Show stream tags'
+		);
 	});
 
-	it('removes Tags, language, category, and uptime in order as the container shrinks', async () => {
-		await render();
+	it('omits the pill when both language and tags are missing', async () => {
+		await render({ ...live, language: null, tags: [] });
+		expect(element('[data-header-tags]')).toBeNull();
+	});
+
+	it.each(['English', null])('removes the %s pill before category and uptime', async (language) => {
+		await render({ ...live, language });
 		await resize(700);
-		expect(element('[data-header-tags]')?.children).toHaveLength(2);
+		expect(element('[data-header-tags]')?.children).toHaveLength(1);
 		expect(text('[data-header-tags]')).not.toContain('DropsEnabled');
 		await resize(650);
-		expect(element('[data-header-tags-trigger]')).toBeNull();
-		expect(text('[data-header-language]')).toBe('English');
+		expect(text('[data-header-tags-trigger]')).toBe(language ?? 'Tags');
 		await resize(600);
 		expect(element('[data-header-tags]')).toBeNull();
 		expect(element('[data-header-category]')).not.toBeNull();
@@ -176,9 +194,24 @@ describe('channel header', () => {
 		expect(text('[data-header-identity]')).toBe('Maya');
 		expect(text('[data-header-viewers]')).toBe('4,646');
 		await resize(1100);
-		expect(element('[data-header-tags]')?.children).toHaveLength(2);
+		expect(element('[data-header-tags]')?.children).toHaveLength(1);
 		expect(element('[data-header-category]')).not.toBeNull();
 		expect(element('[data-header-uptime]')).not.toBeNull();
+	});
+
+	it('replaces the pill and tooltip tags when the channel changes', async () => {
+		await render(live, { ...live, language: null, tags: ['NewChannelTag'] });
+		element('[data-switch-channel]')!.click();
+		await flushUi();
+		expect(text('[data-header-tags-trigger]')).toBe('Tags');
+		expect(element('[data-header-language]')).toBeNull();
+		element('[data-header-tags-trigger]')!.dispatchEvent(
+			new PointerEvent('pointerenter', { pointerType: 'mouse' })
+		);
+		await flushUi();
+		await vi.advanceTimersByTimeAsync(20);
+		await flushUi();
+		expect(text('[data-header-tags-tooltip]')).toBe('NewChannelTag');
 	});
 
 	it('ticks uptime and replaces the timer and resize observer on channel changes', async () => {

@@ -5,6 +5,8 @@
 	import * as Popover from '$lib/components/ui/popover/index.ts';
 	import { Input } from '$lib/components/ui/input/index.ts';
 	import { useSidebar } from '$lib/components/ui/sidebar/context.svelte.ts';
+	import { sidebarMenuButtonVariants } from '$lib/components/ui/sidebar/sidebar-menu-button.svelte';
+	import { cn } from '$lib/utils';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import XIcon from '@lucide/svelte/icons/x';
 
@@ -144,7 +146,10 @@
 			<Popover.Root bind:open={popoverOpen} onOpenChange={handlePopoverOpenChange}>
 				<Popover.Trigger
 					bind:ref={triggerRef}
-					class="hover:bg-sidebar-accent flex size-8 cursor-pointer items-center justify-center rounded-md"
+					class={cn(
+						sidebarMenuButtonVariants({ size: 'lg' }),
+						'-mx-2 -my-1 w-[calc(100%+1rem)] shrink-0 justify-center'
+					)}
 				>
 					<SearchIcon class="size-4 opacity-50" />
 					<span class="sr-only">Search</span>
