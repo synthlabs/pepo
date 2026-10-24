@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 export const FORMAT_PATTERNS = [
 	'src/**/*.{svelte,ts,js,css,json,md}',
 	'utils/js/**/*.{svelte,ts,js,json,md}',
-	'AGENTS.md',
 	'README.md',
 	'components.json',
 	'eslint.config.js',
