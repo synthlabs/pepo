@@ -26,6 +26,7 @@ use crate::types::{AppSettings, AuthState, ChannelCache};
 
 mod badgemanager;
 mod badgepersist;
+mod chat_send;
 mod emote;
 mod emotemanager;
 mod eventsub;
@@ -252,7 +253,7 @@ fn send_chat_message(
     _app_handle: AppHandle,
     token_manager: State<'_, TokenManager>,
     client: State<'_, HelixClient<'static, reqwest::Client>>,
-) -> Result<(), String> {
+) -> Result<(), chat_send::ChatSendError> {
     debug!(
         "sending chat message: broadcaster_id={}, message={}",
         broadcaster_id, message
@@ -261,7 +262,7 @@ fn send_chat_message(
     let client = client.inner();
 
     let token_guard = tauri::async_runtime::block_on(token_manager.active_twitch_token())
-        .ok_or_else(|| "no active token".to_owned())?;
+        .ok_or_else(chat_send::ChatSendError::missing_token)?;
     let user_id = token_guard.user_id.clone();
     match tauri::async_runtime::block_on(client.send_chat_message(
         broadcaster_id,
@@ -269,8 +270,8 @@ fn send_chat_message(
         message.as_str(),
         &token_guard,
     )) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("request failed: {:?}", e)),
+        Ok(response) => chat_send::check_response(response),
+        Err(error) => Err(chat_send::ChatSendError::from_request(error)),
     }
 }
 

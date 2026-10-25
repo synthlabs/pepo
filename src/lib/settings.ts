@@ -8,6 +8,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 	layout: {
 		sidebar_open: true
 	},
+	diagnostics: {
+		capture_window_errors: true
+	},
 	chat: {
 		message_limit: 500,
 		pause_message_gc_while_paused: true,
@@ -77,6 +80,7 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 	const source = settings ?? DEFAULT_APP_SETTINGS;
 	const appearance = source.appearance ?? DEFAULT_APP_SETTINGS.appearance;
 	const layout = source.layout ?? DEFAULT_APP_SETTINGS.layout;
+	const diagnostics = source.diagnostics ?? DEFAULT_APP_SETTINGS.diagnostics;
 	const chat = source.chat ?? DEFAULT_APP_SETTINGS.chat;
 	const emotes = source.emotes ?? DEFAULT_APP_SETTINGS.emotes;
 	const channelCache = source.channel_cache ?? DEFAULT_APP_SETTINGS.channel_cache;
@@ -109,6 +113,12 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 		layout: {
 			...DEFAULT_APP_SETTINGS.layout,
 			...layout
+		},
+		diagnostics: {
+			capture_window_errors:
+				typeof diagnostics.capture_window_errors === 'boolean'
+					? diagnostics.capture_window_errors
+					: DEFAULT_APP_SETTINGS.diagnostics.capture_window_errors
 		},
 		chat: {
 			...DEFAULT_APP_SETTINGS.chat,

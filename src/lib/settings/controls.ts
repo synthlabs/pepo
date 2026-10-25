@@ -274,6 +274,14 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 		label: 'Sidebar expanded',
 		description: 'Show channel names and stream details in the sidebar.',
 		kind: 'toggle'
+	},
+	{
+		id: 'diagnostics.capture_window_errors',
+		path: 'diagnostics.capture_window_errors',
+		category: 'app',
+		label: 'Report uncaught errors',
+		description: 'Offer a bug report when the app hits an unexpected error.',
+		kind: 'toggle'
 	}
 ];
 
@@ -337,10 +345,16 @@ export function resetSettingsPatch(category: SettingsCategory | 'all'): Settings
 	const defaults = structuredClone(DEFAULT_APP_SETTINGS);
 	if (category === 'chat') return { chat: defaults.chat };
 	if (category === 'emotes') return { emotes: defaults.emotes };
-	if (category === 'app') return { appearance: defaults.appearance, layout: defaults.layout };
+	if (category === 'app')
+		return {
+			appearance: defaults.appearance,
+			layout: defaults.layout,
+			diagnostics: defaults.diagnostics
+		};
 	return {
 		appearance: defaults.appearance,
 		layout: defaults.layout,
+		diagnostics: defaults.diagnostics,
 		chat: defaults.chat,
 		emotes: defaults.emotes
 	};

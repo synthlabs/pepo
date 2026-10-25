@@ -61,7 +61,7 @@ async logout() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async sendChatMessage(broadcasterId: string, message: string) : Promise<Result<null, string>> {
+async sendChatMessage(broadcasterId: string, message: string) : Promise<Result<null, ChatSendError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("send_chat_message", { broadcasterId, message }) };
 } catch (e) {
@@ -95,7 +95,7 @@ async searchEmotes(query: string, broadcasterId: string, limit: number | null) :
 
 /** user-defined types **/
 
-export type AppSettings = { schema_version: number; appearance: AppearanceSettings; layout: LayoutSettings; chat: ChatSettings; emotes: EmoteSettings; channel_cache: ChannelCacheSettings; auth: AuthSettings; eventsub: EventSubSettings; providers: ProviderSettings }
+export type AppSettings = { schema_version: number; appearance: AppearanceSettings; layout: LayoutSettings; chat: ChatSettings; emotes: EmoteSettings; channel_cache: ChannelCacheSettings; auth: AuthSettings; eventsub: EventSubSettings; providers: ProviderSettings; diagnostics: DiagnosticsSettings }
 export type AppearanceSettings = { theme: AppearanceTheme }
 export type AppearanceTheme = "system" | "light" | "dark"
 export type AuthPhase = "unauthorized" | "waitingForDeviceCode" | "waitingForAuth" | "failedAuth" | "authorized"
@@ -302,9 +302,12 @@ export type ChannelMessageType =
  */
 "power_ups_message_effect"
 export type ChannelStatus = { broadcaster_id: string; login: string; display_name: string; profile_image_url: string; is_live: boolean; is_partner?: boolean; stream: Stream | null }
+export type ChatSendError = { kind: ChatSendErrorKind; message: string; details: string }
+export type ChatSendErrorKind = "authentication" | "permission_denied" | "rate_limited" | "rejected" | "connection" | "timeout" | "unexpected"
 export type ChatSettings = { message_limit: number; pause_message_gc_while_paused: boolean; batch_live_messages: boolean; message_batch_interval_ms: number; message_gc_interval_ms: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; translation_layout: ChatTranslationLayout; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean }
 export type ChatTranslationLayout = "language_tag" | "message_text" | "timestamp_end" | "connector"
 export type CheerFragment = { index: number; text: string }
+export type DiagnosticsSettings = { capture_window_errors: boolean }
 export type Emote = { 
 /**
  * ID of the emote.

@@ -5,7 +5,7 @@
 	import { checkForAppUpdates, type UpdateAction } from '$utils/updater';
 	import { Toaster } from '$lib/components/ui/sonner/index.ts';
 	import { applyThemePreference } from '$lib/settings';
-	import { ErrorToast } from '$utils/inbound';
+	import ErrorHost from '$lib/components/error-host.svelte';
 	import { appSettings, getNormalizedAppSettings } from '$lib/stores/settings.svelte';
 
 	let { children } = $props();
@@ -34,7 +34,7 @@
 </script>
 
 <Toaster theme={normalizedAppSettings.appearance.theme} position="bottom-right" />
-<ErrorToast />
+<ErrorHost />
 
 <div class="h-full w-full">
 	{@render children?.()}

@@ -1,7 +1,7 @@
 import type { AppSettings } from '$lib/bindings';
 import { normalizeAppSettings } from '$lib/settings';
 
-export type EditableSettingsSection = 'appearance' | 'layout' | 'chat' | 'emotes';
+export type EditableSettingsSection = 'appearance' | 'layout' | 'diagnostics' | 'chat' | 'emotes';
 export type SettingsPatch = {
 	[Section in EditableSettingsSection]?: Partial<AppSettings[Section]>;
 };
@@ -19,6 +19,7 @@ export function applySettingsPatch(settings: AppSettings, patch: SettingsPatch):
 		...settings,
 		appearance: { ...settings.appearance, ...patch.appearance },
 		layout: { ...settings.layout, ...patch.layout },
+		diagnostics: { ...settings.diagnostics, ...patch.diagnostics },
 		chat: { ...settings.chat, ...patch.chat },
 		emotes: { ...settings.emotes, ...patch.emotes }
 	};

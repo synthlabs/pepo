@@ -24,6 +24,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
 	import { parseColonMacro } from '$lib/chat/colon-macro';
+	import { captureChatSendError } from '$lib/chat/send-errors';
 	import { MessageHistoryScheduler } from '$lib/chat/message-history';
 	import { measureHistoryOriginSpacer } from '$lib/chat/history-origin';
 	import {
@@ -60,6 +61,8 @@
 	const MANUAL_SCROLL_SETTLE_MS = 250;
 	const PAUSED_REFLOW_SETTLE_MS = 250;
 	const SCROLL_RESTORE_FALLBACK_MS = 50;
+	const MAX_MESSAGE_LENGTH = 500;
+	const COUNTER_THRESHOLD = 400;
 
 	let chatDIV = $state<HTMLDivElement>();
 	let messageListDIV = $state<HTMLDivElement>();
@@ -83,7 +86,10 @@
 	let msgs: ChannelMessage[] = $state([]);
 	let chatInput = $state('');
 	let hasInput = $derived(chatInput.length > 0);
+	let showCounter = $derived(chatInput.length >= COUNTER_THRESHOLD);
 	let errorState = $state({ active: false, msg: '' });
+	let sendPending = $state(false);
+	let messageErrorTimer: ReturnType<typeof setTimeout> | undefined;
 	let channelInfo = $state({} as ChannelInfo);
 	let username = $derived(
 		authState.obj.phase === 'authorized' && authState.obj.token ? authState.obj.token.login : null
@@ -175,6 +181,7 @@
 
 	onDestroy(async () => {
 		destroyed = true;
+		clearTimeout(messageErrorTimer);
 		messageHistory.dispose();
 		resizeObserver?.disconnect();
 		document.removeEventListener('visibilitychange', handleViewportWake);
@@ -703,30 +710,45 @@
 		pinToBottomNowAndAfterRender();
 	};
 
-	const submitForm = (event: SubmitEvent) => {
+	const submitForm = async (event: SubmitEvent) => {
 		event.preventDefault();
-		let target = event.target as HTMLFormElement;
-
-		if (hasInput) {
-			commands
-				.sendChatMessage(channelInfo.broadcaster_id, chatInput)
-				.then(() => Logger.debug('message sent'))
-				.catch(Logger.error)
-				.finally(() => {
-					chatInput = '';
-					if (event.target) {
-						target.reset();
-					}
-				});
-		} else {
+		if (sendPending) {
+			showMessageError(
+				'Your previous message is still sending. Please wait before submitting another.'
+			);
+			return;
+		}
+		if (!hasInput) {
 			showMessageError('Message cannot be empty');
+			return;
+		}
+
+		const message = chatInput;
+		const channel = channel_name;
+		const broadcasterId = channelInfo.broadcaster_id;
+		sendPending = true;
+		chatInput = '';
+		try {
+			const result = await commands.sendChatMessage(broadcasterId, message);
+			if (result.status === 'error') {
+				const feedback = captureChatSendError(channel, result.error);
+				if (feedback && !destroyed) showMessageError(feedback);
+			} else {
+				Logger.debug('message sent');
+			}
+		} catch (error) {
+			captureChatSendError(channel, error);
+		} finally {
+			if (!destroyed) sendPending = false;
 		}
 	};
 
 	const showMessageError = (msg: string, timeout = 5000) => {
+		if (destroyed) return;
+		clearTimeout(messageErrorTimer);
 		errorState.msg = msg;
 		errorState.active = true;
-		setTimeout(() => {
+		messageErrorTimer = setTimeout(() => {
 			errorState.active = false;
 			errorState.msg = '';
 		}, timeout);
@@ -789,17 +811,19 @@
 	});
 
 	const insertEmote = (emote: EmoteType) => {
-		if (!pickerOpenedByButton && colonMatch) {
-			const colonIndex = chatInput.lastIndexOf(':');
-			chatInput = chatInput.substring(0, colonIndex) + emote.name + ' ';
-		} else {
-			chatInput =
-				chatInput + (chatInput.endsWith(' ') || chatInput === '' ? '' : ' ') + emote.name + ' ';
-		}
+		const next =
+			!pickerOpenedByButton && colonMatch
+				? chatInput.substring(0, chatInput.lastIndexOf(':')) + emote.name + ' '
+				: chatInput + (chatInput.endsWith(' ') || chatInput === '' ? '' : ' ') + emote.name + ' ';
 		emotePickerVisible = false;
 		pickerOpenedByButton = false;
 		emoteSearchQuery = '';
 		selectedEmoteIndex = 0;
+		if (next.length > MAX_MESSAGE_LENGTH) {
+			showMessageError(`Message cannot exceed ${MAX_MESSAGE_LENGTH} characters`);
+			return;
+		}
+		chatInput = next;
 	};
 
 	const toggleEmotePicker = async () => {
@@ -988,6 +1012,8 @@
 		{#if errorState.active}
 			<div
 				transition:slide={{ easing: quadInOut, duration: 250 }}
+				role="alert"
+				data-chat-input-error
 				class="shrink-0 cursor-not-allowed bg-red-950 text-center"
 			>
 				{errorState.msg}
@@ -1006,14 +1032,26 @@
 				maxHeightPx={emoteSettings.picker_max_height_px}
 				emoteSizePx={emoteSettings.inline_emote_px}
 			/>
-			<form onsubmit={submitForm} class="flex items-center">
+			<form onsubmit={submitForm} aria-busy={sendPending} class="flex items-center">
 				<input
 					bind:value={chatInput}
+					aria-label="Chat message"
+					maxlength={MAX_MESSAGE_LENGTH}
 					onkeydown={handleKeydown}
 					type="text"
 					class="bg-background placeholder:text-muted-foreground h-full min-w-0 flex-1 p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
 					placeholder={username ? `Send message as ${username}` : 'Sign in to chat'}
 				/>
+				{#if showCounter}
+					<span
+						aria-live="polite"
+						data-chat-counter
+						class={cn(
+							'shrink-0 px-2 text-xs tabular-nums',
+							chatInput.length >= MAX_MESSAGE_LENGTH ? 'text-destructive' : 'text-muted-foreground'
+						)}>{chatInput.length}/{MAX_MESSAGE_LENGTH}</span
+					>
+				{/if}
 				<button
 					type="button"
 					class="text-muted-foreground hover:text-foreground cursor-pointer p-2"

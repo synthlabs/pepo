@@ -3,6 +3,20 @@ import type { AppSettings } from '$lib/bindings';
 import { DEFAULT_APP_SETTINGS, gridTemplateColumns, normalizeAppSettings, px } from './settings';
 
 describe('settings helpers', () => {
+	it('defaults the diagnostics section and rejects non-boolean capture flags', () => {
+		const legacy = structuredClone(DEFAULT_APP_SETTINGS) as Partial<AppSettings>;
+		delete legacy.diagnostics;
+		expect(normalizeAppSettings(legacy as AppSettings).diagnostics).toEqual({
+			capture_window_errors: true
+		});
+		const invalid = structuredClone(DEFAULT_APP_SETTINGS);
+		invalid.diagnostics.capture_window_errors = 'no' as unknown as boolean;
+		expect(normalizeAppSettings(invalid).diagnostics.capture_window_errors).toBe(true);
+		const disabled = structuredClone(DEFAULT_APP_SETTINGS);
+		disabled.diagnostics.capture_window_errors = false;
+		expect(normalizeAppSettings(disabled).diagnostics.capture_window_errors).toBe(false);
+	});
+
 	it('defaults missing history policy fields and preserves explicit toggles', () => {
 		const legacy = structuredClone(DEFAULT_APP_SETTINGS) as Partial<AppSettings>;
 		legacy.chat = { message_limit: 500 } as AppSettings['chat'];

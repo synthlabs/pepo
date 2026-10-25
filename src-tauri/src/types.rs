@@ -50,6 +50,7 @@ pub struct AppSettings {
     pub auth: AuthSettings,
     pub eventsub: EventSubSettings,
     pub providers: ProviderSettings,
+    pub diagnostics: DiagnosticsSettings,
 }
 
 impl Default for AppSettings {
@@ -64,6 +65,7 @@ impl Default for AppSettings {
             auth: AuthSettings::default(),
             eventsub: EventSubSettings::default(),
             providers: ProviderSettings::default(),
+            diagnostics: DiagnosticsSettings::default(),
         }
     }
 }
@@ -361,6 +363,20 @@ pub struct LayoutSettings {
 impl Default for LayoutSettings {
     fn default() -> Self {
         Self { sidebar_open: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct DiagnosticsSettings {
+    pub capture_window_errors: bool,
+}
+
+impl Default for DiagnosticsSettings {
+    fn default() -> Self {
+        Self {
+            capture_window_errors: true,
+        }
     }
 }
 

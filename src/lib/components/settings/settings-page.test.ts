@@ -123,7 +123,7 @@ describe('settings page', () => {
 		expect(document.body.textContent).toContain('No settings match');
 		await click('[aria-label="Settings categories"] button:last-child');
 		expect(element<HTMLInputElement>('[aria-label="Search settings"]').value).toBe('');
-		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(2);
+		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(3);
 	});
 
 	it('commits numeric input on Enter once and retains invalid edits without a save', async () => {

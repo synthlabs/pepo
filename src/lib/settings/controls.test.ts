@@ -40,7 +40,7 @@ describe('settings controls', () => {
 	});
 	it('covers every exposed field without operational fields', () => {
 		const paths = [...new Set(SETTINGS_CONTROLS.map((control) => control.path))].sort();
-		const expected = (['appearance', 'layout', 'chat', 'emotes'] as const)
+		const expected = (['appearance', 'layout', 'diagnostics', 'chat', 'emotes'] as const)
 			.flatMap((section) =>
 				Object.keys(DEFAULT_APP_SETTINGS[section]).map((key) => `${section}.${key}`)
 			)
@@ -107,11 +107,16 @@ describe('settings controls', () => {
 	it('resets only the selected category and preserves operational values on reset all', () => {
 		const settings = structuredClone(DEFAULT_APP_SETTINGS);
 		settings.appearance.theme = 'light';
+		settings.diagnostics.capture_window_errors = false;
 		settings.chat.message_limit = 900;
 		settings.channel_cache.poll_interval_secs = 99;
 		const chat = applySettingsPatch(settings, resetSettingsPatch('chat'));
 		expect(chat.chat.message_limit).toBe(500);
 		expect(chat.appearance.theme).toBe('light');
+		expect(chat.diagnostics.capture_window_errors).toBe(false);
+		const app = applySettingsPatch(settings, resetSettingsPatch('app'));
+		expect(app.diagnostics.capture_window_errors).toBe(true);
+		expect(app.chat.message_limit).toBe(900);
 		const all = applySettingsPatch(settings, resetSettingsPatch('all'));
 		expect(all.appearance.theme).toBe('dark');
 		expect(all.channel_cache.poll_interval_secs).toBe(99);
