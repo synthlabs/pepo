@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -14,19 +15,24 @@ async function createFixture({
 	getPinnedBatchScrollSnapshot,
 	restoreScrollAfterRender,
 	scrollToBottom,
+	measureHistoryOriginSpacer,
 	settings
 }) {
 	const feed = document.createElement('div');
 	feed.style.cssText =
 		"position:absolute;top:30px;left:10px;height:200px;width:750px;overflow-x:hidden;overflow-y:auto;overflow-anchor:none;background:#080e19;color:white;font:14px/20px 'Segoe UI',sans-serif";
 	const content = document.createElement('div');
-	feed.append(content);
+	const spacer = document.createElement('div');
+	feed.append(spacer, content);
 	document.body.append(feed);
-	const icon =
-		'data:image/svg+xml,' +
-		encodeURIComponent(
-			'<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect width="28" height="28" fill="#9363ec"/><circle cx="14" cy="14" r="8" fill="#fdba24"/></svg>'
-		);
+	const canvas = document.createElement('canvas');
+	canvas.width = canvas.height = 28;
+	const context = canvas.getContext('2d');
+	context.fillStyle = '#9363ec';
+	context.fillRect(0, 0, 28, 28);
+	context.fillStyle = '#fdba24';
+	context.fillRect(6, 6, 16, 16);
+	const icon = canvas.toDataURL();
 	const makeRow = (index) => {
 		const row = document.createElement('div');
 		row.dataset.chatMessageIndex = String(index);
@@ -85,6 +91,21 @@ async function createFixture({
 	const restore = (saved) => {
 		if (saved) restoreScrollAfterRender(feed, saved, selector);
 	};
+	const trimRows = (count, compensated = true) => {
+		const saved = snapshot();
+		spacer.style.height =
+			(compensated
+				? measureHistoryOriginSpacer(
+						spacer,
+						content.children,
+						new Set(messages.slice(0, count).map(String)),
+						devicePixelRatio
+					)
+				: 0) + 'px';
+		messages.splice(0, count);
+		for (let i = 0; i < count; i++) content.firstElementChild.remove();
+		restore(saved);
+	};
 	const history = new MessageHistoryScheduler({
 		getState: () => ({ ...state, message_count: messages.length }),
 		append: (batch) => {
@@ -97,11 +118,8 @@ async function createFixture({
 			restore(saved);
 		},
 		trim: (count) => {
-			const saved = snapshot();
-			messages.splice(0, count);
-			for (let i = 0; i < count; i++) content.firstElementChild.remove();
+			trimRows(count);
 			gcPasses.push(count);
-			restore(saved);
 		}
 	});
 	for (let i = 0; i < settings.message_limit; i++) history.enqueue(i);
@@ -130,6 +148,44 @@ async function createFixture({
 			: null
 	});
 	window.fixture = {
+		prepareOrigin: async () => {
+			history.dispose();
+			state.paused = false;
+			spacer.style.height = '0px';
+			messages.length = 0;
+			const fragment = document.createDocumentFragment();
+			for (let index = 0; index < 1500; index++) {
+				messages.push(index);
+				fragment.append(makeRow(index));
+			}
+			content.replaceChildren(fragment);
+			await Promise.all([...content.querySelectorAll('img')].map((image) => image.decode()));
+			scrollToBottom(feed);
+			baseline = undefined;
+			return content.lastElementChild.getBoundingClientRect().top;
+		},
+		trimOrigin: (count, compensated) => {
+			const tail = content.lastElementChild;
+			const before = tail.getBoundingClientRect().top;
+			trimRows(count, compensated);
+			return {
+				top: tail.getBoundingClientRect().top,
+				movement: tail.getBoundingClientRect().top - before,
+				spacer: spacer.getBoundingClientRect().height
+			};
+		},
+		stressOrigin: (passes) => {
+			const tail = content.lastElementChild;
+			const before = tail.getBoundingClientRect().top;
+			let movement = 0;
+			let maxSpacer = 0;
+			for (let pass = 0; pass < passes; pass++) {
+				trimRows(1);
+				movement = Math.max(movement, Math.abs(tail.getBoundingClientRect().top - before));
+				maxSpacer = Math.max(maxSpacer, spacer.getBoundingClientRect().height);
+			}
+			return { movement, maxSpacer, retained: tail.isConnected };
+		},
 		metadata,
 		enqueue: (batch) => {
 			for (const message of batch) {
@@ -173,15 +229,37 @@ async function createFixture({
 		if (canvas.width !== width || canvas.height !== height)
 			throw new Error('Screenshot dimensions changed');
 		let changedPixels = 0;
+		let interiorChangedPixels = 0;
+		let nonImageChangedPixels = 0;
+		const box = feed.getBoundingClientRect();
+		const images = [...content.querySelectorAll('img')]
+			.map((image) => image.getBoundingClientRect())
+			.filter((rect) => rect.bottom > box.top + 35 && rect.top < box.top + 155);
 		for (let i = 0; i < pixels.length; i += 4) {
 			if (
 				pixels[i] !== baseline[i] ||
 				pixels[i + 1] !== baseline[i + 1] ||
 				pixels[i + 2] !== baseline[i + 2]
-			)
+			) {
 				changedPixels++;
+				const y = Math.floor(i / 4 / width);
+				if (y > 0 && y < height - 1) interiorChangedPixels++;
+				const xCss = box.left + 8 + ((i / 4) % width) / devicePixelRatio;
+				const yCss = box.top + 35 + y / devicePixelRatio;
+				const edge = 1 / devicePixelRatio;
+				if (
+					!images.some(
+						(rect) =>
+							xCss >= rect.left - edge &&
+							xCss <= rect.right + edge &&
+							yCss >= rect.top - edge &&
+							yCss <= rect.bottom + edge
+					)
+				)
+					nonImageChangedPixels++;
+			}
 		}
-		return { changedPixels };
+		return { changedPixels, interiorChangedPixels, nonImageChangedPixels };
 	};
 	const box = feed.getBoundingClientRect();
 	return {
@@ -255,7 +333,7 @@ function removeTemporaryProfile(profile, root) {
 	rmSync(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 
-async function checkScale(browserPath, scale, html) {
+export async function checkScale(browserPath, scale, html, run) {
 	const root = realpathSync(tmpdir());
 	const profile = mkdtempSync(path.join(root, 'pepo-chat-scroll-'));
 	let browser;
@@ -295,7 +373,7 @@ async function checkScale(browserPath, scale, html) {
 			try {
 				port = readFileSync(portFile, 'utf8').split('\n')[0];
 			} catch (error) {
-				if (error.code !== 'ENOENT') throw error;
+				if (!['ENOENT', 'EBUSY', 'EPERM'].includes(error.code)) throw error;
 			}
 			if (port) break;
 			await delay(50);
@@ -306,8 +384,14 @@ async function checkScale(browserPath, scale, html) {
 		debuggerClient = await connectDebugger(target.webSocketDebuggerUrl);
 		const { command, evaluate } = debuggerClient;
 		await command('Page.navigate', {
-			url: 'data:text/html;base64,' + Buffer.from(html).toString('base64')
+			url: html.startsWith('http://')
+				? html
+				: 'data:text/html;base64,' + Buffer.from(html).toString('base64')
 		});
+		if (run) {
+			await run({ command, evaluate });
+			return;
+		}
 		for (let i = 0; i < 100 && !(await evaluate('!!window.fixtureReady')); i++) await delay(20);
 		const initial = await evaluate('window.fixtureReady');
 		if (!initial) throw new Error('Fixture did not initialize');
@@ -379,9 +463,43 @@ async function checkScale(browserPath, scale, html) {
 			collected.count === initial.count && collected.gcPasses[1] === 1,
 			'live GC was not batched'
 		);
+		await evaluate('window.fixture.prepareOrigin()');
+		let uncorrectedMovement = 0;
+		for (let pass = 0; pass < 24; pass++) {
+			const value = await evaluate(
+				'window.fixture.trimOrigin(' + [1, 3, 8, 5][pass % 4] + ',false)'
+			);
+			uncorrectedMovement = Math.max(uncorrectedMovement, Math.abs(value.movement));
+		}
+		if (scale !== 2) assert(uncorrectedMovement > 0.01, 'control did not reproduce displacement');
+		await evaluate('window.fixture.prepareOrigin()');
+		await capture();
+		let originChangedPixels = 0;
+		for (let pass = 0; pass < 24; pass++) {
+			const value = await evaluate(
+				'window.fixture.trimOrigin(' + [1, 3, 8, 5][pass % 4] + ',true)'
+			);
+			assert(Math.abs(value.movement) < 0.001, 'corrected cleanup moved the final row');
+			assert(value.spacer <= 10, 'spacer exceeded ten CSS pixels');
+			const pixels = await capture();
+			originChangedPixels = Math.max(originChangedPixels, pixels.changedPixels);
+			assert(
+				pixels.changedPixels === 0 || (scale === 1.75 && pixels.nonImageChangedPixels === 0),
+				'cleanup changed retained pixels: ' + JSON.stringify(pixels)
+			);
+		}
+		const stressBatches = scale === 1 ? 10 : 1;
+		for (let batch = 0; batch < stressBatches; batch++) {
+			const stress = await evaluate('window.fixture.stressOrigin(100)');
+			assert(stress.retained && stress.movement < 0.001, 'long cleanup run drifted');
+			assert(stress.maxSpacer <= 10, 'long cleanup run exceeded spacer bound');
+		}
 		console.log(
 			JSON.stringify({
 				dpr: scale,
+				uncorrectedMovement,
+				originChangedPixels,
+				correctedCleanupPasses: 24 + stressBatches * 100,
 				pausedBatches: 8,
 				pausedMessages: 200,
 				changedPixels: 0,
@@ -404,30 +522,32 @@ async function checkScale(browserPath, scale, html) {
 	}
 }
 
-try {
-	const { values } = parseArgs({ options: { browser: { type: 'string' } } });
-	if (!values.browser)
-		throw new Error('Usage: node scripts/check-chat-scroll.mjs --browser <browser executable>');
-	const helpers = ['autoscroll.ts', 'message-history.ts'].map((file) =>
-		readFileSync(new URL('../src/lib/chat/' + file, import.meta.url), 'utf8')
-	);
-	helpers.push(readFileSync(new URL('../src/lib/settings.ts', import.meta.url), 'utf8'));
-	const compiled = helpers
-		.map(
-			(source) =>
-				ts.transpileModule(source, {
-					compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 }
-				}).outputText
-		)
-		.join('\n');
-	const html =
-		'<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#000}</style><script type="module">' +
-		compiled +
-		'\nwindow.fixtureReady=await (' +
-		createFixture.toString() +
-		')({MessageHistoryScheduler,captureScrollSnapshot,getPinnedBatchScrollSnapshot,restoreScrollAfterRender,scrollToBottom,settings:DEFAULT_APP_SETTINGS.chat});</script>';
-	for (const scale of [1, 1.25, 1.5, 2]) await checkScale(values.browser, scale, html);
-} catch (error) {
-	console.error(error.stack);
-	process.exitCode = 1;
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+	try {
+		const { values } = parseArgs({ options: { browser: { type: 'string' } } });
+		if (!values.browser)
+			throw new Error('Usage: node scripts/check-chat-scroll.mjs --browser <browser executable>');
+		const helpers = ['autoscroll.ts', 'message-history.ts', 'history-origin.ts'].map((file) =>
+			readFileSync(new URL('../src/lib/chat/' + file, import.meta.url), 'utf8')
+		);
+		helpers.push(readFileSync(new URL('../src/lib/settings.ts', import.meta.url), 'utf8'));
+		const compiled = helpers
+			.map(
+				(source) =>
+					ts.transpileModule(source, {
+						compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 }
+					}).outputText
+			)
+			.join('\n');
+		const html =
+			'<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#000}</style><script type="module">' +
+			compiled +
+			'\nwindow.fixtureReady=await (' +
+			createFixture.toString() +
+			')({MessageHistoryScheduler,captureScrollSnapshot,getPinnedBatchScrollSnapshot,restoreScrollAfterRender,scrollToBottom,measureHistoryOriginSpacer,settings:DEFAULT_APP_SETTINGS.chat});</script>';
+		for (const scale of [1, 1.1, 1.25, 1.5, 1.75, 2]) await checkScale(values.browser, scale, html);
+	} catch (error) {
+		console.error(error.stack);
+		process.exitCode = 1;
+	}
 }

@@ -25,6 +25,7 @@
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
 	import { parseColonMacro } from '$lib/chat/colon-macro';
 	import { MessageHistoryScheduler } from '$lib/chat/message-history';
+	import { measureHistoryOriginSpacer } from '$lib/chat/history-origin';
 	import {
 		beginManualScrollInteraction,
 		captureScrollSnapshot,
@@ -62,6 +63,8 @@
 
 	let chatDIV = $state<HTMLDivElement>();
 	let messageListDIV = $state<HTMLDivElement>();
+	let historySpacerDIV = $state<HTMLDivElement>();
+	let historySpacerHeight = $state(0);
 	let autoScrollPinned = $state(true);
 	let unreadMessageCount = $state(0);
 	let showJumpToBottom = $derived(!autoScrollPinned);
@@ -234,6 +237,12 @@
 				chatSettings.autoscroll_threshold_px
 			);
 		}
+		historySpacerHeight = measureHistoryOriginSpacer(
+			historySpacerDIV,
+			messageListDIV?.querySelectorAll<HTMLElement>(CHAT_MESSAGE_SELECTOR) ?? [],
+			new Set(msgs.slice(0, count).map((message) => String(message.index))),
+			window.devicePixelRatio
+		);
 		msgs.splice(0, count);
 		if (shouldRestore) queueScrollRestore();
 	};
@@ -898,6 +907,12 @@
 				onwheel={handleWheelIntent}
 			>
 				<div bind:this={messageListDIV}>
+					<div
+						aria-hidden="true"
+						data-chat-history-spacer
+						bind:this={historySpacerDIV}
+						style="height: {historySpacerHeight}px;"
+					></div>
 					{#each msgs as msg (msg.index)}
 						<div
 							data-chat-message-index={msg.index}

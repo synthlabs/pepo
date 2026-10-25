@@ -110,7 +110,7 @@ export function isAtBottom(
 }
 
 export function scrollToBottom(container: HTMLElement): void {
-	container.scrollTop = maxScrollTop(container);
+	container.scrollTop = container.scrollHeight;
 }
 
 export function captureScrollSnapshot(

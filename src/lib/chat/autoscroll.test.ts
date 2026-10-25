@@ -11,6 +11,7 @@ import {
 	releaseManualScrollInteraction,
 	refreshScrollStateAfterScroll,
 	restoreScrollAfterRender,
+	scrollToBottom,
 	shouldOwnManualScroll
 } from './autoscroll';
 
@@ -46,7 +47,7 @@ function createContainer({
 		configurable: true,
 		get: () => currentScrollTop,
 		set: (value: number) => {
-			currentScrollTop = value;
+			currentScrollTop = Math.max(0, Math.min(value, currentScrollHeight - clientHeight));
 		}
 	});
 	Object.defineProperty(container, 'scrollHeight', {
@@ -99,6 +100,23 @@ function rect(top: number, height: number): DOMRect {
 }
 
 describe('autoscroll helpers', () => {
+	it('pins to the browser range when integer height metrics hide a fractional bottom', () => {
+		const container = document.createElement('div');
+		let currentScrollTop = 0;
+		Object.defineProperties(container, {
+			scrollHeight: { value: 1000 },
+			clientHeight: { value: 400 },
+			scrollTop: {
+				get: () => currentScrollTop,
+				set: (value: number) => {
+					currentScrollTop = Math.max(0, Math.min(value, 600.4));
+				}
+			}
+		});
+		scrollToBottom(container);
+		expect(container.scrollTop).toBe(600.4);
+	});
+
 	it('gives upward wheel, touch, and scrollbar input immediate viewport ownership', () => {
 		expect(shouldOwnManualScroll(true, 'wheel', 'up')).toBe(true);
 		expect(shouldOwnManualScroll(true, 'touch', 'up')).toBe(true);
