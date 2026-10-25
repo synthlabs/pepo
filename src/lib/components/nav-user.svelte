@@ -10,6 +10,9 @@
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Plus from '@lucide/svelte/icons/plus';
+	import Settings from '@lucide/svelte/icons/settings';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { ReportWizard } from '$utils/inbound';
 	import TwitchIcon from '$lib/resources/twitch.svelte';
@@ -179,6 +182,13 @@
 				</DropdownMenu.Group>
 				<DropdownMenu.Separator class="my-1" />
 				<DropdownMenu.Group>
+					<DropdownMenu.Item
+						class="rounded-md px-2 py-2"
+						onclick={() => goto(resolve('/app/settings'))}
+					>
+						<Settings />
+						Settings
+					</DropdownMenu.Item>
 					<DropdownMenu.Item disabled class="rounded-md px-2 py-2 data-disabled:opacity-65">
 						<Bell />
 						Notifications
