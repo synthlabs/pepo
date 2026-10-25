@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Instant;
 #[cfg(target_os = "macos")]
 use tauri::TitleBarStyle;
-use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Listener, Manager, State, WindowEvent};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
@@ -16,7 +16,7 @@ use tauri_specta::collect_commands;
 use tauri_svelte_synced_store::{StateSyncer, StateSyncerConfig};
 use token::TokenManager;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, warn};
 use twitch_api::{client::ClientDefault, HelixClient};
 
 use crate::badgemanager::BadgeManager;
@@ -26,6 +26,11 @@ use crate::types::{AppSettings, AuthState, ChannelCache};
 
 mod badgemanager;
 mod badgepersist;
+pub mod chat;
+use chat::runtime::{
+    acknowledge_chat, get_chat_engine_status, get_chat_feed_context, subscribe_chat,
+    unsubscribe_chat, ChatRuntime,
+};
 mod chat_send;
 mod emote;
 mod emotemanager;
@@ -232,8 +237,11 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             get_followed_streams,
             get_followed_channels,
             get_channel_info,
-            join_chat,
-            leave_chat,
+            subscribe_chat,
+            unsubscribe_chat,
+            acknowledge_chat,
+            get_chat_engine_status,
+            get_chat_feed_context,
             login,
             logout,
             send_chat_message,
@@ -241,6 +249,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             update_state,
             search_emotes,
         ])
+        .events(tauri_specta::collect_events![])
 }
 
 #[tauri::command]
@@ -326,113 +335,6 @@ async fn get_channel_info(
 
 #[tauri::command]
 #[specta::specta]
-async fn join_chat(
-    channel_name: String,
-    app_handle: AppHandle,
-    eventsub_manager_ref: State<'_, SharedEventSubManager>,
-    badge_manager_ref: State<'_, SharedBadgeManager>,
-    emote_manager_ref: State<'_, SharedEmoteManager>,
-    token_manager: State<'_, TokenManager>,
-    client_ref: State<'_, HelixClient<'static, reqwest::Client>>,
-    state_syncer: State<'_, StateSyncer>,
-) -> Result<types::ChannelInfo, String> {
-    debug!("join: channel={}", channel_name);
-
-    let token = token_manager
-        .active_twitch_token()
-        .await
-        .ok_or_else(|| "no active token".to_owned())?;
-    let client = client_ref.inner().clone();
-    let eventsub_manager = eventsub_manager_ref.lock().await.clone();
-    let badge_manager = badge_manager_ref.lock().await.clone();
-    let emote_manager = emote_manager_ref.lock().await.clone();
-    let settings = app_settings(state_syncer.inner());
-
-    let channel = client
-        .get_channel_from_login(&channel_name, &token)
-        .await
-        .map_err(|e| format!("failed to get channel: {:?}", e))?
-        .ok_or_else(|| format!("channel not found: {}", channel_name))?;
-
-    debug!("join: got channel info - {:?}", channel.clone());
-
-    let channel_info = types::ChannelInfo::from(channel.clone());
-    let broadcaster_id = channel.broadcaster_id.to_string();
-    let emote_settings = settings.emotes;
-    let provider_settings = settings.providers;
-
-    spawn_joined_channel_cache_refresh(app_handle, channel_info.clone(), token.clone());
-
-    badge_manager.hydrate_global(&provider_settings).await;
-    badge_manager
-        .hydrate_channel(&broadcaster_id, &provider_settings)
-        .await;
-    emote_manager.preload(&broadcaster_id, &emote_settings, &provider_settings);
-
-    if let Err(e) = eventsub_manager
-        .join_chat(
-            channel.broadcaster_id.clone(),
-            channel_name.clone(),
-            &client,
-            token.clone(),
-        )
-        .await
-    {
-        error!("join_chat - {:?}", e);
-        return Err(format!("failed to join channel chat: {:?}", e));
-    }
-
-    debug!("joined channel");
-
-    tauri::async_runtime::spawn(async move {
-        debug!(
-            broadcaster_id,
-            channel = channel_name,
-            "loading channel cosmetics after EventSub join"
-        );
-        let badge_broadcaster_id = broadcaster_id.clone();
-        let emote_broadcaster_id = broadcaster_id.clone();
-        let load_badges =
-            badge_manager.load_channel(badge_broadcaster_id, client, &provider_settings);
-        let load_emotes =
-            emote_manager.load_channel(emote_broadcaster_id, &emote_settings, &provider_settings);
-        tokio::join!(load_badges, load_emotes);
-    });
-
-    Ok(channel_info)
-}
-
-#[tauri::command]
-#[specta::specta]
-async fn leave_chat(
-    channel_name: String,
-    _app_handle: AppHandle,
-    eventsub_manager_ref: State<'_, SharedEventSubManager>,
-    token_manager: State<'_, TokenManager>,
-    client_ref: State<'_, HelixClient<'static, reqwest::Client>>,
-) -> Result<(), String> {
-    debug!("leave: channel={}", channel_name);
-
-    let token = token_manager
-        .active_twitch_token()
-        .await
-        .ok_or_else(|| "no active token".to_owned())?;
-    let client = client_ref.inner();
-    let eventsub_manager = eventsub_manager_ref.lock().await.clone();
-
-    match eventsub_manager
-        .leave_chat(channel_name, client, token.clone())
-        .await
-    {
-        Ok(_) => debug!("left channel"),
-        Err(e) => error!("leave_chat - {:?}", e),
-    };
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
 fn get_followed_streams(
     _app_handle: AppHandle,
     token_manager: State<'_, TokenManager>,
@@ -497,7 +399,7 @@ fn get_followed_channels(
 
 fn spawn_joined_channel_cache_refresh(
     app_handle: AppHandle,
-    channel_info: types::ChannelInfo,
+    channel_info: types::ChatRoomInfo,
     token: twitch_oauth2::UserToken,
 ) {
     tauri::async_runtime::spawn(async move {
@@ -513,7 +415,7 @@ fn spawn_joined_channel_cache_refresh(
 
 async fn refresh_joined_channel_cache(
     app_handle: &AppHandle,
-    channel_info: types::ChannelInfo,
+    channel_info: types::ChatRoomInfo,
     token: &twitch_oauth2::UserToken,
 ) -> Result<(), String> {
     let client_ref = app_handle.state::<HelixClient<'static, reqwest::Client>>();
@@ -588,6 +490,13 @@ struct ChannelCachePollError {
 }
 
 async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), ChannelCachePollError> {
+    let polling_engine = app_handle
+        .state::<ChatRuntime>()
+        .current()
+        .map_err(|message| ChannelCachePollError {
+            message,
+            identity: None,
+        })?;
     let snapshot = app_handle
         .state::<TokenManager>()
         .active_snapshot()
@@ -596,7 +505,7 @@ async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), ChannelCachePo
             message: "no active token".to_owned(),
             identity: None,
         })?;
-    poll_channel_cache_with_token(app_handle, snapshot.token)
+    poll_channel_cache_with_token(app_handle, snapshot.token, &polling_engine)
         .await
         .map_err(|message| ChannelCachePollError {
             message,
@@ -607,6 +516,7 @@ async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), ChannelCachePo
 async fn poll_channel_cache_with_token(
     app_handle: &AppHandle,
     token: twitch_oauth2::UserToken,
+    polling_engine: &chat::ChatEngine,
 ) -> Result<(), String> {
     let client = app_handle.state::<HelixClient<'static, reqwest::Client>>();
     let client = client.inner();
@@ -685,6 +595,36 @@ async fn poll_channel_cache_with_token(
         cache.channels.len(),
         cache.channels.values().filter(|c| c.is_live).count()
     );
+    {
+        let mut state = polling_engine.state.lock().unwrap();
+        if !state.active {
+            return Ok(());
+        }
+        state.membership.followed = channels
+            .iter()
+            .map(|channel| {
+                let login = normalize_channel_login(channel.broadcaster_login.as_str());
+                let live = cache
+                    .channels
+                    .get(&login)
+                    .is_some_and(|status| status.is_live);
+                (login, live)
+            })
+            .collect();
+        for channel in &channels {
+            let login = normalize_channel_login(channel.broadcaster_login.as_str());
+            state.directory.insert(
+                login.clone(),
+                types::ChatRoomInfo {
+                    broadcaster_id: channel.broadcaster_id.to_string(),
+                    broadcaster_login: login,
+                    broadcaster_name: channel.broadcaster_name.to_string(),
+                },
+            );
+        }
+        drop(state);
+        polling_engine.wake();
+    }
     state_syncer.update::<types::ChannelCache>("channel_cache", cache, true);
 
     Ok(())
@@ -809,15 +749,6 @@ async fn login(
             .ok_or_else(|| "no active token".to_owned())?;
     }
 
-    {
-        let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
-        let mut auth_state = auth_state_ref.lock().unwrap();
-
-        auth_state.phase = types::AuthPhase::Authorized;
-        auth_state.device_code = String::new();
-        auth_state.token = Some(user_token.clone());
-    }
-
     // Create empty managers - no network calls, just register state so
     // other Tauri commands can access them immediately.
     let eventsub_manager = EventSubManager::new();
@@ -835,6 +766,18 @@ async fn login(
     if !app_handle.manage::<SharedEmoteManager>(Mutex::new(emote_manager.clone())) {
         *app_handle.state::<SharedEmoteManager>().lock().await = emote_manager.clone();
     }
+    let chat_engine = app_handle
+        .state::<ChatRuntime>()
+        .activate(&app_handle, app_settings(state_syncer.inner()).chat);
+    {
+        let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
+        let mut auth_state = auth_state_ref.lock().unwrap();
+
+        auth_state.phase = types::AuthPhase::Authorized;
+        auth_state.device_code = String::new();
+        auth_state.token = Some(user_token.clone());
+    }
+
     // Token refresh is handled by the always-on `token_refresh_supervisor`
     // spawned once at startup.
 
@@ -895,6 +838,7 @@ async fn login(
         let token_manager = token_manager.clone();
         let app_ref = app_handle.clone();
         let badge_manager_ref = badge_manager.clone();
+        let chat_engine_ref = chat_engine.clone();
         let emote_manager_ref = emote_manager.clone();
         let state_syncer_ref = state_syncer.inner().clone();
         let eventsub_settings_reader = make_eventsub_settings_reader(state_syncer.inner().clone());
@@ -926,6 +870,9 @@ async fn login(
             use twitch_api::eventsub::{Message as M, Payload as P};
 
             for msg in events {
+                if !chat_engine_ref.active() {
+                    break;
+                }
                 match msg {
                     eventsub::EventSubMessage::AuthFailed(failure) => {
                         tauri::async_runtime::block_on(clear_auth_if_current_async(
@@ -948,14 +895,12 @@ async fn login(
                                     badge_manager_ref.clone(),
                                     emote_manager_ref.clone(),
                                     settings.emotes,
-                                    app_ref.clone(),
                                 );
-                                let key =
-                                    format!("chat_message:{}", chat_message.broadcaster_user_login);
-                                trace!("chat message: id={} msg={:?}", key, channel_msg);
-                                app_ref
-                                    .emit(&key, channel_msg)
-                                    .expect("unable to emit state")
+                                internal::ingest_chat_message(
+                                    &chat_engine_ref,
+                                    channel_msg,
+                                    |translation| translation.dispatch(app_ref.clone()),
+                                );
                             }
                             _ => debug!("event notification: {:?}", notification.event),
                         }
@@ -964,6 +909,8 @@ async fn login(
             }
         });
     }
+
+    chat::runtime::start(app_handle.clone(), chat_engine);
 
     // Channel cache: initial poll + recurring loop
     let poll_app = app_handle.clone();
@@ -1020,6 +967,7 @@ async fn clear_auth_if_current_async(
     let Some(mut session) = token_manager.guard_session(identity).await else {
         return false;
     };
+    app_handle.state::<ChatRuntime>().stop(app_handle);
     let state_syncer = app_handle.state::<StateSyncer>();
 
     {
@@ -1289,6 +1237,15 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build());
 
     let builder = internal::apply_plugins(builder, internal_build);
+    let builder = builder.on_page_load(|webview, payload| {
+        if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+            if let Some(runtime) = webview.try_state::<ChatRuntime>() {
+                if let Ok(engine) = runtime.current() {
+                    engine.close_owner(webview.label());
+                }
+            }
+        }
+    });
 
     let _builder = builder
         .invoke_handler(public_handlers.invoke_handler())
@@ -1399,7 +1356,13 @@ pub fn run() {
             // covers returning to the app after the machine has slept.
             {
                 let focus_app = app.handle().clone();
+                let owner = window.label().to_owned();
                 window.on_window_event(move |event| {
+                    if matches!(event, WindowEvent::Destroyed) {
+                        if let Ok(engine) = focus_app.state::<ChatRuntime>().current() {
+                            engine.close_owner(&owner);
+                        }
+                    }
                     if let WindowEvent::Focused(focused) = event {
                         if *focused {
                             let app = focus_app.clone();
@@ -1427,6 +1390,18 @@ pub fn run() {
             state_syncer.set(APP_SETTINGS_KEY, settings);
             app.manage::<StateSyncer>(state_syncer);
             app.manage::<SharedPollHandle>(Mutex::new(None));
+            app.manage(ChatRuntime::default());
+            {
+                let settings_app = app.handle().clone();
+                app.listen("app_settings_update", move |event| {
+                    if let (Ok(engine), Ok(settings)) = (
+                        settings_app.state::<ChatRuntime>().current(),
+                        serde_json::from_str::<AppSettings>(event.payload()),
+                    ) {
+                        engine.configure(settings.normalized().chat);
+                    }
+                });
+            }
             app.manage::<SharedEventSubHandles>(Mutex::new(Vec::new()));
 
             let token_manager = TokenManager::new(client.clone(), app.handle().clone());

@@ -40,7 +40,7 @@ pub(crate) struct AuthIssue {
 }
 
 impl AuthIssue {
-    fn retry(category: &'static str) -> Self {
+    pub(crate) fn retry(category: &'static str) -> Self {
         Self {
             category,
             status: None,

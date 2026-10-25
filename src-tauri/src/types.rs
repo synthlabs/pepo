@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use twitch_api::{client::CompatError, HelixClient};
 use twitch_oauth2::TwitchToken;
@@ -366,6 +365,15 @@ impl Default for LayoutSettings {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatJoinMode {
+    All,
+    #[default]
+    Live,
+    Single,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(default)]
 pub struct DiagnosticsSettings {
@@ -383,6 +391,8 @@ impl Default for DiagnosticsSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(default)]
 pub struct ChatSettings {
+    pub join_mode: ChatJoinMode,
+    pub show_history_divider: bool,
     pub message_limit: usize,
     pub pause_message_gc_while_paused: bool,
     pub batch_live_messages: bool,
@@ -401,6 +411,8 @@ pub struct ChatSettings {
 impl Default for ChatSettings {
     fn default() -> Self {
         Self {
+            join_mode: ChatJoinMode::Live,
+            show_history_divider: true,
             message_limit: 500,
             pause_message_gc_while_paused: true,
             batch_live_messages: false,
@@ -832,7 +844,24 @@ impl From<twitch_api::helix::users::User> for Broadcaster {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize, Type)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Type)]
+pub struct ChatRoomInfo {
+    pub broadcaster_id: String,
+    pub broadcaster_login: String,
+    pub broadcaster_name: String,
+}
+
+impl From<twitch_api::helix::channels::ChannelInformation> for ChatRoomInfo {
+    fn from(channel: twitch_api::helix::channels::ChannelInformation) -> Self {
+        Self {
+            broadcaster_id: channel.broadcaster_id.into(),
+            broadcaster_login: channel.broadcaster_login.into(),
+            broadcaster_name: channel.broadcaster_name.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Type)]
 pub struct ChannelInfo {
     /// Twitch User ID of this channel owner
     pub broadcaster_id: String,
@@ -898,14 +927,6 @@ pub struct BadgeRef {
     pub info: String,
     /// The info for displaying the badge
     pub badge: Badge,
-}
-
-static INDEX_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-macro_rules! next_index {
-    () => {
-        INDEX_COUNTER.fetch_add(1, Ordering::Relaxed)
-    };
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
@@ -999,8 +1020,10 @@ pub struct ChannelMessage {
     // pub reply: Option<Reply>,
     /// Translated message text when available.
     pub translation: Option<ChannelMessageTranslation>,
-    /// A stable message int that can be used by the UI
+    /// Session event position used for message identity and history boundaries.
     pub index: u64,
+    // Repository-assigned message position within this broadcaster.
+    pub channel_sequence: u64,
 }
 
 impl ChannelMessage {
@@ -1010,7 +1033,6 @@ impl ChannelMessage {
         bm: BadgeManager,
         em: EmoteManager,
         emote_settings: EmoteSettings,
-        app_handle: tauri::AppHandle,
     ) -> Self {
         let bm_ref = bm.clone();
         let emote_settings = emote_settings.normalized();
@@ -1045,13 +1067,6 @@ impl ChannelMessage {
         }
 
         let fragments = message::Parser::parse(message_text.clone(), &emote_cache);
-        let translation_text = translation_input_from_fragments(&fragments);
-        crate::internal::detect_language(
-            app_handle,
-            &broadcaster_login,
-            &message_id,
-            translation_text.as_deref().unwrap_or(""),
-        );
 
         ChannelMessage {
             ts: ts,
@@ -1065,7 +1080,8 @@ impl ChannelMessage {
             message_type: value.message_type.into(),
             color: value.color.to_string(),
             translation: None,
-            index: next_index!(),
+            index: 0,
+            channel_sequence: 0,
             badges: value
                 .badges
                 .iter()
@@ -1105,7 +1121,7 @@ fn badge_ref_or_fallback(
     }
 }
 
-fn translation_input_from_fragments(fragments: &[message::Fragment]) -> Option<String> {
+pub(crate) fn translation_input_from_fragments(fragments: &[message::Fragment]) -> Option<String> {
     let text = fragments
         .iter()
         .filter_map(|fragment| match fragment {

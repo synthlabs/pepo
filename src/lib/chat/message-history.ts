@@ -66,6 +66,12 @@ export class MessageHistoryScheduler<T> {
 		this.collectGarbage();
 	}
 
+	reset(): void {
+		this.cancelMessageTimer();
+		this.cancelGcTimer();
+		this.pending = [];
+	}
+
 	dispose(): void {
 		this.disposed = true;
 		this.cancelMessageTimer();

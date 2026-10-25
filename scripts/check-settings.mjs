@@ -287,7 +287,7 @@ try {
     })()`
 		);
 		assert.equal(layout.overflow, false, test.name + ' page overflow');
-		assert.equal(layout.rows, 4, test.name + ' Chat essentials');
+		assert.equal(layout.rows, 6, test.name + ' Chat essentials');
 		assert.equal(
 			layout.direction,
 			layout.shellWidth < 640 ? 'row' : 'column',

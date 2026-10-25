@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Switch } from 'bits-ui';
+	import ChatEngineStatus from './chat-engine-status.svelte';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import { Button } from '$lib/components/ui/button';
@@ -77,6 +78,7 @@
 		<p id={`${id}-description`} class="text-muted-foreground mt-1 text-[13px] leading-relaxed">
 			{control.description}
 		</p>
+		{#if control.id === 'chat.join_mode'}<ChatEngineStatus />{/if}
 	</div>
 	<div class="shrink-0 @min-[480px]/settings:max-w-[55%]">
 		{#if control.kind === 'toggle' || control.kind === 'provider'}

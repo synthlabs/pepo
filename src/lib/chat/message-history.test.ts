@@ -212,7 +212,8 @@ describe('message history scheduling', () => {
 			badges: [],
 			color: '#ffffff',
 			translation: null,
-			index: 1
+			index: 1,
+			channel_sequence: 7
 		});
 		const update: ChannelMessageTranslationUpdate = {
 			message_id: 'queued',
@@ -222,6 +223,7 @@ describe('message history scheduling', () => {
 		vi.advanceTimersByTime(250);
 		expect(messages).toHaveLength(1);
 		expect(messages[0].translation?.translated_text).toBe('translated');
+		expect(messages[0].channel_sequence).toBe(7);
 		expect(pending.size).toBe(0);
 	});
 });

@@ -12,6 +12,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 		capture_window_errors: true
 	},
 	chat: {
+		join_mode: 'live',
+		show_history_divider: true,
 		message_limit: 500,
 		pause_message_gc_while_paused: true,
 		batch_live_messages: false,
@@ -124,6 +126,9 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 			...DEFAULT_APP_SETTINGS.chat,
 			...chat,
 			message_limit: positive(chat.message_limit, DEFAULT_APP_SETTINGS.chat.message_limit),
+			join_mode: chat.join_mode === 'all' || chat.join_mode === 'single' ? chat.join_mode : 'live',
+			show_history_divider: chat.show_history_divider ?? true,
+
 			pause_message_gc_while_paused:
 				chat.pause_message_gc_while_paused ??
 				DEFAULT_APP_SETTINGS.chat.pause_message_gc_while_paused,

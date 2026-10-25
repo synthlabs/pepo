@@ -48,11 +48,14 @@ export class SyncedState {
     async sync() { return true; }
 }
 export const commands = {
-    joinChat: async channel => {
+    getChatFeedContext: async () => ({ status: 'ok', data: { epoch: 'submit-page' } }),
+    subscribeChat: async (channel, request, sink) => {
         native.joins.push(channel);
+        sink.onmessage({ cursor: 0, event: { type: 'snapshot', messages: [] } });
         return { status: 'ok', data: { broadcaster_id: channel + '-id', broadcaster_login: channel, broadcaster_name: channel } };
     },
-    leaveChat: async () => ({ status: 'ok', data: null }),
+    unsubscribeChat: async () => {},
+    acknowledgeChat: async () => {},
     searchEmotes: async (query) => {
         native.searches.push(query);
         return { status: 'ok', data: String(query).toLowerCase().startsWith('ka') ? [native.emote] : [] };
@@ -62,6 +65,7 @@ export const commands = {
         return new Promise((resolve, reject) => native.requests.push({ resolve, reject }));
     }
 };
+export class Channel { constructor(callback) { this.onmessage = callback; } }
 const listeners = new Map();
 export const listen = async (event, callback) => {
     const callbacks = listeners.get(event) ?? new Set(); callbacks.add(callback); listeners.set(event, callbacks);
@@ -502,7 +506,9 @@ try {
 	await run(
 		`chatNative.resolve(${index}, { status: 'error', error: 'invalid args broadcasterId for command send_chat_message: missing required key broadcasterId' })`
 	);
-	await wait(`${form}.getAttribute('aria-busy') === 'false' && !!document.querySelector('${notice}')`);
+	await wait(
+		`${form}.getAttribute('aria-busy') === 'false' && !!document.querySelector('${notice}')`
+	);
 	assert.equal(await run(`!!document.querySelector('${inline}')`), false, 'no inline guidance');
 	assert.equal(
 		await run(`document.querySelector('${notice}').textContent.includes('#third')`),
@@ -535,7 +541,9 @@ try {
 	const keydown = `${input}.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`;
 	const callsBeforeEmote = await run('chatNative.calls.length');
 	await run(keydown);
-	await wait(`document.querySelector('${inline}')?.textContent.includes('cannot exceed 500 characters')`);
+	await wait(
+		`document.querySelector('${inline}')?.textContent.includes('cannot exceed 500 characters')`
+	);
 	assert.equal(await run(`${input}.value`), 'a'.repeat(496) + ' :ka', 'refused insertion');
 	await wait(`!document.querySelector('img[alt="Kappa"]')`);
 	// A refused insertion keeps the query, so the next search needs a new one.
