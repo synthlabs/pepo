@@ -302,7 +302,7 @@ export type ChannelMessageType =
  */
 "power_ups_message_effect"
 export type ChannelStatus = { broadcaster_id: string; login: string; display_name: string; profile_image_url: string; is_live: boolean; is_partner?: boolean; stream: Stream | null }
-export type ChatSettings = { message_limit: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; translation_layout: ChatTranslationLayout; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean }
+export type ChatSettings = { message_limit: number; pause_message_gc_while_paused: boolean; batch_live_messages: boolean; message_batch_interval_ms: number; message_gc_interval_ms: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; translation_layout: ChatTranslationLayout; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean }
 export type ChatTranslationLayout = "language_tag" | "message_text" | "timestamp_end" | "connector"
 export type CheerFragment = { index: number; text: string }
 export type Emote = { 

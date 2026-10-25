@@ -24,6 +24,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
 	import { parseColonMacro } from '$lib/chat/colon-macro';
+	import { MessageHistoryScheduler } from '$lib/chat/message-history';
 	import {
 		beginManualScrollInteraction,
 		captureScrollSnapshot,
@@ -115,6 +116,17 @@
 	let manualScrollTimer: ReturnType<typeof setTimeout> | undefined;
 	let touchStartY: number | undefined;
 	let destroyed = false;
+	let resumingToBottom = false;
+	const messageHistory = new MessageHistoryScheduler<ChannelMessage>({
+		getState: () => ({
+			...chatSettings,
+			paused: !autoScrollPinned,
+			interacting: manualScrollOwnsViewport(),
+			message_count: msgs.length
+		}),
+		append: (messages) => appendMessages(messages),
+		trim: (count) => trimMessageHistory(count)
+	});
 
 	onMount(async () => {
 		if (messageListDIV && typeof ResizeObserver !== 'undefined') {
@@ -160,6 +172,7 @@
 
 	onDestroy(async () => {
 		destroyed = true;
+		messageHistory.dispose();
 		resizeObserver?.disconnect();
 		document.removeEventListener('visibilitychange', handleViewportWake);
 		window.removeEventListener('resize', handleViewportWake);
@@ -184,12 +197,17 @@
 	});
 
 	$effect(() => {
-		while (msgs.length > chatSettings.message_limit) msgs.shift();
+		messageHistory.update();
 	});
 
 	const addMessage = (message: ChannelMessage) => {
+		if (!autoScrollPinned || manualScrollOwnsViewport()) unreadMessageCount += 1;
+		messageHistory.enqueue(message);
+	};
+
+	const appendMessages = (messages: ChannelMessage[]) => {
 		const manualScrollActive = manualScrollOwnsViewport();
-		if (chatDIV && !manualScrollActive) {
+		if (chatDIV && !manualScrollActive && !resumingToBottom) {
 			pendingScrollSnapshot = getPinnedBatchScrollSnapshot(
 				pendingScrollSnapshot,
 				chatDIV,
@@ -199,15 +217,25 @@
 			);
 		}
 
-		const wasPinned = manualScrollActive
-			? false
-			: (pendingScrollSnapshot?.wasAtBottom ?? autoScrollPinned);
+		msgs.push(...messages.map((message) => attachPendingTranslation(message, pendingTranslations)));
 
-		msgs.push(attachPendingTranslation(message, pendingTranslations));
-		if (msgs.length > chatSettings.message_limit) msgs.shift();
-		if (!wasPinned) unreadMessageCount += 1;
+		if (!manualScrollActive && !resumingToBottom) queueScrollRestore();
+	};
 
-		if (!manualScrollActive) queueScrollRestore();
+	const trimMessageHistory = (count: number) => {
+		const container = chatDIV;
+		const shouldRestore = container && !manualScrollOwnsViewport() && !resumingToBottom;
+		if (shouldRestore) {
+			pendingScrollSnapshot = getPinnedBatchScrollSnapshot(
+				pendingScrollSnapshot,
+				container,
+				CHAT_MESSAGE_SELECTOR,
+				autoScrollPinned,
+				chatSettings.autoscroll_threshold_px
+			);
+		}
+		msgs.splice(0, count);
+		if (shouldRestore) queueScrollRestore();
 	};
 
 	const applyTranslation = (update: ChannelMessageTranslationUpdate) => {
@@ -288,6 +316,7 @@
 		cancelQueuedScrollRestore();
 		cancelPinnedBottomFlush();
 		clearPausedReflowSnapshot();
+		messageHistory.update();
 		scheduleManualScrollSettle();
 	};
 
@@ -398,7 +427,7 @@
 		if (!chatDIV) return;
 
 		if (pinToBottom) {
-			applyPinnedBottomState();
+			pinToBottomNowAndAfterRender();
 			return;
 		}
 
@@ -412,6 +441,7 @@
 		}
 		autoScrollPinned = false;
 		rememberPausedReflowSnapshot();
+		messageHistory.update();
 	};
 
 	const cancelManualScrollInteraction = () => {
@@ -515,6 +545,13 @@
 		cancelQueuedScrollRestore();
 		cancelPinnedBottomFlush();
 
+		autoScrollPinned = true;
+		resumingToBottom = true;
+		try {
+			messageHistory.resume();
+		} finally {
+			resumingToBottom = false;
+		}
 		applyPinnedBottomState();
 		void queuePinnedBottomAfterRender();
 	};

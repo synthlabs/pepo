@@ -368,6 +368,10 @@ impl Default for LayoutSettings {
 #[serde(default)]
 pub struct ChatSettings {
     pub message_limit: usize,
+    pub pause_message_gc_while_paused: bool,
+    pub batch_live_messages: bool,
+    pub message_batch_interval_ms: u32,
+    pub message_gc_interval_ms: u32,
     pub autoscroll_threshold_px: u32,
     pub show_timestamps: bool,
     pub timestamp_locale: String,
@@ -382,6 +386,10 @@ impl Default for ChatSettings {
     fn default() -> Self {
         Self {
             message_limit: 500,
+            pause_message_gc_while_paused: true,
+            batch_live_messages: false,
+            message_batch_interval_ms: 250,
+            message_gc_interval_ms: 250,
             autoscroll_threshold_px: 32,
             show_timestamps: true,
             timestamp_locale: "en".to_string(),
@@ -399,6 +407,12 @@ impl ChatSettings {
         let defaults = Self::default();
         if self.message_limit == 0 {
             self.message_limit = defaults.message_limit;
+        }
+        if self.message_batch_interval_ms == 0 {
+            self.message_batch_interval_ms = defaults.message_batch_interval_ms;
+        }
+        if self.message_gc_interval_ms == 0 {
+            self.message_gc_interval_ms = defaults.message_gc_interval_ms;
         }
         if self.autoscroll_threshold_px == 0 {
             self.autoscroll_threshold_px = defaults.autoscroll_threshold_px;
@@ -1304,6 +1318,10 @@ mod tests {
         let settings = settings.normalized();
 
         assert_eq!(settings.chat.message_limit, 500);
+        assert!(settings.chat.pause_message_gc_while_paused);
+        assert!(!settings.chat.batch_live_messages);
+        assert_eq!(settings.chat.message_batch_interval_ms, 250);
+        assert_eq!(settings.chat.message_gc_interval_ms, 250);
         assert!(settings.chat.show_timestamps);
         assert_eq!(
             settings.chat.translation_layout,
@@ -1317,6 +1335,23 @@ mod tests {
             settings.providers.metadata_retention_secs,
             30 * 24 * 60 * 60
         );
+    }
+
+    #[test]
+    fn chat_history_policy_normalizes_intervals_without_changing_toggles() {
+        let settings = ChatSettings {
+            pause_message_gc_while_paused: false,
+            batch_live_messages: true,
+            message_batch_interval_ms: 0,
+            message_gc_interval_ms: 0,
+            ..Default::default()
+        }
+        .normalized();
+
+        assert!(!settings.pause_message_gc_while_paused);
+        assert!(settings.batch_live_messages);
+        assert_eq!(settings.message_batch_interval_ms, 250);
+        assert_eq!(settings.message_gc_interval_ms, 250);
     }
 
     #[test]

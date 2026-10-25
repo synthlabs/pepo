@@ -10,6 +10,10 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 	},
 	chat: {
 		message_limit: 500,
+		pause_message_gc_while_paused: true,
+		batch_live_messages: false,
+		message_batch_interval_ms: 250,
+		message_gc_interval_ms: 250,
 		autoscroll_threshold_px: 32,
 		show_timestamps: true,
 		timestamp_locale: 'en',
@@ -110,6 +114,19 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 			...DEFAULT_APP_SETTINGS.chat,
 			...chat,
 			message_limit: positive(chat.message_limit, DEFAULT_APP_SETTINGS.chat.message_limit),
+			pause_message_gc_while_paused:
+				chat.pause_message_gc_while_paused ??
+				DEFAULT_APP_SETTINGS.chat.pause_message_gc_while_paused,
+			batch_live_messages:
+				chat.batch_live_messages ?? DEFAULT_APP_SETTINGS.chat.batch_live_messages,
+			message_batch_interval_ms: positive(
+				chat.message_batch_interval_ms,
+				DEFAULT_APP_SETTINGS.chat.message_batch_interval_ms
+			),
+			message_gc_interval_ms: positive(
+				chat.message_gc_interval_ms,
+				DEFAULT_APP_SETTINGS.chat.message_gc_interval_ms
+			),
 			autoscroll_threshold_px: positive(
 				chat.autoscroll_threshold_px,
 				DEFAULT_APP_SETTINGS.chat.autoscroll_threshold_px

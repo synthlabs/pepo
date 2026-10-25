@@ -3,6 +3,30 @@ import type { AppSettings } from '$lib/bindings';
 import { DEFAULT_APP_SETTINGS, gridTemplateColumns, normalizeAppSettings, px } from './settings';
 
 describe('settings helpers', () => {
+	it('defaults missing history policy fields and preserves explicit toggles', () => {
+		const legacy = structuredClone(DEFAULT_APP_SETTINGS) as Partial<AppSettings>;
+		legacy.chat = { message_limit: 500 } as AppSettings['chat'];
+		const defaults = normalizeAppSettings(legacy as AppSettings).chat;
+		expect(defaults.pause_message_gc_while_paused).toBe(true);
+		expect(defaults.batch_live_messages).toBe(false);
+		expect(defaults.message_batch_interval_ms).toBe(250);
+		expect(defaults.message_gc_interval_ms).toBe(250);
+
+		const configured = normalizeAppSettings({
+			...DEFAULT_APP_SETTINGS,
+			chat: {
+				...DEFAULT_APP_SETTINGS.chat,
+				pause_message_gc_while_paused: false,
+				batch_live_messages: true,
+				message_batch_interval_ms: 0,
+				message_gc_interval_ms: -1
+			}
+		}).chat;
+		expect(configured.pause_message_gc_while_paused).toBe(false);
+		expect(configured.batch_live_messages).toBe(true);
+		expect(configured.message_batch_interval_ms).toBe(250);
+		expect(configured.message_gc_interval_ms).toBe(250);
+	});
 	it('dedupes provider preferences and appends missing defaults', () => {
 		const settings: AppSettings = {
 			...DEFAULT_APP_SETTINGS,
