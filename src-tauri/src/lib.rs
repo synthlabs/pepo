@@ -1214,7 +1214,7 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .max_file_size(9_000_000) // 9 MB per log file
-                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(10))
                 .level(log::LevelFilter::Info)
                 .level_for("pepo_lib", pepo_log_level)
                 .level_for("pepo_internal", pepo_log_level)
