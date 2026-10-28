@@ -39,6 +39,12 @@ pub(crate) enum ProviderFetchError {
     },
 }
 
+impl ProviderFetchError {
+    pub(crate) fn is_not_found(&self) -> bool {
+        matches!(self, Self::Status { status, .. } if *status == StatusCode::NOT_FOUND)
+    }
+}
+
 impl fmt::Display for ProviderFetchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -220,6 +226,7 @@ mod tests {
                 .await
                 .unwrap_err();
 
+        assert!(!err.is_not_found());
         match err {
             ProviderFetchError::Status {
                 status,
@@ -252,6 +259,7 @@ mod tests {
         .await
         .unwrap_err();
 
+        assert!(!err.is_not_found());
         match err {
             ProviderFetchError::Decode {
                 status,
@@ -264,5 +272,45 @@ mod tests {
             other => panic!("expected decode error, got {other:?}"),
         }
         mock.assert();
+    }
+
+    #[tokio::test]
+    async fn not_found_is_classified_by_status_without_decoding_the_body() {
+        let server = MockServer::start();
+        let client = reqwest::Client::new();
+        for body in [r#"{"message":"user not found"}"#, "unfamiliar response", ""] {
+            let mut mock = server.mock(|when, then| {
+                when.method(GET).path("/missing");
+                then.status(404).body(body);
+            });
+
+            let err = fetch_json::<TestResponse>(
+                &client,
+                "TestProvider",
+                "channel:1234",
+                &server.url("/missing"),
+            )
+            .await
+            .unwrap_err();
+
+            assert!(err.is_not_found(), "{err}");
+            mock.assert();
+            mock.delete();
+        }
+    }
+
+    #[tokio::test]
+    async fn request_errors_are_not_classified_as_not_found() {
+        let err = fetch_json::<TestResponse>(
+            &reqwest::Client::new(),
+            "TestProvider",
+            "channel:1234",
+            "http://[",
+        )
+        .await
+        .unwrap_err();
+
+        assert!(!err.is_not_found());
+        assert!(matches!(err, ProviderFetchError::Request { .. }));
     }
 }

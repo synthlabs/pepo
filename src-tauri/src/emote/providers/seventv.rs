@@ -86,7 +86,7 @@ impl SeventvProvider {
         Self::with_api_base(persistence, SEVENTV_API_BASE.to_string())
     }
 
-    fn with_api_base(persistence: SharedEmoteMetadataStore, api_base: String) -> Self {
+    pub(super) fn with_api_base(persistence: SharedEmoteMetadataStore, api_base: String) -> Self {
         SeventvProvider {
             cache: Default::default(),
             persistence,
@@ -214,6 +214,10 @@ impl EmoteProvider<MultiCache> for SeventvProvider {
                     cache.set_emote(emote.name.clone(), seventv_to_emote(emote, "Channel"));
                 }
                 self.store_fresh_cache(broadcaster_id, cache, provider_settings);
+            }
+            Err(err) if err.is_not_found() => {
+                debug!(broadcaster_id, err = %err, "no seventv channel emotes");
+                self.log_fallback(&broadcaster_id, fallback);
             }
             Err(err) => {
                 error!(

@@ -7,6 +7,9 @@ pub mod http;
 pub mod seventv;
 pub mod twitch;
 
+#[cfg(test)]
+mod tests;
+
 pub const GLOBAL_SCOPE_KEY: &str = "_global";
 
 pub trait EmoteProvider<T: EmoteCacheTrait>: Send + Sync {
