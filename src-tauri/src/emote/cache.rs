@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use tracing::{debug, trace};
+use tracing::trace;
 
 use crate::emote::Emote;
 
@@ -60,7 +60,7 @@ impl EmoteCacheTrait for EmoteCache {
 
     fn set_emote(&self, name: String, emote: Emote) {
         let mut store = self.store.write().unwrap();
-        debug!(
+        trace!(
             scope = self.scope.clone(),
             name = self.name(),
             cache_size = store.len(),
