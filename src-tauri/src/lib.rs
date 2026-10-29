@@ -60,8 +60,6 @@ type SharedBadgeManager = Mutex<BadgeManager>;
 type SharedEmoteManager = Mutex<EmoteManager>;
 type SharedPollHandle = Mutex<Option<tauri::async_runtime::JoinHandle<()>>>;
 type SharedEventSubHandles = Mutex<Vec<tauri::async_runtime::JoinHandle<()>>>;
-/// Guards against overlapping token refreshes (supervisor tick vs. focus event).
-type RefreshLock = Mutex<()>;
 
 const APP_SETTINGS_KEY: &str = "app_settings";
 
@@ -584,12 +582,32 @@ async fn fetch_live_streams_for_logins(
         .collect())
 }
 
-async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), String> {
-    let token = app_handle
+struct ChannelCachePollError {
+    message: String,
+    identity: Option<token::TokenIdentity>,
+}
+
+async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), ChannelCachePollError> {
+    let snapshot = app_handle
         .state::<TokenManager>()
-        .active_twitch_token()
+        .active_snapshot()
         .await
-        .ok_or_else(|| "no active token".to_owned())?;
+        .ok_or_else(|| ChannelCachePollError {
+            message: "no active token".to_owned(),
+            identity: None,
+        })?;
+    poll_channel_cache_with_token(app_handle, snapshot.token)
+        .await
+        .map_err(|message| ChannelCachePollError {
+            message,
+            identity: Some(snapshot.identity),
+        })
+}
+
+async fn poll_channel_cache_with_token(
+    app_handle: &AppHandle,
+    token: twitch_oauth2::UserToken,
+) -> Result<(), String> {
     let client = app_handle.state::<HelixClient<'static, reqwest::Client>>();
     let client = client.inner();
     let state_syncer = app_handle.state::<StateSyncer>();
@@ -680,15 +698,27 @@ fn is_auth_failure_error(error: &str) -> bool {
 async fn handle_channel_cache_poll_error(
     app_handle: &AppHandle,
     context: &str,
-    error: String,
+    failure: ChannelCachePollError,
 ) -> bool {
-    if is_auth_failure_error(&error) {
-        error!(
-            "channel cache poll failed due to auth; clearing auth: {}",
-            error
-        );
-        clear_auth_async(app_handle, false).await;
+    let error = failure.message;
+    let Some(identity) = failure.identity else {
         return true;
+    };
+    if is_auth_failure_error(&error) {
+        match app_handle
+            .state::<TokenManager>()
+            .recover_rejected_token(&identity)
+            .await
+        {
+            Ok(_) => info!("channel cache token recovered; polling will retry"),
+            Err(token::RecoveryError::ReauthenticationRequired(failure)) => {
+                clear_auth_if_current_async(app_handle, false, Some(&failure.identity)).await;
+                return true;
+            }
+            Err(token::RecoveryError::SessionChanged) => return true,
+            Err(error) => warn!(operation = "channel_cache_recovery", "{error}"),
+        }
+        return false;
     }
 
     let channel_cache_settings =
@@ -815,7 +845,6 @@ async fn login(
         let client = client.clone();
         let twitch_token = twitch_token.clone();
         let token_manager = token_manager.clone();
-        let state_syncer = state_syncer.inner().clone();
         tauri::async_runtime::spawn(async move {
             if let Ok(Some(user_info)) = client
                 .get_user_from_id(&twitch_token.user_id, &twitch_token)
@@ -828,8 +857,7 @@ async fn login(
                     )
                     .await
                 {
-                    Ok(Some(token)) => persist_authorized_token(&state_syncer, token),
-                    Ok(None) => {}
+                    Ok(_) => {}
                     Err(err) => error!("failed to persist profile image: {}", err),
                 }
             }
@@ -899,9 +927,12 @@ async fn login(
 
             for msg in events {
                 match msg {
-                    eventsub::EventSubMessage::AuthFailed(reason) => {
-                        error!("EventSub auth failed: {}", reason);
-                        clear_auth(&app_ref);
+                    eventsub::EventSubMessage::AuthFailed(failure) => {
+                        tauri::async_runtime::block_on(clear_auth_if_current_async(
+                            &app_ref,
+                            true,
+                            Some(&failure.identity),
+                        ));
                         break;
                     }
                     eventsub::EventSubMessage::Notification(notification) => {
@@ -977,6 +1008,18 @@ async fn login(
 }
 
 async fn clear_auth_async(app_handle: &AppHandle, abort_poll: bool) {
+    clear_auth_if_current_async(app_handle, abort_poll, None).await;
+}
+
+async fn clear_auth_if_current_async(
+    app_handle: &AppHandle,
+    abort_poll: bool,
+    identity: Option<&token::TokenIdentity>,
+) -> bool {
+    let token_manager = app_handle.state::<TokenManager>();
+    let Some(mut session) = token_manager.guard_session(identity).await else {
+        return false;
+    };
     let state_syncer = app_handle.state::<StateSyncer>();
 
     {
@@ -996,10 +1039,8 @@ async fn clear_auth_async(app_handle: &AppHandle, abort_poll: bool) {
         }
     }
 
-    if let Some(token_manager) = app_handle.try_state::<TokenManager>() {
-        if let Err(err) = token_manager.remove_active_token().await {
-            error!("failed to remove active token while clearing auth: {}", err);
-        }
+    if let Err(err) = session.remove_active_token() {
+        error!("failed to remove active token while clearing auth: {}", err);
     }
 
     state_syncer.update::<AuthState>("auth_state", AuthState::default(), true);
@@ -1012,6 +1053,7 @@ async fn clear_auth_async(app_handle: &AppHandle, abort_poll: bool) {
     if let Ok(store) = app_handle.store("account.json") {
         store.delete("token");
     }
+    true
 }
 
 /// Clears auth state, channel cache, and background auth tasks.
@@ -1071,19 +1113,11 @@ async fn clear_stale_authorized_auth_if_needed(
     true
 }
 
-/// Best-effort token maintenance for every token currently loaded by the
-/// manager. A non-blocking `RefreshLock` prevents overlapping refreshes
-/// (supervisor tick vs. focus event).
+/// The token manager serializes maintenance with reactive auth recovery.
 async fn refresh_token_if_needed(app_handle: &AppHandle, force_validate: bool) {
     let state_syncer = app_handle.state::<StateSyncer>();
     let Some(token_manager) = app_handle.try_state::<TokenManager>() else {
         return;
-    };
-
-    let refresh_lock = app_handle.state::<RefreshLock>();
-    let _refresh_guard = match refresh_lock.try_lock() {
-        Ok(guard) => guard,
-        Err(_) => return, // another refresh is already in progress
     };
 
     let auth_state = state_syncer.snapshot::<AuthState>("auth_state");
@@ -1097,15 +1131,11 @@ async fn refresh_token_if_needed(app_handle: &AppHandle, force_validate: bool) {
     }
 
     let auth_settings = app_settings(state_syncer.inner()).auth;
-    match token_manager
+    let failures = token_manager
         .refresh_all_tokens(force_validate, auth_settings.refresh_threshold())
-        .await
-    {
-        Ok(Some(active_token)) if matches!(auth_state.phase, types::AuthPhase::Authorized) => {
-            persist_authorized_token(state_syncer.inner(), active_token);
-        }
-        Ok(_) => {}
-        Err(err) => warn!("token refresh failed (will retry next tick): {}", err),
+        .await;
+    for failure in failures {
+        clear_auth_if_current_async(app_handle, true, Some(&failure.identity)).await;
     }
 }
 
@@ -1397,7 +1427,6 @@ pub fn run() {
             state_syncer.set(APP_SETTINGS_KEY, settings);
             app.manage::<StateSyncer>(state_syncer);
             app.manage::<SharedPollHandle>(Mutex::new(None));
-            app.manage::<RefreshLock>(Mutex::new(()));
             app.manage::<SharedEventSubHandles>(Mutex::new(Vec::new()));
 
             let token_manager = TokenManager::new(client.clone(), app.handle().clone());

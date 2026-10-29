@@ -21,7 +21,11 @@ use twitch_api::{
 };
 use twitch_oauth2::UserToken;
 
-use crate::{logging, token::TokenManager, types::EventSubSettings};
+use crate::{
+    logging,
+    token::{AuthFailure, RecoveryError, TokenIdentity, TokenManager},
+    types::EventSubSettings,
+};
 
 type SharedMap<V> = Arc<Mutex<HashMap<String, Mutex<HashSet<V>>>>>;
 type DesiredChannels = Arc<Mutex<HashMap<String, UserId>>>;
@@ -38,7 +42,7 @@ pub struct EventNotification {
 #[derive(Debug)]
 pub enum EventSubMessage {
     Notification(EventNotification),
-    AuthFailed(String),
+    AuthFailed(AuthFailure),
 }
 
 pub struct EventSubRuntime {
@@ -68,6 +72,7 @@ pub struct EventSubManager {
     subscriptions: SharedMap<EventSubSubscription>,
     desired_channels: DesiredChannels,
     user_update_subscription_id: Arc<Mutex<Option<twitch_api::types::EventSubId>>>,
+    auth_session: Arc<Mutex<Option<TokenIdentity>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,7 +87,8 @@ enum SocketAction {
     Connected,
     Reconnect(String),
     FreshReconnect,
-    AuthFailed(String),
+    AuthFailed(AuthFailure),
+    Stop,
 }
 
 #[derive(Debug)]
@@ -204,6 +210,7 @@ impl EventSubManager {
             subscriptions: Arc::new(Mutex::new(HashMap::new())),
             desired_channels: Arc::new(Mutex::new(HashMap::new())),
             user_update_subscription_id: Arc::new(Mutex::new(None)),
+            auth_session: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -516,8 +523,33 @@ impl EventSubManager {
         let websocket_handle = tauri::async_runtime::spawn(async move {
             let mut retry_attempt = 0;
             let settings_reader = settings_reader.clone();
+            let Some(session) = token_manager.active_snapshot().await else {
+                return;
+            };
+            *self.auth_session.lock().unwrap() = Some(session.identity.clone());
 
             loop {
+                match token_manager
+                    .ready_token_for_session(&session.identity)
+                    .await
+                {
+                    Ok(_) => {}
+                    Err(RecoveryError::SessionChanged) => return,
+                    Err(RecoveryError::ReauthenticationRequired(failure)) => {
+                        let _ = std_tx.send(EventSubMessage::AuthFailed(failure));
+                        return;
+                    }
+                    Err(error) => {
+                        let delay = retry_delay(retry_attempt, settings_reader());
+                        retry_attempt = retry_attempt.saturating_add(1);
+                        warn!(
+                            operation = "eventsub_preflight",
+                            "{error}; retrying in {delay:?}"
+                        );
+                        sleep(delay).await;
+                        continue;
+                    }
+                }
                 debug!("connecting to websocket mode=fresh");
 
                 let mut s = match connect(twitch_eventsub_url()).await {
@@ -530,8 +562,6 @@ impl EventSubManager {
                         continue;
                     }
                 };
-                retry_attempt = 0;
-
                 loop {
                     let settings = settings_reader();
                     match self
@@ -546,7 +576,9 @@ impl EventSubManager {
                         )
                         .await
                     {
-                        SocketAction::Continue | SocketAction::Connected => {}
+                        SocketAction::Continue => {}
+                        SocketAction::Connected => retry_attempt = 0,
+                        SocketAction::Stop => return,
                         SocketAction::Reconnect(reconnect_url) => {
                             match self
                                 .clone()
@@ -567,12 +599,14 @@ impl EventSubManager {
                                 Err(err) => {
                                     let err_msg = format!("{:?}", err);
                                     error!("eventsub reconnect handoff failed - {}", err_msg);
-                                    if classify_error_text(&err_msg) == EventSubFailure::AuthFailed
-                                    {
-                                        let _ = std_tx.send(EventSubMessage::AuthFailed(
-                                            "token expired or revoked".into(),
-                                        ));
-                                        return;
+                                    match self.action_for_report(&err) {
+                                        SocketAction::AuthFailed(failure) => {
+                                            let _ =
+                                                std_tx.send(EventSubMessage::AuthFailed(failure));
+                                            return;
+                                        }
+                                        SocketAction::Stop => return,
+                                        _ => {}
                                     }
                                     self.clear_active_session();
                                     break;
@@ -626,7 +660,7 @@ impl EventSubManager {
                     Err(e) => {
                         let err_msg = format!("{:?}", e);
                         error!("process_message - {}", err_msg);
-                        self.action_for_failure(classify_error_text(&err_msg), err_msg)
+                        self.action_for_report(&e)
                     }
                 }
             }
@@ -656,9 +690,7 @@ impl EventSubManager {
 
     fn action_for_failure(&self, failure: EventSubFailure, err_msg: String) -> SocketAction {
         match failure {
-            EventSubFailure::AuthFailed => {
-                SocketAction::AuthFailed("token expired or revoked".into())
-            }
+            EventSubFailure::AuthFailed => SocketAction::FreshReconnect,
             EventSubFailure::DuplicateSubscription => {
                 warn!("ignoring duplicate EventSub subscription error: {err_msg}");
                 SocketAction::Continue
@@ -673,6 +705,20 @@ impl EventSubManager {
                 SocketAction::Continue
             }
             EventSubFailure::Recoverable => SocketAction::FreshReconnect,
+        }
+    }
+
+    fn action_for_report(&self, error: &Report) -> SocketAction {
+        match error.downcast_ref::<RecoveryError>() {
+            Some(RecoveryError::ReauthenticationRequired(failure)) => {
+                SocketAction::AuthFailed(failure.clone())
+            }
+            Some(RecoveryError::SessionChanged) => SocketAction::Stop,
+            Some(RecoveryError::RetryLater(_)) => SocketAction::FreshReconnect,
+            None => {
+                let message = format!("{error:?}");
+                self.action_for_failure(classify_error_text(&message), message)
+            }
         }
     }
 
@@ -721,9 +767,10 @@ impl EventSubManager {
                         SocketAction::FreshReconnect => {
                             return Err(eyre!("reconnect handoff socket failed before welcome"));
                         }
-                        SocketAction::AuthFailed(reason) => {
-                            return Err(eyre!("AUTH_EXPIRED: {}", reason));
+                        SocketAction::AuthFailed(failure) => {
+                            return Err(eyre!(RecoveryError::ReauthenticationRequired(failure)));
                         }
+                        SocketAction::Stop => return Err(eyre!(RecoveryError::SessionChanged)),
                     }
                 }
             }
@@ -760,8 +807,14 @@ impl EventSubManager {
                         warn!("old EventSub socket asked for a fresh reconnect during handoff");
                         Ok(())
                     }
-                    Ok(SocketAction::AuthFailed(reason)) => Err(eyre!("AUTH_EXPIRED: {}", reason)),
+                    Ok(SocketAction::AuthFailed(failure)) => {
+                        Err(eyre!(RecoveryError::ReauthenticationRequired(failure)))
+                    }
+                    Ok(SocketAction::Stop) => Err(eyre!(RecoveryError::SessionChanged)),
                     Err(err) => {
+                        if err.downcast_ref::<RecoveryError>().is_some() {
+                            return Err(err);
+                        }
                         let err_msg = format!("{:?}", err);
                         if classify_error_text(&err_msg) == EventSubFailure::AuthFailed {
                             return Err(err);
@@ -820,17 +873,29 @@ impl EventSubManager {
                         payload: WelcomePayload { session },
                         ..
                     } => {
-                        let Some(current_token) = token_manager.active_twitch_token().await else {
-                            return Err(eyre!("AUTH_EXPIRED: no active token"));
+                        let Some(snapshot) = token_manager.active_snapshot().await else {
+                            return Err(eyre!(RecoveryError::SessionChanged));
                         };
-                        self.process_welcome_message(
-                            session,
-                            client,
-                            current_token,
-                            mode,
-                            eventsub_settings,
-                        )
-                        .await?;
+                        let result = self
+                            .process_welcome_message(
+                                session,
+                                client,
+                                snapshot.token,
+                                mode,
+                                eventsub_settings,
+                            )
+                            .await;
+                        if let Err(error) = result {
+                            if classify_error_text(&format!("{error:?}"))
+                                == EventSubFailure::AuthFailed
+                            {
+                                token_manager
+                                    .recover_rejected_token(&snapshot.identity)
+                                    .await?;
+                                return Ok(SocketAction::FreshReconnect);
+                            }
+                            return Err(error);
+                        }
 
                         Ok(SocketAction::Connected)
                     }
@@ -850,8 +915,19 @@ impl EventSubManager {
                         }))?;
                         Ok(SocketAction::Continue)
                     }
-                    re @ EventsubWebsocketData::Revocation { .. } => {
-                        Err(eyre!("AUTH_EXPIRED: subscription revoked: {re:?}"))
+                    EventsubWebsocketData::Revocation { payload, .. } => {
+                        let subscription = payload.subscription()?;
+                        if subscription.status != eventsub::Status::AuthorizationRevoked {
+                            warn!(status = ?subscription.status, "EventSub subscription revoked; reconnecting");
+                            return Ok(SocketAction::FreshReconnect);
+                        }
+                        let session = self
+                            .auth_session
+                            .lock()
+                            .unwrap()
+                            .clone()
+                            .ok_or(RecoveryError::SessionChanged)?;
+                        Err(eyre!(token_manager.revoked_authorization(&session).await))
                     }
                     EventsubWebsocketData::Keepalive {
                         metadata: _,
@@ -982,6 +1058,41 @@ impl EventSubManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auth_recovery_access_401_reconnects_without_clearing_credentials() {
+        let manager = EventSubManager::new();
+        manager.add_desired_channel("maya".to_owned(), UserId::from_static("235835559"));
+        let error =
+            eyre!("AUTH_EXPIRED: helix returned error 401 - Unauthorized: Invalid OAuth token");
+        assert_eq!(
+            manager.action_for_report(&error),
+            SocketAction::FreshReconnect
+        );
+        manager.clear_active_session();
+        assert_eq!(manager.desired_channels_snapshot().len(), 1);
+        assert_eq!(
+            manager.action_for_report(&eyre!(RecoveryError::SessionChanged)),
+            SocketAction::Stop
+        );
+    }
+
+    #[test]
+    fn auth_recovery_terminal_failure_preserves_credential_identity() {
+        let failure = AuthFailure {
+            identity: TokenIdentity {
+                user_id: "1".to_owned(),
+                session: 2,
+                generation: 3,
+            },
+            issue: crate::token::AuthIssue::permanent("refresh_token_rejected"),
+        };
+        let error = eyre!(RecoveryError::ReauthenticationRequired(failure.clone()));
+        assert_eq!(
+            EventSubManager::new().action_for_report(&error),
+            SocketAction::AuthFailed(failure)
+        );
+    }
 
     #[test]
     fn classifies_reconnect_and_subscription_errors() {
