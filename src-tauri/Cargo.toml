@@ -82,7 +82,7 @@ default-run = "pepo"
 description = "A Tauri App"
 edition = "2021"
 name = "pepo"
-version = "0.2.29"
+version = "0.2.30"
 
 [profile]
 [profile.dev]

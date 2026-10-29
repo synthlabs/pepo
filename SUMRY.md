@@ -1,4 +1,4 @@
-[commit]: # 'ecd8c0602b25fc70850be4c848c2e58029630d8e'
+[commit]: # 'a8122e3dd636832892ab145684fa612d3e9e002c'
 
 Features:
 
@@ -6,14 +6,14 @@ Features:
 
 Fixes:
 
-- (chat): batch paused messages and defer history cleanup
-- (ci): defer live AUR checks until publishing setup
-- (ci): correct formatting and SSH fixture checks
-- (ci): share validation and refresh compatible dependencies
-- (ui): align collapsed sidebar hovers and simplify header tags
+- (auth): properly refresh token after sleep
+- (chat): make message sending more responsive
+- (chat): stabilize scrolling during history cleanup
+- (build): lint run
 
 Misc:
 
-- Merge remote-tracking branch &#39;origin/main&#39;
-- (deps): update utils to 6c09fe8
-- (updater): version bump 0.2.28
+- fix: quietly handle missing channel emotes
+- fix: reduce the number of logs saved
+- chore: move emote cache write logs to trace
+- (updater): version bump 0.2.29
