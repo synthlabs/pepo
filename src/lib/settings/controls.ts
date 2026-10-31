@@ -32,6 +32,29 @@ const emoteMore = { category: 'emotes', more: true } as const;
 
 export const SETTINGS_CONTROLS: SettingControl[] = [
 	{
+		id: 'chat.join_mode',
+		path: 'chat.join_mode',
+		category: 'chat',
+		label: 'Channel join mode',
+		description:
+			'Collect followed channels, live followed channels, or join rooms as you open them. Opened rooms stay joined until higher-priority rooms need their slots.',
+		kind: 'select',
+		options: [
+			{ value: 'all', label: 'All followed channels' },
+			{ value: 'live', label: 'Live followed channels' },
+			{ value: 'single', label: 'Single (join on demand)' }
+		]
+	},
+	{
+		id: 'chat.show_history_divider',
+		path: 'chat.show_history_divider',
+		category: 'chat',
+		label: 'Show history divider',
+		description: 'Mark where loaded history ends and new messages begin each time you open a room.',
+		kind: 'toggle'
+	},
+
+	{
 		id: 'chat.show_timestamps',
 		path: 'chat.show_timestamps',
 		category: 'chat',
@@ -104,7 +127,8 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 		id: 'chat.message_limit',
 		path: 'chat.message_limit',
 		label: 'Message history limit',
-		description: 'Number of messages to keep in the current chat.',
+		description:
+			'Number of messages to retain per channel and the normal cleanup target for the current chat.',
 		kind: 'number',
 		unit: 'messages'
 	},

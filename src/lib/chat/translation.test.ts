@@ -15,6 +15,7 @@ describe('chat translation helpers', () => {
 
 		expect(result.changed).toBe(true);
 		expect(result.messages[1].translation?.translated_text).toBe('привет');
+		expect(result.messages[1].channel_sequence).toBe(messages[1].channel_sequence);
 		expect(result.messages[0]).toBe(messages[0]);
 		expect(pending.size).toBe(0);
 	});
@@ -78,7 +79,8 @@ function message(
 		badges: [],
 		color: '#ffffff',
 		translation,
-		index: 1
+		index: 1,
+		channel_sequence: 7
 	};
 }
 

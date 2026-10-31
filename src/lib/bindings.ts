@@ -29,17 +29,26 @@ async getChannelInfo(channelName: string) : Promise<Result<ChannelInfo, string>>
     else return { status: "error", error: e  as any };
 }
 },
-async joinChat(channelName: string) : Promise<Result<ChannelInfo, string>> {
+async subscribeChat(channelName: string, request: ChatFeedRequest, onEvent: TAURI_CHANNEL<FeedFrame>) : Promise<Result<ChatRoomInfo, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("join_chat", { channelName }) };
+    return { status: "ok", data: await TAURI_INVOKE("subscribe_chat", { channelName, request, onEvent }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
-async leaveChat(channelName: string) : Promise<Result<null, string>> {
+async unsubscribeChat(request: ChatFeedRequest) : Promise<void> {
+    await TAURI_INVOKE("unsubscribe_chat", { request });
+},
+async acknowledgeChat(request: ChatFeedRequest, cursor: number) : Promise<void> {
+    await TAURI_INVOKE("acknowledge_chat", { request, cursor });
+},
+async getChatEngineStatus() : Promise<EngineStatus> {
+    return await TAURI_INVOKE("get_chat_engine_status");
+},
+async getChatFeedContext() : Promise<Result<ChatFeedContext, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("leave_chat", { channelName }) };
+    return { status: "ok", data: await TAURI_INVOKE("get_chat_feed_context") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -267,9 +276,9 @@ color: string;
  */
 translation: ChannelMessageTranslation | null; 
 /**
- * A stable message int that can be used by the UI
+ * Session event position used for message identity and history boundaries.
  */
-index: number }
+index: number; channel_sequence: number }
 export type ChannelMessageTranslation = { source_language: string; target_language: string; translated_text: string }
 export type ChannelMessageTranslationUpdate = { message_id: string; translation: ChannelMessageTranslation }
 export type ChannelMessageType = 
@@ -302,9 +311,13 @@ export type ChannelMessageType =
  */
 "power_ups_message_effect"
 export type ChannelStatus = { broadcaster_id: string; login: string; display_name: string; profile_image_url: string; is_live: boolean; is_partner?: boolean; stream: Stream | null }
+export type ChatFeedContext = { epoch: string }
+export type ChatFeedRequest = { epoch: string; revision: number }
+export type ChatJoinMode = "all" | "live" | "single"
+export type ChatRoomInfo = { broadcaster_id: string; broadcaster_login: string; broadcaster_name: string }
 export type ChatSendError = { kind: ChatSendErrorKind; message: string; details: string }
 export type ChatSendErrorKind = "authentication" | "permission_denied" | "rate_limited" | "rejected" | "connection" | "timeout" | "unexpected"
-export type ChatSettings = { message_limit: number; pause_message_gc_while_paused: boolean; batch_live_messages: boolean; message_batch_interval_ms: number; message_gc_interval_ms: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; translation_layout: ChatTranslationLayout; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean }
+export type ChatSettings = { join_mode: ChatJoinMode; show_history_divider: boolean; message_limit: number; pause_message_gc_while_paused: boolean; batch_live_messages: boolean; message_batch_interval_ms: number; message_gc_interval_ms: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; translation_layout: ChatTranslationLayout; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean }
 export type ChatTranslationLayout = "language_tag" | "message_text" | "timestamp_end" | "connector"
 export type CheerFragment = { index: number; text: string }
 export type DiagnosticsSettings = { capture_window_errors: boolean }
@@ -362,7 +375,10 @@ export type EmoteFragment = { index: number; emote: Emote }
 export type EmoteProviderId = "twitch" | "bttv" | "ffz" | "seventv"
 export type EmoteProviderPreference = { id: EmoteProviderId; enabled: boolean }
 export type EmoteSettings = { providers: EmoteProviderPreference[]; autocomplete_enabled: boolean; autocomplete_min_chars: number; search_debounce_ms: number; autocomplete_result_limit: number; picker_result_limit: number; picker_columns: number; picker_max_height_px: number; inline_emote_px: number; inline_badge_px: number }
+export type EngineStatus = { connected: boolean; joined: number; eligible: number; lingering: number; pending: number; limited: number; failures: string[] }
 export type EventSubSettings = { socket_idle_timeout_secs: number; retry_base_secs: number; retry_max_secs: number; debug_cost_watcher_enabled: boolean; debug_cost_watcher_interval_secs: number; repeated_log_throttle_enabled: boolean; unparseable_warning_throttle_secs: number; subscription_error_throttle_secs: number }
+export type FeedEvent = { type: "snapshot"; messages: ChannelMessage[] } | { type: "message"; message: ChannelMessage } | { type: "translation"; update: ChannelMessageTranslationUpdate } | { type: "reset"; messages: ChannelMessage[] } | { type: "gap"; after: number; through: number } | { type: "unavailable"; error: string }
+export type FeedFrame = { cursor: number; event: FeedEvent }
 export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment }
 export type InternalState = { version: string; name: string; sidebar_open: boolean }
 export type LayoutSettings = { sidebar_open: boolean }

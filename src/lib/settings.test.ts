@@ -150,3 +150,17 @@ describe('settings helpers', () => {
 		expect(gridTemplateColumns(0)).toBe('repeat(8, minmax(0, 1fr))');
 	});
 });
+
+describe('chat engine settings', () => {
+	it('defaults join policy and divider for existing settings while preserving explicit choices', () => {
+		const old = structuredClone(DEFAULT_APP_SETTINGS);
+		delete (old.chat as Partial<typeof old.chat>).join_mode;
+		delete (old.chat as Partial<typeof old.chat>).show_history_divider;
+		expect(normalizeAppSettings(old).chat.join_mode).toBe('live');
+		expect(normalizeAppSettings(old).chat.show_history_divider).toBe(true);
+		old.chat.join_mode = 'single';
+		old.chat.show_history_divider = false;
+		expect(normalizeAppSettings(old).chat.join_mode).toBe('single');
+		expect(normalizeAppSettings(old).chat.show_history_divider).toBe(false);
+	});
+});

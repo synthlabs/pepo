@@ -1,16 +1,18 @@
 <script lang="ts">
 	import { fade, slide } from 'svelte/transition';
 	import { quadInOut } from 'svelte/easing';
-	import { Separator } from '$lib/components/ui/separator/index.ts';
+	import HistoryDivider from '$lib/components/chat/history-divider.svelte';
+	import { openRoomFeed } from '$lib/chat/feed';
+	import { showDividerAfter, type HistoryBoundary } from '$lib/chat/history-boundary';
 	import { onDestroy, onMount, tick } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import {
 		commands,
-		type ChannelInfo,
+		type ChatRoomInfo,
 		type ChannelMessage,
 		type ChatTranslationLayout,
 		type ChannelMessageTranslationUpdate
 	} from '$lib/bindings.ts';
-	import { type UnlistenFn, listen } from '@tauri-apps/api/event';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
 	import Badges from '$lib/components/chat/+badges.svelte';
@@ -81,7 +83,8 @@
 			? `Jump to ${unreadMessageCount} new message${unreadMessageCount === 1 ? '' : 's'} below`
 			: 'Jump to more messages below'
 	);
-	let showSeparator: boolean = $state(false);
+	let historyBoundary: HistoryBoundary | null = $state(null);
+	let initialHistoryLoaded = false;
 	let channel_name: string = $derived(page.params.id ?? '');
 	let msgs: ChannelMessage[] = $state([]);
 	let chatInput = $state('');
@@ -90,7 +93,7 @@
 	let errorState = $state({ active: false, msg: '' });
 	let sendPending = $state(false);
 	let messageErrorTimer: ReturnType<typeof setTimeout> | undefined;
-	let channelInfo = $state({} as ChannelInfo);
+	let channelInfo = $state({} as ChatRoomInfo);
 	let username = $derived(
 		authState.obj.phase === 'authorized' && authState.obj.token ? authState.obj.token.login : null
 	);
@@ -107,9 +110,8 @@
 	let emoteSearchQuery = $state('');
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-	const pendingTranslations: PendingTranslations = new Map();
-	let un_sub: UnlistenFn | undefined;
-	let translation_un_sub: UnlistenFn | undefined;
+	const pendingTranslations: PendingTranslations = new SvelteMap();
+	let roomFeed: ReturnType<typeof openRoomFeed> | undefined;
 	let pendingScrollSnapshot: ScrollSnapshot | null = null;
 	let pausedReflowSnapshot: ScrollSnapshot | null = null;
 	let scrollFlushQueued = false;
@@ -150,36 +152,49 @@
 		window.addEventListener('pointercancel', handleScrollbarPointerEnd);
 		window.addEventListener('pointerup', handleScrollbarPointerEnd);
 
-		Logger.debug('subbing to chat messages');
-		un_sub = await listen<ChannelMessage>(`chat_message:${channel_name}`, (event) => {
-			addMessage(event.payload);
-		});
-		translation_un_sub = await listen<ChannelMessageTranslationUpdate>(
-			`chat_translation:${channel_name}`,
-			(event) => {
-				applyTranslation(event.payload);
+		roomFeed = openRoomFeed(channel_name, (frame) => {
+			switch (frame.event.type) {
+				case 'snapshot':
+				case 'reset': {
+					messageHistory.reset();
+					pendingTranslations.clear();
+					if (!initialHistoryLoaded) {
+						historyBoundary = { cursor: frame.cursor, hasHistory: frame.event.messages.length > 0 };
+						initialHistoryLoaded = true;
+					}
+					const wasPinned = autoScrollPinned;
+					if (chatDIV && !wasPinned) {
+						pendingScrollSnapshot = captureScrollSnapshot(
+							chatDIV,
+							CHAT_MESSAGE_SELECTOR,
+							chatSettings.autoscroll_threshold_px
+						);
+					}
+					msgs = frame.event.messages;
+					if (wasPinned) pinToBottomNowAndAfterRender();
+					else queueScrollRestore();
+					break;
+				}
+				case 'message':
+					addMessage(frame.event.message);
+					break;
+				case 'translation':
+					applyTranslation(frame.event.update);
+					break;
+				case 'unavailable':
+					showMessageError(frame.event.error);
+					break;
 			}
-		);
-
-		Logger.info('joining channel:', channel_name);
-		let result = await commands.joinChat(channel_name);
-		Logger.debug(result);
-		if (result.status !== 'ok') {
-			Logger.error('failed to join channel:', result.error);
-			showMessageError(`Failed to join ${channel_name}: ${result.error}`);
-			un_sub?.();
-			translation_un_sub?.();
-			un_sub = undefined;
-			translation_un_sub = undefined;
-			return;
+		});
+		try {
+			const info = await roomFeed.ready;
+			if (!destroyed) channelInfo = info;
+		} catch (error) {
+			if (!destroyed) showMessageError(String(error));
 		}
-
-		channelInfo = result.data;
-
-		jumpToBottom();
 	});
 
-	onDestroy(async () => {
+	onDestroy(() => {
 		destroyed = true;
 		clearTimeout(messageErrorTimer);
 		messageHistory.dispose();
@@ -196,14 +211,7 @@
 		if (pausedReflowTimer !== undefined) clearTimeout(pausedReflowTimer);
 		if (manualScrollTimer !== undefined) clearTimeout(manualScrollTimer);
 
-		Logger.info('unsubbing from channel', channel_name);
-		if (un_sub) {
-			un_sub();
-		}
-		if (translation_un_sub) {
-			translation_un_sub();
-		}
-		await commands.leaveChat(channel_name).then(Logger.debug);
+		roomFeed?.dispose();
 	});
 
 	$effect(() => {
@@ -937,13 +945,13 @@
 						bind:this={historySpacerDIV}
 						style="height: {historySpacerHeight}px;"
 					></div>
-					{#each msgs as msg (msg.index)}
+					{#each msgs as msg, messagePosition (msg.index)}
 						<div
 							data-chat-message-index={msg.index}
 							class={cn(
 								'block w-full px-2 py-1 text-sm',
 								chatSettings.alternate_backgrounds &&
-									(msg.index % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary')
+									(msg.channel_sequence % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary')
 							)}
 						>
 							<div class="min-w-0 text-wrap wrap-anywhere">
@@ -985,8 +993,8 @@
 								</div>
 							{/if}
 						</div>
-						{#if showSeparator}
-							<Separator class="" />
+						{#if showDividerAfter(msgs, messagePosition, historyBoundary, chatSettings.show_history_divider)}
+							<HistoryDivider />
 						{/if}
 					{/each}
 				</div>

@@ -15,8 +15,7 @@ const output = path.join(root, 'target/chat-scroll-route-check');
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function createRouteFixture(native, tick) {
-	while (!native.handlers.has('chat_message:fixture'))
-		await new Promise((resolve) => setTimeout(resolve, 5));
+	while (!native.feed) await new Promise((resolve) => setTimeout(resolve, 5));
 	const feed = document.querySelector('[aria-label="Chat messages"]');
 	const rows = () => [...feed.querySelectorAll('[data-chat-message-index]')];
 	const spacer = () =>
@@ -35,7 +34,8 @@ async function createRouteFixture(native, tick) {
 	const icon = canvas.toDataURL();
 	let next = 0;
 	const makeMessage = () => {
-		const index = next++;
+		const channel_sequence = next++;
+		const index = channel_sequence + 1;
 		const badge = {
 			set_id: 'fixture',
 			id: '1',
@@ -47,6 +47,7 @@ async function createRouteFixture(native, tick) {
 		};
 		return {
 			index,
+			channel_sequence,
 			ts: '2026-10-25T16:15:00Z',
 			broadcaster_user_id: '1',
 			broadcaster_user_name: 'Fixture',
@@ -85,8 +86,10 @@ async function createRouteFixture(native, tick) {
 		};
 	};
 	const emit = (count) => {
-		for (let i = 0; i < count; i++)
-			native.handlers.get('chat_message:fixture')({ payload: makeMessage() });
+		for (let i = 0; i < count; i++) {
+			const message = makeMessage();
+			native.feed.onmessage({ cursor: message.index, event: { type: 'message', message } });
+		}
 	};
 	const waitCount = async (count) => {
 		for (let i = 0; i < 2000; i++) {
@@ -185,7 +188,7 @@ async function createRouteFixture(native, tick) {
 			document.querySelector('button[aria-label^="Jump to"]').click();
 			await waitCount(1);
 			await frames();
-			return { ...metadata(), expectedLast: String(next - 1) };
+			return { ...metadata(), expectedLast: String(next) };
 		},
 		compare: async (png) => {
 			const bytes = Uint8Array.from(atob(png), (character) => character.charCodeAt(0));
@@ -242,9 +245,21 @@ export const settings = $state(structuredClone(DEFAULT_APP_SETTINGS));
 export const page = { params: { id: 'fixture' } };
 export const authState = { obj: { phase: 'authorized', token: { login: 'fixture', user_id: '1' } } };
 export const getNormalizedAppSettings = () => settings;
-export const native = { settings, handlers: new Map() };
-export const listen = async (name, handler) => { native.handlers.set(name, handler); return () => native.handlers.delete(name); };
-export const commands = { joinChat: async () => ({ status: 'ok', data: {} }), leaveChat: async () => ({ status: 'ok', data: null }), searchEmotes: async () => ({ status: 'ok', data: [] }) };
+export const native = { settings, feed: null };
+export const listen = async () => () => {};
+export class Channel { constructor(callback) { this.onmessage = callback; } }
+export const invoke = async command => { throw new Error('Unexpected native invoke in scroll fixture: ' + command); };
+export const commands = {
+    getChatFeedContext: async () => ({ status: 'ok', data: { epoch: 'scroll-page' } }),
+    subscribeChat: async (channel, request, sink) => {
+        native.feed = { request, onmessage: sink.onmessage };
+        sink.onmessage({ cursor: 0, event: { type: 'snapshot', messages: [] } });
+        return { status: 'ok', data: { broadcaster_id: '1', broadcaster_login: channel, broadcaster_name: 'Fixture' } };
+    },
+    unsubscribeChat: async request => { if (native.feed?.request === request) native.feed = null; },
+    acknowledgeChat: async () => {},
+    searchEmotes: async () => ({ status: 'ok', data: [] })
+};
 export default { debug() {}, info() {}, error() {} };
 `
 	);
@@ -278,7 +293,8 @@ window.fixtureReady = (${createRouteFixture.toString()})(native, tick);
 					'$utils/log',
 					'$lib/stores/auth.svelte',
 					'$lib/stores/settings.svelte',
-					'@tauri-apps/api/event'
+					'@tauri-apps/api/event',
+					'@tauri-apps/api/core'
 				].map((find) => ({ find, replacement: mocks })),
 				{ find: '$lib', replacement: path.join(root, 'src/lib') },
 				{ find: '$utils', replacement: path.join(root, 'utils/js') }
