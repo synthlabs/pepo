@@ -32,20 +32,6 @@ const emoteMore = { category: 'emotes', more: true } as const;
 
 export const SETTINGS_CONTROLS: SettingControl[] = [
 	{
-		id: 'chat.join_mode',
-		path: 'chat.join_mode',
-		category: 'chat',
-		label: 'Channel join mode',
-		description:
-			'Collect followed channels, live followed channels, or join rooms as you open them. Opened rooms stay joined until higher-priority rooms need their slots.',
-		kind: 'select',
-		options: [
-			{ value: 'all', label: 'All followed channels' },
-			{ value: 'live', label: 'Live followed channels' },
-			{ value: 'single', label: 'Single (join on demand)' }
-		]
-	},
-	{
 		id: 'chat.show_history_divider',
 		path: 'chat.show_history_divider',
 		category: 'chat',
@@ -87,6 +73,30 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 		kind: 'toggle'
 	},
 	{
+		id: 'chat.message_limit',
+		path: 'chat.message_limit',
+		category: 'chat',
+		label: 'Message history limit',
+		description:
+			'Number of messages to retain per channel and the normal cleanup target for the current chat.',
+		kind: 'number',
+		unit: 'messages'
+	},
+	{
+		...chatMore,
+		id: 'chat.join_mode',
+		path: 'chat.join_mode',
+		label: 'Channel join mode',
+		description:
+			'Collect followed channels, live followed channels, or join rooms as you open them. Opened rooms stay joined until higher-priority rooms need their slots.',
+		kind: 'select',
+		options: [
+			{ value: 'all', label: 'All followed channels' },
+			{ value: 'live', label: 'Live followed channels' },
+			{ value: 'single', label: 'Single (join on demand)' }
+		]
+	},
+	{
 		...chatMore,
 		id: 'chat.timestamp_locale',
 		path: 'chat.timestamp_locale',
@@ -121,16 +131,6 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 			{ value: 'timestamp_end', label: 'After timestamp' },
 			{ value: 'connector', label: 'Connector' }
 		]
-	},
-	{
-		...chatMore,
-		id: 'chat.message_limit',
-		path: 'chat.message_limit',
-		label: 'Message history limit',
-		description:
-			'Number of messages to retain per channel and the normal cleanup target for the current chat.',
-		kind: 'number',
-		unit: 'messages'
 	},
 	{
 		...chatMore,
