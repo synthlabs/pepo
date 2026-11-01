@@ -31,6 +31,8 @@ use chat::runtime::{
     acknowledge_chat, get_chat_engine_status, get_chat_feed_context, subscribe_chat,
     unsubscribe_chat, ChatRuntime,
 };
+#[cfg(test)]
+mod channel_cache_poll_tests;
 mod chat_send;
 mod emote;
 mod emotemanager;
@@ -459,11 +461,11 @@ async fn refresh_joined_channel_cache(
     Ok(())
 }
 
-async fn fetch_live_streams_for_logins(
-    client: &HelixClient<'static, reqwest::Client>,
+async fn fetch_live_streams_for_logins<C: twitch_api::HttpClient>(
+    client: &HelixClient<'_, C>,
     logins: &[String],
     token: &twitch_oauth2::UserToken,
-) -> Result<HashMap<String, types::Stream>, String> {
+) -> Result<HashMap<String, types::Stream>, twitch_api::helix::ClientRequestError<C::Error>> {
     if logins.is_empty() {
         return Ok(HashMap::new());
     }
@@ -472,8 +474,7 @@ async fn fetch_live_streams_for_logins(
     let streams: Vec<twitch_api::helix::streams::Stream> = client
         .get_streams_from_logins(&login_collection, token)
         .try_collect()
-        .await
-        .map_err(|e| e.to_string())?;
+        .await?;
 
     Ok(streams
         .into_iter()
@@ -484,31 +485,166 @@ async fn fetch_live_streams_for_logins(
         .collect())
 }
 
+const CHANNEL_CACHE_POLL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+#[derive(Debug)]
+struct ChannelCacheRequestError {
+    category: &'static str,
+    status: Option<u16>,
+}
+
+impl std::fmt::Display for ChannelCacheRequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} status={:?}", self.category, self.status)
+    }
+}
+
+impl std::error::Error for ChannelCacheRequestError {}
+
+fn channel_cache_request_category(error: &(dyn std::error::Error + 'static)) -> &'static str {
+    if let Some(error) = error.downcast_ref::<reqwest::Error>() {
+        if error.is_timeout() {
+            "timeout"
+        } else if error.is_connect() {
+            "connect"
+        } else if error.is_body() {
+            "response_body"
+        } else {
+            "request"
+        }
+    } else if let Some(error) = error.downcast_ref::<std::io::Error>() {
+        match error.kind() {
+            std::io::ErrorKind::TimedOut => "timeout",
+            std::io::ErrorKind::NotConnected
+            | std::io::ErrorKind::ConnectionRefused
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::ConnectionAborted => "connect",
+            _ => "request",
+        }
+    } else {
+        "request"
+    }
+}
+
+struct ChannelCacheTransport<'a, C> {
+    inner: &'a C,
+}
+
+impl<C: twitch_api::HttpClient> twitch_api::HttpClient for ChannelCacheTransport<'_, C> {
+    type Error = ChannelCacheRequestError;
+
+    fn req(
+        &self,
+        request: twitch_api::client::Request,
+    ) -> twitch_api::client::BoxedFuture<'_, Result<twitch_api::client::Response, Self::Error>>
+    {
+        let response = self.inner.req(request);
+        Box::pin(async move {
+            let response = response.await.map_err(|error| ChannelCacheRequestError {
+                category: channel_cache_request_category(&error),
+                status: None,
+            })?;
+            // Capture HTTP status before Helix substitutes the JSON error status.
+            if !response.status().is_success() {
+                return Err(ChannelCacheRequestError {
+                    category: "http",
+                    status: Some(response.status().as_u16()),
+                });
+            }
+            Ok(response)
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ChannelCacheFetchError {
+    operation: &'static str,
+    category: &'static str,
+    status: Option<u16>,
+}
+
+impl ChannelCacheFetchError {
+    fn from_helix(
+        operation: &'static str,
+        error: twitch_api::helix::ClientRequestError<ChannelCacheRequestError>,
+    ) -> Self {
+        use twitch_api::helix::{ClientRequestError, HelixRequestGetError};
+
+        let (category, status) = match error {
+            ClientRequestError::HelixRequestGetError(error) => match error {
+                HelixRequestGetError::DeserializeError(_, _, _, status)
+                | HelixRequestGetError::InvalidResponse { status, .. } => {
+                    ("response", Some(status.as_u16()))
+                }
+                _ => ("response", None),
+            },
+            ClientRequestError::RequestError(error) => (error.category, error.status),
+            ClientRequestError::CreateRequestError(_) => ("request_build", None),
+            _ => ("response", None),
+        };
+        Self {
+            operation,
+            category,
+            status,
+        }
+    }
+
+    fn is_auth_rejection(&self) -> bool {
+        self.status == Some(401)
+    }
+
+    fn session_unavailable() -> Self {
+        Self {
+            operation: "poll",
+            category: "session_unavailable",
+            status: None,
+        }
+    }
+}
+
+impl std::fmt::Display for ChannelCacheFetchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "operation={} category={}", self.operation, self.category)?;
+        if let Some(status) = self.status {
+            write!(f, " status={status}")?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 struct ChannelCachePollError {
-    message: String,
+    failure: ChannelCacheFetchError,
     identity: Option<token::TokenIdentity>,
 }
 
+#[derive(Debug)]
+struct ChannelCachePollUpdate {
+    channels: Vec<twitch_api::helix::channels::FollowedBroadcaster>,
+    cache: types::ChannelCache,
+}
+
 async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), ChannelCachePollError> {
-    let polling_engine = app_handle
-        .state::<ChatRuntime>()
-        .current()
-        .map_err(|message| ChannelCachePollError {
-            message,
-            identity: None,
-        })?;
+    let polling_engine =
+        app_handle
+            .state::<ChatRuntime>()
+            .current()
+            .map_err(|_| ChannelCachePollError {
+                failure: ChannelCacheFetchError::session_unavailable(),
+                identity: None,
+            })?;
     let snapshot = app_handle
         .state::<TokenManager>()
         .active_snapshot()
         .await
         .ok_or_else(|| ChannelCachePollError {
-            message: "no active token".to_owned(),
+            failure: ChannelCacheFetchError::session_unavailable(),
             identity: None,
         })?;
     poll_channel_cache_with_token(app_handle, snapshot.token, &polling_engine)
         .await
-        .map_err(|message| ChannelCachePollError {
-            message,
+        .map_err(|failure| ChannelCachePollError {
+            failure,
             identity: Some(snapshot.identity),
         })
 }
@@ -517,7 +653,7 @@ async fn poll_channel_cache_with_token(
     app_handle: &AppHandle,
     token: twitch_oauth2::UserToken,
     polling_engine: &chat::ChatEngine,
-) -> Result<(), String> {
+) -> Result<(), ChannelCacheFetchError> {
     let client = app_handle.state::<HelixClient<'static, reqwest::Client>>();
     let client = client.inner();
     let state_syncer = app_handle.state::<StateSyncer>();
@@ -532,25 +668,7 @@ async fn poll_channel_cache_with_token(
         eventsub_manager.desired_channels_snapshot()
     };
 
-    debug!("polling channel cache");
-
-    let channels: Vec<twitch_api::helix::channels::FollowedBroadcaster> = client
-        .get_followed_channels(token.user_id.to_string(), &token)
-        .try_collect()
-        .await
-        .map_err(|e| format!("failed to get followed channels: {}", e))?;
-
-    let followed_candidates: Vec<ChannelCacheCandidate> = channels
-        .iter()
-        .map(|channel| {
-            ChannelCacheCandidate::new(
-                channel.broadcaster_id.to_string(),
-                channel.broadcaster_login.to_string(),
-                channel.broadcaster_name.to_string(),
-            )
-        })
-        .collect();
-    let joined_candidates: Vec<ChannelCacheCandidate> = desired_channels
+    let joined_candidates = desired_channels
         .into_iter()
         .map(|(login, id)| {
             let login = normalize_channel_login(&login);
@@ -562,20 +680,111 @@ async fn poll_channel_cache_with_token(
             ChannelCacheCandidate::new(id.to_string(), login, display_name)
         })
         .collect();
+
+    debug!("polling channel cache");
+    complete_channel_cache_poll(
+        fetch_channel_cache(
+            client,
+            &token,
+            channel_cache_settings,
+            &previous_cache,
+            joined_candidates,
+        ),
+        |ChannelCachePollUpdate { channels, cache }| {
+            let mut state = polling_engine.state.lock().unwrap();
+            if !state.active {
+                return;
+            }
+            state.membership.followed = channels
+                .iter()
+                .map(|channel| {
+                    let login = normalize_channel_login(channel.broadcaster_login.as_str());
+                    let live = cache
+                        .channels
+                        .get(&login)
+                        .is_some_and(|status| status.is_live);
+                    (login, live)
+                })
+                .collect();
+            for channel in &channels {
+                let login = normalize_channel_login(channel.broadcaster_login.as_str());
+                state.directory.insert(
+                    login.clone(),
+                    types::ChatRoomInfo {
+                        broadcaster_id: channel.broadcaster_id.to_string(),
+                        broadcaster_login: login,
+                        broadcaster_name: channel.broadcaster_name.to_string(),
+                    },
+                );
+            }
+            drop(state);
+            polling_engine.wake();
+            info!(
+                "channel cache updated: {} channels, {} live",
+                cache.channels.len(),
+                cache.channels.values().filter(|c| c.is_live).count()
+            );
+            state_syncer.update::<types::ChannelCache>("channel_cache", cache, true);
+        },
+    )
+    .await
+}
+
+async fn complete_channel_cache_poll(
+    fetch: impl std::future::Future<Output = Result<ChannelCachePollUpdate, ChannelCacheFetchError>>,
+    publish: impl FnOnce(ChannelCachePollUpdate),
+) -> Result<(), ChannelCacheFetchError> {
+    let update = tokio::time::timeout(CHANNEL_CACHE_POLL_TIMEOUT, fetch)
+        .await
+        .map_err(|_| ChannelCacheFetchError {
+            operation: "poll",
+            category: "timeout",
+            status: None,
+        })??;
+    publish(update);
+    Ok(())
+}
+
+async fn fetch_channel_cache<C: twitch_api::HttpClient>(
+    client: &HelixClient<'_, C>,
+    token: &twitch_oauth2::UserToken,
+    settings: types::ChannelCacheSettings,
+    previous_cache: &types::ChannelCache,
+    joined_candidates: Vec<ChannelCacheCandidate>,
+) -> Result<ChannelCachePollUpdate, ChannelCacheFetchError> {
+    let client = HelixClient::with_client(ChannelCacheTransport {
+        inner: client.get_client(),
+    });
+    let channels: Vec<twitch_api::helix::channels::FollowedBroadcaster> = client
+        .get_followed_channels(token.user_id.to_string(), token)
+        .try_collect()
+        .await
+        .map_err(|error| ChannelCacheFetchError::from_helix("followed_channels", error))?;
+
+    let followed_candidates: Vec<ChannelCacheCandidate> = channels
+        .iter()
+        .map(|channel| {
+            ChannelCacheCandidate::new(
+                channel.broadcaster_id.to_string(),
+                channel.broadcaster_login.to_string(),
+                channel.broadcaster_name.to_string(),
+            )
+        })
+        .collect();
     let candidates = merge_channel_cache_candidates(followed_candidates, joined_candidates);
 
     let mut users: HashMap<String, twitch_api::helix::users::User> = HashMap::new();
-    for chunk in candidates.chunks(channel_cache_settings.user_lookup_chunk_size) {
+    for chunk in candidates.chunks(settings.user_lookup_chunk_size) {
         let ids: Vec<twitch_api::types::UserId> = chunk
             .iter()
             .map(|candidate| twitch_api::types::UserId::new(candidate.broadcaster_id.clone()))
             .collect();
         let id_collection = twitch_api::types::Collection::from(ids);
         let chunk_users: Vec<twitch_api::helix::users::User> = client
-            .get_users_from_ids(&id_collection, &token)
+            .get_users_from_ids(&id_collection, token)
             .try_collect()
             .await
-            .map_err(|e| format!("failed to get users: {}", e))?;
+            .map_err(|error| ChannelCacheFetchError::from_helix("users", error))?;
         for user in chunk_users {
             users.insert(user.login.to_string(), user);
         }
@@ -585,49 +794,12 @@ async fn poll_channel_cache_with_token(
         .iter()
         .map(|candidate| candidate.login.clone())
         .collect();
-    let live_streams = fetch_live_streams_for_logins(client, &logins, &token)
+    let live_streams = fetch_live_streams_for_logins(&client, &logins, token)
         .await
-        .map_err(|e| format!("failed to get streams: {}", e))?;
-    let cache = channel_cache_from_candidates(&candidates, &users, &live_streams, &previous_cache);
+        .map_err(|error| ChannelCacheFetchError::from_helix("streams", error))?;
+    let cache = channel_cache_from_candidates(&candidates, &users, &live_streams, previous_cache);
 
-    info!(
-        "channel cache updated: {} channels, {} live",
-        cache.channels.len(),
-        cache.channels.values().filter(|c| c.is_live).count()
-    );
-    {
-        let mut state = polling_engine.state.lock().unwrap();
-        if !state.active {
-            return Ok(());
-        }
-        state.membership.followed = channels
-            .iter()
-            .map(|channel| {
-                let login = normalize_channel_login(channel.broadcaster_login.as_str());
-                let live = cache
-                    .channels
-                    .get(&login)
-                    .is_some_and(|status| status.is_live);
-                (login, live)
-            })
-            .collect();
-        for channel in &channels {
-            let login = normalize_channel_login(channel.broadcaster_login.as_str());
-            state.directory.insert(
-                login.clone(),
-                types::ChatRoomInfo {
-                    broadcaster_id: channel.broadcaster_id.to_string(),
-                    broadcaster_login: login,
-                    broadcaster_name: channel.broadcaster_name.to_string(),
-                },
-            );
-        }
-        drop(state);
-        polling_engine.wake();
-    }
-    state_syncer.update::<types::ChannelCache>("channel_cache", cache, true);
-
-    Ok(())
+    Ok(ChannelCachePollUpdate { channels, cache })
 }
 
 fn is_auth_failure_error(error: &str) -> bool {
@@ -640,27 +812,29 @@ async fn handle_channel_cache_poll_error(
     context: &str,
     failure: ChannelCachePollError,
 ) -> bool {
-    let error = failure.message;
-    let Some(identity) = failure.identity else {
-        return true;
-    };
-    if is_auth_failure_error(&error) {
-        match app_handle
-            .state::<TokenManager>()
-            .recover_rejected_token(&identity)
-            .await
-        {
-            Ok(_) => info!("channel cache token recovered; polling will retry"),
-            Err(token::RecoveryError::ReauthenticationRequired(failure)) => {
-                clear_auth_if_current_async(app_handle, false, Some(&failure.identity)).await;
-                return true;
-            }
-            Err(token::RecoveryError::SessionChanged) => return true,
-            Err(error) => warn!(operation = "channel_cache_recovery", "{error}"),
-        }
-        return false;
+    let stop = channel_cache_poll_should_stop(
+        &failure,
+        async {
+            let identity = failure
+                .identity
+                .as_ref()
+                .ok_or(token::RecoveryError::SessionChanged)?;
+            app_handle
+                .state::<TokenManager>()
+                .recover_rejected_token(identity)
+                .await
+                .map(|_| ())
+        },
+        |failure| async move {
+            clear_auth_if_current_async(app_handle, false, Some(&failure.identity)).await;
+        },
+    )
+    .await;
+    if stop || failure.failure.is_auth_rejection() {
+        return stop;
     }
 
+    let error = failure.failure;
     let channel_cache_settings =
         app_settings(app_handle.state::<StateSyncer>().inner()).channel_cache;
     let message = format!("{context} channel cache poll failed: {error}");
@@ -674,6 +848,56 @@ async fn handle_channel_cache_poll_error(
         error!("{message}");
     }
     false
+}
+
+async fn channel_cache_poll_should_stop<F: std::future::Future<Output = ()>>(
+    failure: &ChannelCachePollError,
+    recovery: impl std::future::Future<Output = Result<(), token::RecoveryError>>,
+    clear_auth: impl FnOnce(token::AuthFailure) -> F,
+) -> bool {
+    if failure.identity.is_none() {
+        return true;
+    }
+    if failure.failure.is_auth_rejection() {
+        match recovery.await {
+            Ok(_) => info!("channel cache token recovered; polling will retry"),
+            Err(token::RecoveryError::ReauthenticationRequired(failure)) => {
+                clear_auth(failure).await;
+                return true;
+            }
+            Err(token::RecoveryError::SessionChanged) => return true,
+            Err(error) => warn!(operation = "channel_cache_recovery", "{error}"),
+        }
+        return false;
+    }
+
+    false
+}
+
+async fn run_channel_cache_poll_loop<P, E>(
+    settings: impl Fn() -> types::ChannelCacheSettings,
+    mut poll: impl FnMut() -> P,
+    mut handle_error: impl FnMut(&'static str, ChannelCachePollError) -> E,
+) where
+    P: std::future::Future<Output = Result<(), ChannelCachePollError>>,
+    E: std::future::Future<Output = bool>,
+{
+    if let Err(error) = poll().await {
+        if handle_error("initial", error).await {
+            return;
+        }
+    }
+    loop {
+        tokio::time::sleep(settings().poll_interval()).await;
+        if !settings().recurring_poll_enabled {
+            continue;
+        }
+        if let Err(error) = poll().await {
+            if handle_error("recurring", error).await {
+                return;
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -915,29 +1139,12 @@ async fn login(
     // Channel cache: initial poll + recurring loop
     let poll_app = app_handle.clone();
     let poll_handle = tauri::async_runtime::spawn(async move {
-        if let Err(e) = poll_channel_cache(&poll_app).await {
-            if handle_channel_cache_poll_error(&poll_app, "initial", e).await {
-                return;
-            }
-        }
-
-        loop {
-            let channel_cache_settings =
-                app_settings(poll_app.state::<StateSyncer>().inner()).channel_cache;
-            tokio::time::sleep(channel_cache_settings.poll_interval()).await;
-
-            let channel_cache_settings =
-                app_settings(poll_app.state::<StateSyncer>().inner()).channel_cache;
-            if !channel_cache_settings.recurring_poll_enabled {
-                continue;
-            }
-
-            if let Err(e) = poll_channel_cache(&poll_app).await {
-                if handle_channel_cache_poll_error(&poll_app, "recurring", e).await {
-                    return;
-                }
-            }
-        }
+        run_channel_cache_poll_loop(
+            || app_settings(poll_app.state::<StateSyncer>().inner()).channel_cache,
+            || poll_channel_cache(&poll_app),
+            |context, error| handle_channel_cache_poll_error(&poll_app, context, error),
+        )
+        .await;
     });
 
     // Store handle, aborting any existing poll task
