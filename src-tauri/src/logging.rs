@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use log::LevelFilter;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 const CHAT_PARSE_SUMMARY_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -21,26 +21,6 @@ pub(crate) fn pepo_log_level() -> LevelFilter {
         Ok(_) => LevelFilter::Info,
         Err(_) if cfg!(internal_enabled) => LevelFilter::Debug,
         Err(_) => LevelFilter::Info,
-    }
-}
-
-pub(crate) fn warn_repeated(
-    key: impl Into<String>,
-    message: impl Into<String>,
-    interval: Duration,
-) {
-    let key = key.into();
-    let message = message.into();
-    match repeated_logs().record(key.clone(), message.clone(), Instant::now(), interval) {
-        RepeatLogDecision::Emit => warn!("{}", message),
-        RepeatLogDecision::Suppress => {}
-        RepeatLogDecision::Summary(summary) => warn!(
-            key = %key,
-            suppressed = summary.suppressed,
-            window_secs = summary.window.as_secs_f64(),
-            last = %summary.last_message,
-            "suppressed repeated warning"
-        ),
     }
 }
 
@@ -251,6 +231,26 @@ struct ChatParseSummary {
 }
 
 #[cfg(test)]
+pub(crate) fn run_log_test_in_child(test_name: &str) -> bool {
+    const CHILD_TEST: &str = "PEPO_LOG_CAPTURE_TEST_CHILD";
+    if std::env::var(CHILD_TEST).as_deref() == Ok(test_name) {
+        return false;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", test_name, "--nocapture"])
+        .env(CHILD_TEST, test_name)
+        .output()
+        .expect("run log capture with fresh tracing callsite state");
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    true
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -316,6 +316,56 @@ mod tests {
             ),
             RepeatLogDecision::Emit
         );
+    }
+
+    #[test]
+    fn error_messages_retain_initial_and_latest_summary_diagnostics() {
+        if run_log_test_in_child(
+            "logging::tests::error_messages_retain_initial_and_latest_summary_diagnostics",
+        ) {
+            return;
+        }
+        #[derive(Clone)]
+        struct Output(std::sync::Arc<Mutex<Vec<u8>>>);
+
+        impl std::io::Write for Output {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let output = std::sync::Arc::new(Mutex::new(Vec::<u8>::new()));
+        let captured = output.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || Output(captured.clone()))
+            .finish();
+        let key = "eventsub_unparseable:summary_capture_test";
+        let interval = Duration::from_secs(60);
+        tracing::subscriber::with_default(subscriber, || {
+            error_repeated(key, "EventSub initial diagnostic sample=<string>", interval);
+            error_repeated(key, "EventSub suppressed diagnostic", interval);
+            repeated_logs()
+                .entries
+                .lock()
+                .unwrap()
+                .get_mut(key)
+                .unwrap()
+                .last_emit = Instant::now() - interval;
+            error_repeated(key, "EventSub latest diagnostic sample=<number>", interval);
+        });
+        let output = String::from_utf8(output.lock().unwrap().clone()).unwrap();
+        assert_eq!(output.matches("ERROR").count(), 2);
+        assert!(output.contains("EventSub initial diagnostic sample=<string>"));
+        assert!(output.contains("suppressed repeated error"));
+        assert!(output.contains("suppressed=2"));
+        assert!(output.contains("EventSub latest diagnostic sample=<number>"));
     }
 
     #[test]

@@ -28,6 +28,10 @@ use crate::{
     types::EventSubSettings,
 };
 
+mod diagnostics;
+#[cfg(test)]
+mod diagnostics_tests;
+
 type SharedMap<V> = Arc<Mutex<HashMap<String, Mutex<HashSet<V>>>>>;
 type DesiredChannels = Arc<Mutex<HashMap<String, UserId>>>;
 type EventSubSocket =
@@ -225,19 +229,6 @@ fn retry_delay_secs(attempt: u32, settings: EventSubSettings) -> u64 {
     settings.retry_delay_secs(attempt)
 }
 
-fn warn_or_warn_repeated(
-    settings: EventSubSettings,
-    key: String,
-    message: String,
-    throttle: Duration,
-) {
-    if settings.repeated_log_throttle_enabled {
-        logging::warn_repeated(key, message, throttle);
-    } else {
-        warn!("{message}");
-    }
-}
-
 fn error_or_error_repeated(
     settings: EventSubSettings,
     key: String,
@@ -248,6 +239,37 @@ fn error_or_error_repeated(
         logging::error_repeated(key, message, throttle);
     } else {
         error!("{message}");
+    }
+}
+
+fn process_frame<'a>(
+    frame: &'a str,
+    sender: &SyncSender<EventSubMessage>,
+    settings: EventSubSettings,
+) -> Result<Option<EventsubWebsocketData<'a>>, Report> {
+    let parsed = match Event::parse_websocket(frame) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            let diagnostic = diagnostics::ParseFailure::new(frame, &error);
+            error_or_error_repeated(
+                settings,
+                diagnostic.key(),
+                diagnostic.message(),
+                settings.unparseable_warning_throttle(),
+            );
+            return Ok(None);
+        }
+    };
+    trace!("process_message: {:?}", frame);
+    match parsed {
+        EventsubWebsocketData::Notification { metadata, payload } => {
+            sender.send(EventSubMessage::Notification(EventNotification {
+                ts: metadata.message_timestamp.into_owned(),
+                event: payload,
+            }))?;
+            Ok(None)
+        }
+        control => Ok(Some(control)),
     }
 }
 
@@ -1088,19 +1110,8 @@ impl EventSubManager {
     ) -> Result<SocketAction, Report> {
         match msg {
             tungstenite::Message::Text(s) => {
-                trace!("process_message: {:?}", s);
-                // Parse the message into a [twitch_api::eventsub::EventsubWebsocketData]
-                let parsed = match Event::parse_websocket(&s) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        warn_or_warn_repeated(
-                            eventsub_settings,
-                            format!("eventsub_unparseable:{e}"),
-                            format!("process_message - skipping unparseable message: {e}"),
-                            eventsub_settings.unparseable_warning_throttle(),
-                        );
-                        return Ok(SocketAction::Continue);
-                    }
+                let Some(parsed) = process_frame(&s, &ts, eventsub_settings)? else {
+                    return Ok(SocketAction::Continue);
                 };
                 match parsed {
                     EventsubWebsocketData::Welcome {
@@ -1141,13 +1152,6 @@ impl EventSubManager {
                             return Err(eyre!("eventsub reconnect missing reconnect_url"));
                         };
                         Ok(SocketAction::Reconnect(url.to_string()))
-                    }
-                    EventsubWebsocketData::Notification { metadata, payload } => {
-                        ts.send(EventSubMessage::Notification(EventNotification {
-                            ts: metadata.message_timestamp.into_owned(),
-                            event: payload,
-                        }))?;
-                        Ok(SocketAction::Continue)
                     }
                     EventsubWebsocketData::Revocation { .. } => {
                         let raw: serde_json::Value = serde_json::from_str(&s)?;
