@@ -22,6 +22,20 @@ pub(super) struct ParseFailure {
 }
 
 impl ParseFailure {
+    pub(super) fn invalid_envelope(frame: &str, path: &str, reason: &str) -> Self {
+        let mut diagnostic = Self::new(frame, &PayloadParseError::MalformedEvent);
+        diagnostic.error_kind = "schema";
+        diagnostic.field_path = Some(path.into());
+        diagnostic.reason = reason.into();
+        diagnostic
+    }
+
+    pub(super) fn without_position(mut self) -> Self {
+        self.line = None;
+        self.column = None;
+        self
+    }
+
     pub(super) fn new(frame: &str, error: &PayloadParseError) -> Self {
         let (raw, syntax_error) = match serde_json::from_str::<Value>(frame) {
             Ok(raw) => (Some(raw), None),
@@ -145,7 +159,7 @@ fn protocol_path(path: &str) -> bool {
     )
 }
 
-fn protocol_value(value: &str) -> String {
+pub(super) fn protocol_value(value: &str) -> String {
     if value.len() <= 128
         && value
             .bytes()

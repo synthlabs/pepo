@@ -1113,13 +1113,16 @@ async fn login(
                                 ..
                             }) => {
                                 let settings = app_settings(&state_syncer_ref);
-                                let channel_msg = types::ChannelMessage::new(
+                                let mut channel_msg = types::ChannelMessage::new(
                                     chat_message.clone(),
                                     notification.ts.to_string(),
                                     badge_manager_ref.clone(),
                                     emote_manager_ref.clone(),
                                     settings.emotes,
                                 );
+                                if let Some(message_type) = notification.message_type_override {
+                                    channel_msg.message_type = message_type;
+                                }
                                 internal::ingest_chat_message(
                                     &chat_engine_ref,
                                     channel_msg,

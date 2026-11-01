@@ -16,7 +16,7 @@
 		"tauri": "tauri",
 		"test": "svelte-kit sync && vitest",
 		"test:ci": "node --test scripts/ci.test.mjs",
-		"test:run": "svelte-kit sync && vitest run && node --test scripts/check-window-controls.test.mjs scripts/lint-tailwind-classes.test.mjs scripts/ci.test.mjs utils/scripts/update-utils-submodules.test.mjs utils/js/inbound/controller.test.mjs"
+		"test:run": "svelte-kit sync && vitest run && node --test scripts/amend-patch.test.mjs scripts/check-window-controls.test.mjs scripts/lint-tailwind-classes.test.mjs scripts/ci.test.mjs utils/scripts/update-utils-submodules.test.mjs utils/js/inbound/controller.test.mjs"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.1.1",

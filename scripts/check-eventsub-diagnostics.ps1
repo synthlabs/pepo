@@ -6,6 +6,8 @@ $checkFailures = [System.Collections.Generic.List[string]]::new()
 
 Push-Location -LiteralPath $projectRoot
 try {
+    & cargo fmt --all -- --check
+    if ($LASTEXITCODE -ne 0) { $checkFailures.Add('Rust formatting') }
     $testFilters = if ($Full) { @('') } else { @('eventsub::', 'logging::') }
     foreach ($filter in $testFilters) {
         & cargo test --locked -p pepo --lib $filter

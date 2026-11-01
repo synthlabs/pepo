@@ -25,9 +25,12 @@ use twitch_oauth2::UserToken;
 use crate::{
     logging,
     token::{AuthFailure, RecoveryError, TokenIdentity, TokenManager},
-    types::EventSubSettings,
+    types::{ChannelMessageType, EventSubSettings},
 };
 
+mod compatibility;
+#[cfg(test)]
+mod compatibility_tests;
 mod diagnostics;
 #[cfg(test)]
 mod diagnostics_tests;
@@ -42,6 +45,7 @@ pub type EventSubSettingsReader = Arc<dyn Fn() -> EventSubSettings + Send + Sync
 pub struct EventNotification {
     pub ts: twitch_api::types::Timestamp,
     pub event: Event,
+    pub message_type_override: Option<ChannelMessageType>,
 }
 
 #[derive(Debug)]
@@ -247,10 +251,14 @@ fn process_frame<'a>(
     sender: &SyncSender<EventSubMessage>,
     settings: EventSubSettings,
 ) -> Result<Option<EventsubWebsocketData<'a>>, Report> {
-    let parsed = match Event::parse_websocket(frame) {
-        Ok(parsed) => parsed,
-        Err(error) => {
-            let diagnostic = diagnostics::ParseFailure::new(frame, &error);
+    let parsed = match compatibility::decode(frame) {
+        Ok(compatibility::DecodedFrame::Parsed(parsed)) => parsed,
+        Ok(compatibility::DecodedFrame::Recovered(notification)) => {
+            sender.send(EventSubMessage::Notification(notification))?;
+            return Ok(None);
+        }
+        Ok(compatibility::DecodedFrame::Ignored) => return Ok(None),
+        Err(diagnostic) => {
             error_or_error_repeated(
                 settings,
                 diagnostic.key(),
@@ -266,6 +274,7 @@ fn process_frame<'a>(
             sender.send(EventSubMessage::Notification(EventNotification {
                 ts: metadata.message_timestamp.into_owned(),
                 event: payload,
+                message_type_override: None,
             }))?;
             Ok(None)
         }

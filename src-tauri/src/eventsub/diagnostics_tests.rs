@@ -6,7 +6,7 @@ use std::sync::mpsc::sync_channel;
 use tracing::field::Visit;
 use tracing_subscriber::{layer::Context, prelude::*, Layer};
 
-fn chat_frame() -> Value {
+pub(super) fn chat_frame() -> Value {
     json!({
         "metadata": {
             "message_id": "private-envelope-id",
@@ -181,7 +181,7 @@ fn skipped_frames_do_not_prevent_later_chat_delivery_or_control_handling() {
     let (sender, receiver) = sync_channel(4);
     let settings = EventSubSettings::default();
     let mut invalid = chat_frame();
-    invalid["payload"]["event"]["message_type"] = json!("future_chat_type");
+    invalid["payload"]["event"]["message_type"] = json!(123);
     assert!(process_frame(&invalid.to_string(), &sender, settings)
         .unwrap()
         .is_none());
@@ -246,7 +246,7 @@ fn ordinary_errors_are_throttled_by_signature_and_can_be_unthrottled() {
     tracing::subscriber::with_default(subscriber, || {
         let (sender, _receiver) = sync_channel(1);
         let mut frame = chat_frame();
-        frame["payload"]["event"]["message_type"] = json!("diagnostics_throttle_test");
+        frame["payload"]["event"]["badges"] = json!("private-badges");
         let text = frame.to_string();
         process_frame(&text, &sender, EventSubSettings::default()).unwrap();
         process_frame(&text, &sender, EventSubSettings::default()).unwrap();
@@ -256,7 +256,8 @@ fn ordinary_errors_are_throttled_by_signature_and_can_be_unthrottled() {
             "{}",
             failure(&frame).message()
         );
-        frame["payload"]["event"]["message_type"] = json!("diagnostics_distinct_test");
+        frame["payload"]["event"]["badges"] = json!([]);
+        frame["payload"]["event"]["message"]["text"] = json!(123);
         process_frame(&frame.to_string(), &sender, EventSubSettings::default()).unwrap();
         assert_eq!(recorder.0.lock().unwrap().len(), 2);
         let settings = EventSubSettings {
@@ -269,7 +270,7 @@ fn ordinary_errors_are_throttled_by_signature_and_can_be_unthrottled() {
         assert_eq!(events.len(), 4);
         for message in events.iter() {
             assert!(message.contains("EventSub frame skipped"));
-            assert!(message.contains("event.message_type"));
+            assert!(message.contains("event."));
             assert!(message.contains("sample"));
             assert!(!message.contains("private chat text"));
         }
