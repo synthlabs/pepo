@@ -27,6 +27,7 @@ const NOW: u64 = 1_800_000_000;
 struct ProviderCase {
     id: EmoteProviderId,
     module: &'static str,
+    diagnostic_provider: &'static str,
     channel_path: &'static str,
     global_path: &'static str,
     missing_body: &'static str,
@@ -38,6 +39,7 @@ const PROVIDERS: [ProviderCase; 3] = [
     ProviderCase {
         id: EmoteProviderId::Ffz,
         module: "ffz",
+        diagnostic_provider: "FFZ",
         channel_path: "/room/id/429837742",
         global_path: "/set/global",
         missing_body: r#"{"status":404,"error":"Not Found","message":"No such room"}"#,
@@ -47,6 +49,7 @@ const PROVIDERS: [ProviderCase; 3] = [
     ProviderCase {
         id: EmoteProviderId::Bttv,
         module: "bttv",
+        diagnostic_provider: "BTTV",
         channel_path: "/users/twitch/429837742",
         global_path: "/emotes/global",
         missing_body: r#"{"message":"user not found"}"#,
@@ -56,6 +59,7 @@ const PROVIDERS: [ProviderCase; 3] = [
     ProviderCase {
         id: EmoteProviderId::Seventv,
         module: "seventv",
+        diagnostic_provider: "7TV",
         channel_path: "/users/twitch/429837742",
         global_path: "/emote-sets/global",
         missing_body: r#"{"status":"Not Found","error_code":12000,"error":"user not found"}"#,
@@ -279,25 +283,71 @@ async fn other_channel_statuses_remain_errors_even_with_a_missing_user_body() {
 #[tokio::test(flavor = "multi_thread")]
 async fn malformed_successful_channel_responses_remain_errors() {
     let server = MockServer::start();
+    let settings = ProviderSettings::default();
     for case in &PROVIDERS {
-        for body in ["not json", "{}"] {
-            let mut mock = server.mock(|when, then| {
-                when.method(GET).path(case.channel_path);
-                then.status(200).body(body);
-            });
-            let provider = case.provider(case.persistence(false), server.base_url());
+        let mut bodies = vec!["not json", "{}"];
+        if case.id == EmoteProviderId::Seventv {
+            bodies.extend([
+                r#"{"emote_set":42}"#,
+                r#"{"emote_set":{"emotes":"invalid"}}"#,
+                r#"{"emote_set":{"emotes":[{}]}}"#,
+            ]);
+        }
+        for body in bodies {
+            for cached_channel in [false, true] {
+                let mut mock = server.mock(|when, then| {
+                    when.method(GET).path(case.channel_path);
+                    then.status(200).body(body);
+                });
+                let persistence = case.persistence(cached_channel);
+                let provider = case.provider(persistence.clone(), server.base_url());
 
-            let events = capture_events(|| {
-                provider.load_channel_emotes(
-                    CHANNEL.to_owned(),
-                    &reqwest::Client::new(),
-                    &ProviderSettings::default(),
-                );
-            });
+                let events = capture_events(|| {
+                    provider.load_channel_emotes(
+                        CHANNEL.to_owned(),
+                        &reqwest::Client::new(),
+                        &settings,
+                    );
+                });
 
-            case.assert_error(&events, "decode failed");
-            mock.assert();
-            mock.delete();
+                let diagnostic = events
+                    .iter()
+                    .find(|event| {
+                        event.level == Level::ERROR
+                            && event.target.ends_with(case.module)
+                            && event.fields.contains("decode failed")
+                    })
+                    .unwrap_or_else(|| {
+                        panic!("{}: missing decode diagnostic: {events:?}", case.module)
+                    });
+                for context in [
+                    format!("provider={}", case.diagnostic_provider),
+                    format!("scope=channel:{CHANNEL}"),
+                    format!("url={}", server.url(case.channel_path)),
+                    "status=200 OK".to_owned(),
+                    "decode failed after ".to_owned(),
+                    "ms".to_owned(),
+                    format!("body_preview={body:?}"),
+                ] {
+                    assert!(
+                        diagnostic.fields.contains(&context),
+                        "missing {context:?}: {diagnostic:?}"
+                    );
+                }
+                let cache = provider.get_emote_cache(CHANNEL.to_owned());
+                assert!(cache.has_emote("CachedGlobal".to_owned()));
+                assert_eq!(cache.has_emote("CachedChannel".to_owned()), cached_channel);
+                let persisted =
+                    persistence.load_cache(case.id, CHANNEL, &provider.get_name(), &settings);
+                assert_eq!(persisted.is_some(), cached_channel);
+                if let Some(persisted) = persisted {
+                    assert_eq!(persisted.cache.len(), 1);
+                    assert!(persisted.cache.has_emote("CachedChannel".to_owned()));
+                    assert_eq!(persisted.saved_at_unix_secs, NOW);
+                }
+                mock.assert();
+                mock.delete();
+            }
         }
     }
 }
@@ -353,40 +403,74 @@ async fn successful_channel_loads_replace_channel_cache_and_preserve_global_emot
     let server = MockServer::start();
     let settings = ProviderSettings::default();
     for case in &PROVIDERS {
-        for (body, populated) in [(case.empty_body, false), (case.populated_body, true)] {
-            let mut mock = server.mock(|when, then| {
-                when.method(GET).path(case.channel_path);
-                then.status(200).body(body);
-            });
-            let persistence = case.persistence(true);
-            let provider = case.provider(persistence.clone(), server.base_url());
+        let mut responses = vec![(case.empty_body, false), (case.populated_body, true)];
+        if case.id == EmoteProviderId::Seventv {
+            responses.extend([
+                (
+                    r#"{"id":"217594970","emote_set_id":null,"emote_set":null}"#,
+                    false,
+                ),
+                (r#"{"emote_set":{}}"#, false),
+                (r#"{"emote_set":{"emotes":null}}"#, false),
+            ]);
+        }
+        for (body, populated) in responses {
+            for cached_channel in [false, true] {
+                let mut mock = server.mock(|when, then| {
+                    when.method(GET).path(case.channel_path);
+                    then.status(200).body(body);
+                });
+                let persistence = case.persistence(cached_channel);
+                let provider = case.provider(persistence.clone(), server.base_url());
 
-            let events = capture_events(|| {
-                provider.load_channel_emotes(
-                    CHANNEL.to_owned(),
-                    &reqwest::Client::new(),
-                    &settings,
+                let events = capture_events(|| {
+                    provider.load_channel_emotes(
+                        CHANNEL.to_owned(),
+                        &reqwest::Client::new(),
+                        &settings,
+                    );
+                });
+
+                assert!(
+                    events.iter().all(|event| event.level != Level::ERROR),
+                    "{events:?}"
                 );
-            });
+                let cache = provider.get_emote_cache(CHANNEL.to_owned());
+                assert_eq!(
+                    cache.search_emotes("", usize::MAX).len(),
+                    1 + usize::from(populated)
+                );
+                assert!(cache.has_emote("CachedGlobal".to_owned()));
+                assert!(!cache.has_emote("CachedChannel".to_owned()));
+                assert_eq!(cache.has_emote("FreshEmote".to_owned()), populated);
+                let persisted = persistence
+                    .load_cache(case.id, CHANNEL, &provider.get_name(), &settings)
+                    .unwrap();
+                assert_eq!(persisted.cache.len(), usize::from(populated));
+                assert_eq!(
+                    persisted.cache.has_emote("FreshEmote".to_owned()),
+                    populated
+                );
+                let global = persistence
+                    .load_cache(case.id, GLOBAL_SCOPE_KEY, &provider.get_name(), &settings)
+                    .unwrap();
+                assert_eq!(global.cache.len(), 1);
+                assert!(global.cache.has_emote("CachedGlobal".to_owned()));
+                assert_eq!(global.saved_at_unix_secs, NOW);
 
-            assert!(
-                events.iter().all(|event| event.level != Level::ERROR),
-                "{events:?}"
-            );
-            let cache = provider.get_emote_cache(CHANNEL.to_owned());
-            assert!(cache.has_emote("CachedGlobal".to_owned()));
-            assert!(!cache.has_emote("CachedChannel".to_owned()));
-            assert_eq!(cache.has_emote("FreshEmote".to_owned()), populated);
-            let persisted = persistence
-                .load_cache(case.id, CHANNEL, &provider.get_name(), &settings)
-                .unwrap();
-            assert_eq!(persisted.cache.len(), usize::from(populated));
-            assert_eq!(
-                persisted.cache.has_emote("FreshEmote".to_owned()),
-                populated
-            );
-            mock.assert();
-            mock.delete();
+                let reloaded = case.provider(persistence, server.base_url());
+                assert!(reloaded.hydrate_cache(CHANNEL, &settings));
+                let reloaded_cache = reloaded.get_emote_cache(CHANNEL.to_owned());
+                assert_eq!(
+                    reloaded_cache.search_emotes("", usize::MAX).len(),
+                    1 + usize::from(populated)
+                );
+                assert!(reloaded_cache.has_emote("CachedGlobal".to_owned()));
+                assert!(!reloaded_cache.has_emote("CachedChannel".to_owned()));
+                assert_eq!(reloaded_cache.has_emote("FreshEmote".to_owned()), populated);
+                mock.assert();
+                mock.delete();
+            }
         }
     }
 }

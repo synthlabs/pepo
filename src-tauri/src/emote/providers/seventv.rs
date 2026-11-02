@@ -48,7 +48,8 @@ struct SeventvChannelEmoteSet {
 
 #[derive(Deserialize)]
 struct SeventvChannelResponse {
-    emote_set: SeventvChannelEmoteSet,
+    #[serde(deserialize_with = "Option::deserialize")]
+    emote_set: Option<SeventvChannelEmoteSet>,
 }
 
 fn seventv_to_emote(emote: &SeventvEmote, scope: &str) -> Emote {
@@ -204,7 +205,10 @@ impl EmoteProvider<MultiCache> for SeventvProvider {
         }) {
             Ok(resp) => {
                 let cache = EmoteCache::new(broadcaster_id.clone(), self.get_name());
-                let emotes = resp.emote_set.emotes.unwrap_or_default();
+                let emotes = resp
+                    .emote_set
+                    .and_then(|set| set.emotes)
+                    .unwrap_or_default();
                 debug!(
                     broadcaster_id,
                     count = emotes.len(),
