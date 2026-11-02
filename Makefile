@@ -41,5 +41,5 @@ lint:
 .PHONY: patch
 patch:
 	$(PATCH_CMD)
-	$(MAKE) format
+	"$(MAKE)" format
 	node scripts/amend-patch.mjs
