@@ -159,7 +159,8 @@ process.exitCode = process.env.FAIL_STEP === step ? 23 : 0;
 	writeFileSync(path.join(directory, 'scripts/amend-patch.mjs'), stepSource);
 	let executable = make;
 	if (process.platform !== 'win32') {
-		executable = path.join(directory, 'make (test)');
+		// macOS tool launchers dispatch using the executable basename.
+		executable = path.join(directory, 'make');
 		symlinkSync(make, executable);
 	}
 	const node = `"${process.execPath.replaceAll('\\', '/')}"`;
@@ -172,6 +173,7 @@ process.exitCode = process.env.FAIL_STEP === step ? 23 : 0;
 					'--no-print-directory',
 					...args,
 					'patch',
+					...(process.platform !== 'win32' ? [`MAKE=${executable}`] : []),
 					...(stubPatch ? [`PATCH_CMD=${node} step.mjs patch`] : []),
 					`TOKE=${node} step.mjs format`
 				],
