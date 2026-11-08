@@ -137,15 +137,21 @@ afterEach(async () => {
 });
 
 describe('settings page', () => {
-	it('shows only two translation preferences and asks consent before downloading or enabling', async () => {
+	it('shows three translation preferences and asks consent before downloading or enabling', async () => {
 		const f = await translationPage();
-		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(2);
+		expect(
+			Array.from(document.querySelectorAll('[data-setting-row]'), (row) =>
+				row.getAttribute('data-setting-row')
+			)
+		).toEqual(['translation.enabled', 'translation.target_language', 'translation.layout']);
 		expect(document.querySelector('[data-model-manager]')).toBeNull();
-		expect(document.querySelector('#setting-translation-layout')).toBeNull();
 		expect(f.client.watchState).not.toHaveBeenCalled();
 		await click('#setting-translation-enabled');
 		expect(element('[role="alertdialog"]').textContent).toContain('Download translation support?');
 		expect(element('[role="alertdialog"]').textContent).toContain('Download & enable');
+		expect(element('[role="alertdialog"]').textContent?.replace(/\s+/g, ' ')).toContain(
+			'Pepo needs a small language model to translate messages into English.'
+		);
 		expect(f.client.startInstall).not.toHaveBeenCalled();
 		expect(getNormalizedAppSettings().translation.enabled).toBe(false);
 		f.session.respond(false);
@@ -171,6 +177,9 @@ describe('settings page', () => {
 		expect(getNormalizedAppSettings().translation.enabled).toBe(true);
 		await chooseLanguage('rus');
 		expect(f.session.confirmation?.pair).toEqual(EN_RU);
+		expect(element('[role="alertdialog"]').textContent?.replace(/\s+/g, ' ')).toContain(
+			'Pepo needs a small language model to translate messages into Russian.'
+		);
 		expect(getNormalizedAppSettings().translation.target_language).toBe('eng');
 		f.session.respond(false);
 		await flushUi();
@@ -182,6 +191,119 @@ describe('settings page', () => {
 		f.finish();
 		await flushUi();
 		expect(getNormalizedAppSettings().translation.target_language).toBe('rus');
+	});
+	it.each([
+		{ intent: 'enable', searching: false },
+		{ intent: 'enable', searching: true },
+		{ intent: 'language', searching: false },
+		{ intent: 'language', searching: true }
+	] as const)(
+		'keeps quick installed-model checks quiet for $intent (search: $searching)',
+		async ({ intent, searching }) => {
+			const f = await translationPage();
+			f.rows([local(), local(EN_RU)]);
+			if (intent === 'language') await click('#setting-translation-enabled');
+			if (searching) await search(intent === 'enable' ? 'translate chat' : 'translate into');
+			for (let attempt = 0; attempt < 2; attempt++) {
+				let finish!: (value: ReturnType<typeof f.state>) => void;
+				f.client.status.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+				try {
+					const previous = { ...getNormalizedAppSettings().translation };
+					const nextLanguage = previous.target_language === 'eng' ? 'rus' : 'eng';
+					if (intent === 'enable') element('#setting-translation-enabled').click();
+					else {
+						const select = element<HTMLSelectElement>('#setting-translation-target_language');
+						select.value = nextLanguage;
+						select.dispatchEvent(new Event('change', { bubbles: true }));
+					}
+					await settle();
+					flushSync();
+					const preparing = () =>
+						Array.from(document.querySelectorAll('[role="status"]')).find(
+							(node) => node.textContent?.trim() === 'Preparing translation…'
+						);
+					expect(preparing()).toBeUndefined();
+					expect(getNormalizedAppSettings().translation).toEqual(previous);
+					await vi.advanceTimersByTimeAsync(299);
+					flushSync();
+					expect(preparing()).toBeUndefined();
+					finish(f.state());
+					await flushUi();
+					expect(getNormalizedAppSettings().translation).toEqual({
+						...previous,
+						...(intent === 'enable' ? { enabled: true } : { target_language: nextLanguage })
+					});
+					await vi.advanceTimersByTimeAsync(301);
+					flushSync();
+					expect(preparing()).toBeUndefined();
+					if (intent === 'enable') await click('#setting-translation-enabled');
+				} finally {
+					finish(f.state());
+					await flushUi();
+				}
+			}
+			expect(f.client.planInstall).not.toHaveBeenCalled();
+			expect(f.client.startInstall).not.toHaveBeenCalled();
+		}
+	);
+	it('shows preparation after 300 ms without restarting on model updates and hides it on completion', async () => {
+		const f = await translationPage();
+		f.rows([local()]);
+		await f.session.connect();
+		await flushUi();
+		let finish!: (value: ReturnType<typeof f.state>) => void;
+		f.client.status.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+		try {
+			element('#setting-translation-enabled').click();
+			await settle();
+			flushSync();
+			await vi.advanceTimersByTimeAsync(200);
+			f.emit({});
+			flushSync();
+			await vi.advanceTimersByTimeAsync(99);
+			flushSync();
+			expect(document.body.textContent).not.toContain('Preparing translation…');
+			await vi.advanceTimersByTimeAsync(1);
+			flushSync();
+			expect(document.body.textContent).toContain('Preparing translation…');
+			finish(f.state());
+			await flushUi();
+			expect(document.body.textContent).not.toContain('Preparing translation…');
+			expect(getNormalizedAppSettings().translation.enabled).toBe(true);
+		} finally {
+			finish(f.state());
+			await flushUi();
+		}
+	});
+	it('clears a pending preparation timer when navigating away and starts a fresh delay on return', async () => {
+		const f = await translationPage();
+		f.rows([local()]);
+		await f.session.connect();
+		await flushUi();
+		let finish!: (value: ReturnType<typeof f.state>) => void;
+		f.client.status.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+		try {
+			await click('#setting-translation-enabled');
+			await vi.advanceTimersByTimeAsync(200);
+			await click('[aria-label="Settings categories"] button:first-child');
+			await vi.advanceTimersByTimeAsync(300);
+			flushSync();
+			expect(document.body.textContent).not.toContain('Preparing translation…');
+			element('[aria-label="Settings categories"] button:nth-child(3)').click();
+			flushSync();
+			await vi.advanceTimersByTimeAsync(299);
+			flushSync();
+			expect(document.body.textContent).not.toContain('Preparing translation…');
+			await vi.advanceTimersByTimeAsync(1);
+			flushSync();
+			expect(document.body.textContent).toContain('Preparing translation…');
+			finish(f.state());
+			await flushUi();
+			expect(document.body.textContent).not.toContain('Preparing translation…');
+		} finally {
+			finish(f.state());
+			await flushUi();
+		}
 	});
 	it('cancels setup without enabling translation and selects a language without downloading while off', async () => {
 		const f = await translationPage();
@@ -246,10 +368,16 @@ describe('settings page', () => {
 		await settle();
 		await flushUi();
 		expect(document.activeElement?.id).toBe('translation-models');
+		expect(document.querySelector('#setting-translation-layout')).toBeNull();
+		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(0);
 		expect(f.client.watchState).toHaveBeenCalledTimes(1);
 		expect(getNormalizedAppSettings().translation.enabled).toBe(false);
 		await click('[data-translation-back]');
 		expect(document.activeElement?.hasAttribute('data-open-translation-models')).toBe(true);
+		const layout = element<HTMLSelectElement>('#setting-translation-layout');
+		layout.value = 'connector';
+		layout.dispatchEvent(new Event('change', { bubbles: true }));
+		await flushUi();
 		await click('#setting-translation-enabled');
 		const select = element<HTMLSelectElement>('#setting-translation-target_language');
 		select.value = 'rus';
@@ -258,7 +386,7 @@ describe('settings page', () => {
 		expect(getNormalizedAppSettings().translation).toEqual({
 			enabled: true,
 			target_language: 'rus',
-			layout: 'message_text'
+			layout: 'connector'
 		});
 		native.save = async () => false;
 		await click('#setting-translation-enabled');

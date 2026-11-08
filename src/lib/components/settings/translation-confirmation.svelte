@@ -38,8 +38,9 @@
 				>
 				<AlertDialog.Description class="text-muted-foreground mt-2 text-sm">
 					{#if 'plan' in request}
-						{#if setup}Pepo needs a language model to translate {text.language(request.pair.source)} messages
-							into {text.language(request.pair.target)}.
+						{#if setup}Pepo needs a small language model to translate messages into {text.language(
+								request.pair.target
+							)}.
 						{:else}Download this model to your device for local translation.{/if}
 					{:else if request.action === 'remove'}Remove the installed model from this device. Your
 						translation preferences will be kept.

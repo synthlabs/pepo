@@ -315,62 +315,195 @@ try {
 			'disabled startup does not connect model management'
 		);
 		await click(sessionId, '[aria-label="Settings categories"] button:nth-child(3)');
-		assert.equal(await evaluate(sessionId, `document.querySelectorAll('[data-setting-row]').length`), 2);
-		assert.equal(await evaluate(sessionId, `!!document.querySelector('[data-model-manager]')`), false);
-		assert.equal(await evaluate(sessionId, `window.translationNative.calls.includes('status')`), false);
-		assert.equal(await evaluate(sessionId, `document.documentElement.scrollWidth > innerWidth`), false);
+		assert.deepEqual(
+			await evaluate(
+				sessionId,
+				`Array.from(document.querySelectorAll('[data-setting-row]'), row => row.dataset.settingRow)`
+			),
+			['translation.enabled', 'translation.target_language', 'translation.layout']
+		);
+		assert.equal(
+			await evaluate(sessionId, `!!document.querySelector('[data-model-manager]')`),
+			false
+		);
+		assert.equal(
+			await evaluate(sessionId, `window.translationNative.calls.includes('status')`),
+			false
+		);
+		assert.equal(
+			await evaluate(sessionId, `document.documentElement.scrollWidth > innerWidth`),
+			false
+		);
 		const capture = async (state) => {
 			const screenshot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
-			await writeFile(path.join(output, `translation-${state}-${test.name}.png`), Buffer.from(screenshot.data, 'base64'));
+			await writeFile(
+				path.join(output, `translation-${state}-${test.name}.png`),
+				Buffer.from(screenshot.data, 'base64')
+			);
 		};
 		await capture('basic');
 		if (test.name === 'expanded-dark') {
 			await evaluate(sessionId, `window.translationNative.emit({ phase: 'unavailable' })`);
 			await click(sessionId, '#setting-translation-enabled');
 			await waitFor(sessionId, `!!document.querySelector('[data-translation-setup-error]')`);
-			assert.equal(await evaluate(sessionId, `document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`), 'false');
+			assert.equal(
+				await evaluate(
+					sessionId,
+					`document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`
+				),
+				'false'
+			);
 			await capture('error');
 			await evaluate(sessionId, `window.translationNative.emit({ phase: 'ready' })`);
 		}
 		await click(sessionId, '#setting-translation-enabled');
 		await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
-		assert.equal(await evaluate(sessionId, `window.translationNative.calls.includes('start_install')`), false);
-		assert.equal(await evaluate(sessionId, `document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`), 'false');
-		assert.equal(await evaluate(sessionId, `document.querySelector('[role="alertdialog"]').contains(document.activeElement)`), true);
+		assert.equal(
+			await evaluate(
+				sessionId,
+				`document.getElementById(document.querySelector('[role="alertdialog"]').getAttribute('aria-describedby')).textContent.replace(/\\s+/g, ' ').trim()`
+			),
+			'Pepo needs a small language model to translate messages into English.'
+		);
+		assert.equal(
+			await evaluate(sessionId, `window.translationNative.calls.includes('start_install')`),
+			false
+		);
+		assert.equal(
+			await evaluate(
+				sessionId,
+				`document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`
+			),
+			'false'
+		);
+		assert.equal(
+			await evaluate(
+				sessionId,
+				`document.querySelector('[role="alertdialog"]').contains(document.activeElement)`
+			),
+			true
+		);
 		await capture('consent');
-		await evaluate(sessionId, `Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Cancel').click()`);
+		await evaluate(
+			sessionId,
+			`Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Cancel').click()`
+		);
 		await waitFor(sessionId, `!document.querySelector('[role="alertdialog"]')`);
-		assert.equal(await evaluate(sessionId, `window.translationNative.calls.includes('start_install')`), false);
+		assert.equal(
+			await evaluate(sessionId, `window.translationNative.calls.includes('start_install')`),
+			false
+		);
 		await click(sessionId, '#setting-translation-enabled');
 		await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
-		await evaluate(sessionId, `Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Download & enable').click()`);
+		await evaluate(
+			sessionId,
+			`Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Download & enable').click()`
+		);
 		await waitFor(sessionId, `!!document.querySelector('[data-translation-setup]')`);
-		assert.equal(await evaluate(sessionId, `document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`), 'false');
+		assert.equal(
+			await evaluate(
+				sessionId,
+				`document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`
+			),
+			'false'
+		);
 		await capture('setup');
 		if (test.name === 'expanded-dark') {
 			await click(sessionId, '[data-translation-cancel]');
 			await waitFor(sessionId, `!document.querySelector('[data-translation-setup]')`);
-			assert.equal(await evaluate(sessionId, `document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`), 'false');
+			assert.equal(
+				await evaluate(
+					sessionId,
+					`document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`
+				),
+				'false'
+			);
 			await click(sessionId, '#setting-translation-enabled');
 			await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
-			await evaluate(sessionId, `Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Download & enable').click()`);
+			await evaluate(
+				sessionId,
+				`Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Download & enable').click()`
+			);
 			await waitFor(sessionId, `!!document.querySelector('[data-translation-setup]')`);
 		}
 		await evaluate(sessionId, `window.translationNative.finish()`);
-		await waitFor(sessionId, `document.querySelector('#setting-translation-enabled').getAttribute('aria-checked') === 'true'`);
+		await waitFor(
+			sessionId,
+			`document.querySelector('#setting-translation-enabled').getAttribute('aria-checked') === 'true'`
+		);
 		if (test.name === 'expanded-dark') {
-			await evaluate(sessionId, `(() => { const select = document.querySelector('#setting-translation-target_language'); select.value = 'rus'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+			await evaluate(
+				sessionId,
+				`(() => { const select = document.querySelector('#setting-translation-target_language'); select.value = 'rus'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`
+			);
 			await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
-			await evaluate(sessionId, `Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Cancel').click()`);
+			assert.equal(
+				await evaluate(
+					sessionId,
+					`document.getElementById(document.querySelector('[role="alertdialog"]').getAttribute('aria-describedby')).textContent.replace(/\\s+/g, ' ').trim()`
+				),
+				'Pepo needs a small language model to translate messages into Russian.'
+			);
+			await evaluate(
+				sessionId,
+				`Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Cancel').click()`
+			);
 			await waitFor(sessionId, `!document.querySelector('[role="alertdialog"]')`);
-			assert.equal(await evaluate(sessionId, `document.querySelector('#setting-translation-target_language').value`), 'eng');
+			assert.equal(
+				await evaluate(
+					sessionId,
+					`document.querySelector('#setting-translation-target_language').value`
+				),
+				'eng'
+			);
 		}
 		await capture('enabled');
 		await click(sessionId, '#setting-translation-enabled');
 		await waitFor(sessionId, `window.settingsNative.writes.at(-1)?.translation.enabled === false`);
+		await evaluate(
+			sessionId,
+			`
+			window.preparationFlashes = [];
+			window.preparationObserver = new MutationObserver(records => {
+				for (const record of records) {
+					for (const node of record.addedNodes) {
+						if (node.textContent?.includes('Preparing translation…')) window.preparationFlashes.push(node.textContent);
+					}
+				}
+			});
+			window.preparationObserver.observe(document.body, { childList: true, subtree: true });
+		`
+		);
+		for (let attempt = 0; attempt < 3; attempt++) {
+			if (attempt === 1) {
+				await click(sessionId, '[aria-label="Settings categories"] button:first-child');
+				await click(sessionId, '[aria-label="Settings categories"] button:nth-child(3)');
+			}
+			await click(sessionId, '#setting-translation-enabled');
+			await waitFor(
+				sessionId,
+				`document.querySelector('#setting-translation-enabled').getAttribute('aria-checked') === 'true'`
+			);
+			await click(sessionId, '#setting-translation-enabled');
+			await waitFor(
+				sessionId,
+				`document.querySelector('#setting-translation-enabled').getAttribute('aria-checked') === 'false'`
+			);
+		}
+		await delay(350);
+		assert.deepEqual(
+			await evaluate(sessionId, `window.preparationFlashes`),
+			[],
+			test.name + ' preparation flash'
+		);
+		await evaluate(sessionId, `window.preparationObserver.disconnect()`);
 		await search(sessionId, 'models');
 		await click(sessionId, '[data-open-translation-models]');
 		await waitFor(sessionId, `document.querySelectorAll('[data-model-row]').length === 2`);
+		assert.equal(
+			await evaluate(sessionId, `!!document.querySelector('#setting-translation-layout')`),
+			false
+		);
 		assert.equal(
 			await evaluate(sessionId, `document.activeElement.id`),
 			'translation-models',
@@ -390,10 +523,7 @@ try {
 			test.name + ' every category remains visible'
 		);
 		assert.equal(
-			await evaluate(
-				sessionId,
-				`!!document.querySelector('#setting-translation-enabled')`
-			),
+			await evaluate(sessionId, `!!document.querySelector('#setting-translation-enabled')`),
 			false
 		);
 		const modelsScreenshot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
@@ -405,7 +535,10 @@ try {
 		await click(sessionId, '[data-model-row="eng:rus"] [data-model-action="install"]');
 		await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
 		assert.equal(
-			await evaluate(sessionId, `document.querySelector('[data-model-installation]')?.textContent.includes('English → Russian') ?? false`),
+			await evaluate(
+				sessionId,
+				`document.querySelector('[data-model-installation]')?.textContent.includes('English → Russian') ?? false`
+			),
 			false,
 			'download requires consent'
 		);

@@ -146,7 +146,6 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 	{
 		category: 'translation',
 		id: 'translation.layout',
-		more: true,
 		path: 'translation.layout',
 		label: 'Translation layout',
 		description: 'Position translated text and its language label.',

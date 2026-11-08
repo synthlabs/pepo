@@ -16,6 +16,18 @@
 	);
 	const operation = $derived(session?.snapshot.installation);
 	const active = $derived(operation && !operation.finished);
+	const preparingTarget = $derived(
+		active || session?.confirmation ? null : (session?.setupTarget ?? null)
+	);
+	let showPreparing = $state(false);
+	$effect(() => {
+		showPreparing = false;
+		if (preparingTarget === null) return;
+		const timer = setTimeout(() => {
+			showPreparing = true;
+		}, 300);
+		return () => clearTimeout(timer);
+	});
 	const progress = $derived(operation ? modelInstallationProgress(operation) : undefined);
 	const status = $derived(
 		session?.snapshot.cancelling
@@ -66,7 +78,7 @@
 					: 'Your language will change when setup is complete.'}
 			</p>{/if}
 	</div>
-{:else if session?.setupTarget !== null && session?.setupTarget !== undefined && !session.confirmation}
+{:else if preparingTarget !== null && showPreparing}
 	<p class="text-muted-foreground text-sm" role="status">Preparing translation…</p>
 {/if}
 {#if session?.setupError}<p
@@ -86,7 +98,7 @@
 		>
 			Advanced <ChevronRight class="size-4" />
 		</Button>
-		<p class="text-muted-foreground mt-1 text-sm">Language models and display options.</p>
+		<p class="text-muted-foreground mt-1 text-sm">Additional translation settings.</p>
 	</div>{/if}
 
 <style>

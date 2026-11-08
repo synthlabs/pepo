@@ -163,7 +163,7 @@
 							{searching
 								? `${results.length + (modelsMatch ? 1 : 0)} matching results`
 								: selected === 'translation' && advanced
-									? 'Language models and display options.'
+									? 'Additional translation settings.'
 									: category.description}
 						</p>
 					</div>
@@ -236,9 +236,9 @@
 							/>{/if}
 					{:else if selected === 'translation'}
 						{#if advanced}
-							<div class="divide-y overflow-hidden rounded-lg border">
-								{#each extraControls as control (control.id)}<SettingRow {control} />{/each}
-							</div>
+							{#if extraControls.length > 0}<div class="divide-y overflow-hidden rounded-lg border">
+									{#each extraControls as control (control.id)}<SettingRow {control} />{/each}
+								</div>{/if}
 							{#if translationSession}<TranslationModels
 									session={translationSession}
 									target={settingsState.value.translation.target_language}
