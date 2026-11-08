@@ -34,6 +34,17 @@ export const goto = async value => {
   history.pushState({}, '', value); page.url = new URL(value, location.origin);
   page.params = value.includes('/chat/') ? { id: 'maya' } : {};
 };
+document.addEventListener('click', event => {
+  const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+  if (!anchor || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  if (anchor.origin !== location.origin || (anchor.pathname !== '/app' && !anchor.pathname.startsWith('/app/'))) return;
+  event.preventDefault();
+  void goto(anchor.pathname + anchor.search);
+});
+window.addEventListener('popstate', () => {
+  page.url = new URL(location.href);
+  page.params = location.pathname.includes('/chat/') ? { id: 'maya' } : {};
+});
 export const isTauriMobile = false;
 export const native = window.settingsNative = { delay: 0, fail: false, reject: false, writes: [], states: {}, errors: [] };
 export const appErrors = { capture: (...args) => native.errors.push(args) };
@@ -85,6 +96,7 @@ await writeFile(
 <script>
   import Layout from '../../src/routes/app/+layout.svelte';
   import SettingsRoute from '../../src/routes/app/settings/+page.svelte';
+  import HomeRoute from '../../src/routes/app/+page.svelte';
   import { page } from './native.svelte.js';
   import { applyThemePreference } from '$lib/settings';
   import { getNormalizedAppSettings } from '$lib/stores/settings.svelte';
@@ -93,6 +105,7 @@ await writeFile(
 </script>
 <Layout>
   {#if page.url.pathname === '/app/settings'}<SettingsRoute />
+  {:else if page.url.pathname === '/app'}<HomeRoute />
   {:else}<div class="p-4" data-chat-fixture>Chat navigation fixture</div>{/if}
 </Layout>
 `
@@ -139,6 +152,11 @@ const dist = path.join(output, 'dist');
 const server = createServer(async (req, res) => {
 	try {
 		const url = new URL(req.url, 'http://localhost');
+		if (url.pathname === '/pepo.png') {
+			res.setHeader('Content-Type', 'image/png');
+			res.end(await readFile(path.join(root, 'static/pepo.png')));
+			return;
+		}
 		const filename = path.resolve(
 			dist,
 			'.' + (url.pathname.startsWith('/assets/') ? url.pathname : '/index.html')
@@ -242,6 +260,12 @@ try {
 			if (await evaluate(sessionId, expression)) return;
 			await delay(50);
 		}
+		const screenshot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+		await writeFile(path.join(output, 'failure.png'), Buffer.from(screenshot.data, 'base64'));
+		await writeFile(
+			path.join(output, 'failure.html'),
+			await evaluate(sessionId, 'document.documentElement.outerHTML')
+		);
 		assert.fail(
 			`Timed out waiting for ${expression}; exceptions: ${JSON.stringify(exceptions.get(sessionId))}; translation: ${JSON.stringify(await evaluate(sessionId, `({ calls: window.translationNative?.calls, errors: window.settingsNative?.errors, dialog: document.querySelector('[role="alertdialog"]')?.textContent, focus: document.activeElement?.outerHTML })`))}`
 		);
@@ -265,7 +289,8 @@ try {
 		{ name: 'narrow-expanded', width: 820, open: true, theme: 'dark' },
 		{ name: 'mobile-dark', width: 375, open: true, theme: 'dark' },
 		{ name: 'mobile-light', width: 320, open: false, theme: 'light' }
-	];
+	].filter((test) => !process.argv[2] || test.name === process.argv[2]);
+	assert(cases.length, 'Unknown settings browser scenario: ' + process.argv[2]);
 	for (const test of cases) {
 		const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
 		const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
@@ -734,6 +759,170 @@ try {
 		assert.deepEqual(exceptions.get(sessionId) ?? [], [], test.name + ' uncaught browser errors');
 		const screenshot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
 		await writeFile(path.join(output, test.name + '.png'), Buffer.from(screenshot.data, 'base64'));
+		if (test.width >= 768) {
+			const inputWidth = await evaluate(
+				sessionId,
+				`document.querySelector('[data-sidebar-search] input')?.getBoundingClientRect().width`
+			);
+			for (const source of ['settings', 'chat']) {
+				if (source === 'chat') {
+					await click(sessionId, '[data-sidebar="content"] a[href="/app/chat/maya"]');
+					await waitFor(sessionId, `!!document.querySelector('[data-chat-fixture]')`);
+				}
+				await waitFor(sessionId, `!!document.querySelector('[data-sidebar-home]')`);
+				await evaluate(
+					sessionId,
+					`document.querySelector('[data-sidebar-search] [data-popover-trigger]')?.click()`
+				);
+				await waitFor(
+					sessionId,
+					`!!document.querySelector('[data-sidebar-search] input, #search-floating')`
+				);
+				await evaluate(
+					sessionId,
+					`(() => {
+          window.homeSidebar = document.querySelector('[data-sidebar="sidebar"]');
+          const input = document.querySelector('[data-sidebar-search] input, #search-floating');
+          input.value = 'maya'; input.dispatchEvent(new Event('input', { bubbles: true })); input.focus();
+        })()`
+				);
+				if (test.open) {
+					await waitFor(sessionId, `!document.querySelector('[data-sidebar-home]')`);
+					await evaluate(
+						sessionId,
+						`document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]').focus()`
+					);
+				}
+				await waitFor(sessionId, `!!document.querySelector('[data-sidebar-home]')`);
+				await delay(250);
+				const keyboard = source === 'chat' ? test.open : !test.open;
+				if (keyboard) {
+					if (!test.open) {
+						for (const type of ['keyDown', 'keyUp']) {
+							await send(
+								'Input.dispatchKeyEvent',
+								{ type, key: 'Escape', code: 'Escape' },
+								sessionId
+							);
+						}
+						await waitFor(sessionId, `!document.querySelector('#search-floating')`);
+					}
+					await evaluate(sessionId, `document.querySelector('[data-sidebar-home]').focus()`);
+					await waitFor(
+						sessionId,
+						`document.activeElement === document.querySelector('[data-sidebar-home]')`
+					);
+					for (const type of ['keyDown', 'keyUp']) {
+						await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter' }, sessionId);
+					}
+				} else {
+					const center = await evaluate(
+						sessionId,
+						`(() => {
+            const r = document.querySelector('[data-sidebar-home]').getBoundingClientRect();
+            return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+          })()`
+					);
+					await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...center }, sessionId);
+					for (const type of ['mousePressed', 'mouseReleased']) {
+						await send(
+							'Input.dispatchMouseEvent',
+							{ type, ...center, button: 'left', clickCount: 1 },
+							sessionId
+						);
+					}
+				}
+				await waitFor(
+					sessionId,
+					`location.pathname === '/app' && !!document.querySelector('img[alt="The project logo"]')`
+				);
+				assert.equal(
+					await evaluate(sessionId, `!!document.querySelector('[data-sidebar-home]')`),
+					false,
+					test.name + ' Home hidden on home page'
+				);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`window.homeSidebar === document.querySelector('[data-sidebar="sidebar"]')`
+					),
+					true,
+					test.name + ' navigation preserves sidebar instance'
+				);
+				await delay(250);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`document.querySelector('[data-sidebar="header"]').getBoundingClientRect().height`
+					),
+					test.open ? 48 : 96,
+					test.name + ' no empty Home row'
+				);
+				if (test.open) {
+					assert.equal(
+						await evaluate(
+							sessionId,
+							`document.querySelector('[data-sidebar-search] input').getBoundingClientRect().width`
+						),
+						inputWidth + 40,
+						test.name + ' no empty Home column'
+					);
+				} else {
+					await evaluate(
+						sessionId,
+						`document.querySelector('[data-sidebar-search] [data-popover-trigger]').click()`
+					);
+					await waitFor(sessionId, `!!document.querySelector('#search-floating')`);
+				}
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`document.querySelector('[data-sidebar-search] input, #search-floating').value`
+					),
+					'',
+					test.name + ' ' + source + ' to Home clears search'
+				);
+				if (!test.open) {
+					for (const type of ['keyDown', 'keyUp']) {
+						await send(
+							'Input.dispatchKeyEvent',
+							{ type, key: 'Escape', code: 'Escape' },
+							sessionId
+						);
+					}
+					await waitFor(sessionId, `!document.querySelector('#search-floating')`);
+				}
+				await waitFor(
+					sessionId,
+					`document.querySelector('img[alt="The project logo"]').naturalWidth > 0`
+				);
+				const home = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+				await writeFile(
+					path.join(output, test.name + '-home-from-' + source + '.png'),
+					Buffer.from(home.data, 'base64')
+				);
+				await evaluate(sessionId, 'history.back()');
+				await waitFor(
+					sessionId,
+					`location.pathname === '/app/${source === 'settings' ? 'settings' : 'chat/maya'}' && !!document.querySelector('[data-sidebar-home]')`
+				);
+			}
+			await send('Page.navigate', { url: `${origin}/app?${params}` }, sessionId);
+			await waitFor(
+				sessionId,
+				`!!document.querySelector('img[alt="The project logo"]') && !!document.querySelector('[data-sidebar-search]')`
+			);
+			assert.equal(
+				await evaluate(sessionId, `!!document.querySelector('[data-sidebar-home]')`),
+				false,
+				test.name + ' Home hidden on direct entry'
+			);
+			assert.deepEqual(
+				exceptions.get(sessionId) ?? [],
+				[],
+				test.name + ' navigation browser errors'
+			);
+		}
 		console.log('PASS', test.name, JSON.stringify(layout));
 		await send('Target.closeTarget', { targetId });
 	}

@@ -2,6 +2,11 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SearchFixture from './search-form.fixture.svelte';
 
+vi.mock('$app/state', () => ({
+	page: { url: new URL('http://localhost/app/chat/maya') }
+}));
+vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
+
 let component: ReturnType<typeof mount> | undefined;
 let animations: Animation[];
 let mobile: boolean;

@@ -6,7 +6,15 @@ import { fileURLToPath } from 'node:url';
 export default mergeConfig(
 	base,
 	defineConfig({
-		plugins: [svelte()],
+		plugins: [
+			svelte(),
+			{
+				name: 'mock-sveltekit-navigation',
+				resolveId(id) {
+					if (id === '$app/state' || id === '$app/paths') return id;
+				}
+			}
+		],
 		resolve: {
 			alias: { $lib: fileURLToPath(new URL('./src/lib', import.meta.url)) },
 			conditions: ['browser']

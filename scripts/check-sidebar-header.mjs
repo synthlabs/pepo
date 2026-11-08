@@ -208,6 +208,12 @@ try {
 			if (result) return result;
 			await delay(50);
 		}
+		const screenshot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+		await writeFile(path.join(preview, 'failure.png'), Buffer.from(screenshot.data, 'base64'));
+		await writeFile(
+			path.join(preview, 'failure.html'),
+			await evaluate(sessionId, 'document.documentElement.outerHTML')
+		);
 		assert.fail(`Timed out waiting for ${expression}`);
 	};
 	const cases = [
@@ -270,6 +276,7 @@ try {
 			const styles = [];
 			for (const selector of [
 				'[data-sidebar="header"] [data-sidebar="trigger"]',
+				'[data-sidebar-home]',
 				'[data-sidebar="header"] [data-popover-trigger]',
 				'[data-sidebar="content"] [data-sidebar="menu-button"]',
 				'[data-sidebar="footer"] [data-sidebar="menu-button"]'
@@ -305,14 +312,14 @@ try {
 				assert.equal(style.height, 40, test.name + ' 40px hover height');
 				assert.equal(style.left, 0, test.name + ' full rail hover');
 				assert.equal(style.width, style.railWidth, test.name + ' full rail hover width');
-				assert.equal(style.background, styles[2].background, test.name + ' shared hover color');
+				assert.equal(style.background, styles[3].background, test.name + ' shared hover color');
 				assert.notEqual(
 					style.background,
 					'rgba(0, 0, 0, 0)',
 					test.name + ' visible hover background'
 				);
-				assert.equal(style.color, styles[2].color, test.name + ' shared hover foreground');
-				assert.equal(style.radius, styles[2].radius, test.name + ' shared corner radius');
+				assert.equal(style.color, styles[3].color, test.name + ' shared hover foreground');
+				assert.equal(style.radius, styles[3].radius, test.name + ' shared corner radius');
 			}
 			const centers = await evaluate(
 				sessionId,
@@ -320,10 +327,195 @@ try {
 			);
 			assert.deepEqual(
 				centers.sort((a, b) => a - b),
-				[24, 72],
-				test.name + ' preserved icon centers'
+				[24, 72, 120],
+				test.name + ' collapse, Home, Search icon centers'
 			);
 			console.log(test.name + ' hover styles', JSON.stringify(styles));
+		}
+		if (test.width >= 768) {
+			const controls = await evaluate(
+				sessionId,
+				`(() => {
+          const rect = selector => {
+            const r = document.querySelector(selector).getBoundingClientRect();
+            return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom };
+          };
+          return {
+            search: rect('[data-sidebar-search] input, [data-sidebar-search] [data-popover-trigger]'),
+            home: rect('[data-sidebar-home]'),
+            toggle: rect('[data-sidebar="header"] [data-sidebar="trigger"]'),
+            header: rect('[data-sidebar="header"]'),
+            sidebar: rect('[data-sidebar="panel"]')
+          };
+        })()`
+			);
+			assert.equal(
+				controls.sidebar.width,
+				test.open === false ? 48 : 256,
+				test.name + ' sidebar width'
+			);
+			assert.equal(
+				controls.header.height,
+				test.open === false ? 144 : 48,
+				test.name + ' controls height'
+			);
+			if (test.open === false) {
+				assert(controls.toggle.bottom <= controls.home.y, test.name + ' collapse above Home');
+				assert(controls.home.bottom <= controls.search.y, test.name + ' Home above Search');
+			} else {
+				assert(controls.search.right <= controls.home.x, test.name + ' Search before Home');
+				assert(controls.home.right <= controls.toggle.x, test.name + ' Home before collapse');
+				assert.equal(controls.search.y, controls.home.y, test.name + ' aligned Home');
+				assert.equal(controls.home.y, controls.toggle.y, test.name + ' aligned collapse');
+			}
+			await send(
+				'Input.dispatchMouseEvent',
+				{
+					type: 'mouseMoved',
+					x: controls.home.x + controls.home.width / 2,
+					y: controls.home.y + controls.home.height / 2
+				},
+				sessionId
+			);
+			const homeTooltip = `Array.from(document.querySelectorAll('[data-tooltip-content]')).some(el => el.textContent.trim() === 'Home' && el.dataset.state !== 'closed' && el.getBoundingClientRect().width > 0)`;
+			await waitFor(sessionId, homeTooltip);
+			await send(
+				'Input.dispatchMouseEvent',
+				{ type: 'mouseMoved', x: test.width - 5, y: 400 },
+				sessionId
+			);
+			await evaluate(
+				sessionId,
+				`document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]').focus()`
+			);
+			for (const type of ['keyDown', 'keyUp']) {
+				await send(
+					'Input.dispatchKeyEvent',
+					{ type, key: 'Tab', code: 'Tab', modifiers: 8 },
+					sessionId
+				);
+			}
+			await waitFor(
+				sessionId,
+				`document.activeElement === document.querySelector('[data-sidebar-home]')`
+			);
+			await waitFor(sessionId, homeTooltip);
+			assert.equal(
+				await evaluate(sessionId, `getComputedStyle(document.activeElement).boxShadow !== 'none'`),
+				true,
+				test.name + ' Home keyboard focus ring'
+			);
+			await evaluate(sessionId, 'document.activeElement.blur()');
+
+			if (test.open === false) {
+				await evaluate(
+					sessionId,
+					`document.querySelector('[data-sidebar-search] [data-popover-trigger]').click()`
+				);
+				await waitFor(
+					sessionId,
+					`document.activeElement === document.querySelector('#search-floating')`
+				);
+				assert.equal(
+					await evaluate(sessionId, `!!document.querySelector('[data-sidebar-home]')`),
+					true,
+					test.name + ' Home remains beside popover'
+				);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`document.querySelector('[data-sidebar="header"]').getBoundingClientRect().height`
+					),
+					144
+				);
+				for (const type of ['keyDown', 'keyUp']) {
+					await send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape' }, sessionId);
+				}
+				await waitFor(sessionId, `!document.querySelector('#search-floating')`);
+			} else {
+				await evaluate(
+					sessionId,
+					`(() => {
+          const input = document.querySelector('[data-sidebar-search] input');
+          input.value = 'maya'; input.dispatchEvent(new Event('input', { bubbles: true })); input.focus();
+        })()`
+				);
+				await waitFor(sessionId, `!document.querySelector('[data-sidebar-home]')`);
+				await delay(250);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`document.querySelector('[data-sidebar-search] input').getBoundingClientRect().width`
+					),
+					controls.search.width + 40,
+					test.name + ' focused input expands'
+				);
+				const focused = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+				await writeFile(
+					path.join(preview, test.name + '-search-focused.png'),
+					Buffer.from(focused.data, 'base64')
+				);
+				for (const type of ['keyDown', 'keyUp']) {
+					await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab' }, sessionId);
+				}
+				await waitFor(sessionId, `document.activeElement?.textContent.trim() === 'Clear search'`);
+				assert.equal(
+					await evaluate(sessionId, `!!document.querySelector('[data-sidebar-home]')`),
+					false,
+					test.name + ' clear button keeps Home hidden'
+				);
+				await evaluate(sessionId, 'document.activeElement.click()');
+				await waitFor(
+					sessionId,
+					`document.activeElement === document.querySelector('[data-sidebar-search] input') && document.activeElement.value === ''`
+				);
+				assert.equal(
+					await evaluate(sessionId, `!!document.querySelector('[data-sidebar-home]')`),
+					false,
+					test.name + ' cleared input keeps focus layout'
+				);
+				await evaluate(
+					sessionId,
+					`document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]').focus()`
+				);
+				await waitFor(sessionId, `!!document.querySelector('[data-sidebar-home]')`);
+				await delay(250);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`document.querySelector('[data-sidebar-search] input').getBoundingClientRect().width`
+					),
+					controls.search.width,
+					test.name + ' empty input shrinks on blur'
+				);
+				await evaluate(
+					sessionId,
+					`(() => {
+          const input = document.querySelector('[data-sidebar-search] input');
+          input.focus(); input.value = 'maya'; input.dispatchEvent(new Event('input', { bubbles: true }));
+        })()`
+				);
+				await waitFor(sessionId, `!document.querySelector('[data-sidebar-home]')`);
+				await evaluate(
+					sessionId,
+					`document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]').focus()`
+				);
+				await waitFor(sessionId, `!!document.querySelector('[data-sidebar-home]')`);
+				await delay(250);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`document.querySelector('[data-sidebar-search] input').getBoundingClientRect().width`
+					),
+					controls.search.width,
+					test.name + ' filled input shrinks on blur'
+				);
+				assert.equal(
+					await evaluate(sessionId, `document.querySelector('[data-sidebar-search] input').value`),
+					'maya',
+					test.name + ' blur preserves query'
+				);
+			}
 		}
 		if (layout.trigger) {
 			const center = await evaluate(
@@ -387,6 +579,11 @@ try {
 				{ aligned: true, collapsedFocus: true, value: 'maya', expandedFocus: true },
 				'search query and focus survive both transitions'
 			);
+			await evaluate(
+				sessionId,
+				`document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]').focus()`
+			);
+			await waitFor(sessionId, `!!document.querySelector('[data-sidebar-home]')`);
 		}
 		if (test.width < 768) {
 			await evaluate(sessionId, `document.querySelector('[data-mobile-opener]').click()`);
