@@ -12,6 +12,12 @@ fn main() {
     inbound_build::stamp();
     let attrs = Attributes::new()
         .plugin(
+            "translate",
+            InlinedPlugin::new()
+                .commands(translate_build::COMMANDS)
+                .default_permission(DefaultPermissionRule::AllowAllCommands),
+        )
+        .plugin(
             "inbound",
             InlinedPlugin::new()
                 .commands(inbound_build::COMMANDS)

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
+	import { TRANSLATION_CONTEXT, type TranslationSession } from '$lib/translation/session.svelte';
 	import { Switch } from 'bits-ui';
 	import ChatEngineStatus from './chat-engine-status.svelte';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
@@ -19,14 +21,39 @@
 		updateAppSettings
 	} from '$lib/stores/settings.svelte';
 
-	let { control, showCategory = false }: { control: SettingControl; showCategory?: boolean } =
-		$props();
+	let {
+		control,
+		showCategory = false,
+		translationSession = getContext<TranslationSession | undefined>(TRANSLATION_CONTEXT)
+	}: {
+		control: SettingControl;
+		showCategory?: boolean;
+		translationSession?: TranslationSession;
+	} = $props();
 	let settings = $derived(getNormalizedAppSettings());
 	let value = $derived(control.kind === 'provider-order' ? '' : controlValue(settings, control));
 	let id = $derived(`setting-${control.id.replaceAll('.', '-')}`);
 	let input = $state('');
 	let editing = $state(false);
 	let error = $state('');
+	const translationPreference = $derived(
+		control.id === 'translation.enabled' || control.id === 'translation.target_language'
+	);
+	const translationBusy = $derived(
+		translationPreference &&
+			Boolean(
+				translationSession?.setupTarget ||
+				translationSession?.snapshot.pending ||
+				(translationSession?.snapshot.installation &&
+					!translationSession.snapshot.installation.finished)
+			)
+	);
+	const disabled = $derived(
+		!settingsState.ready ||
+			(translationPreference &&
+				(!translationSession ||
+					(translationBusy && !(control.id === 'translation.enabled' && value))))
+	);
 
 	$effect(() => {
 		const current = String(value);
@@ -36,8 +63,30 @@
 		}
 	});
 
-	function update(next: string | number | boolean) {
-		void updateAppSettings(controlUpdate(control, next));
+	async function update(next: string | number | boolean) {
+		if (translationPreference) {
+			if (!translationSession) return;
+			if (control.id === 'translation.enabled' && next === false) translationSession.abandonSetup();
+			else if (control.id === 'translation.enabled' || settings.translation.enabled) {
+				const previous = { ...settings.translation };
+				const target =
+					control.id === 'translation.target_language' ? String(next) : previous.target_language;
+				if (
+					!(await translationSession.prepareTarget(
+						target,
+						control.id === 'translation.enabled' ? 'enable' : 'language'
+					))
+				)
+					return;
+				const current = getNormalizedAppSettings().translation;
+				if (
+					current.enabled !== previous.enabled ||
+					current.target_language !== previous.target_language
+				)
+					return;
+			}
+		}
+		await updateAppSettings(controlUpdate(control, next));
 	}
 
 	function commit() {
@@ -84,9 +133,8 @@
 		{#if control.kind === 'toggle' || control.kind === 'provider'}
 			<Switch.Root
 				{id}
-				checked={Boolean(value)}
-				onCheckedChange={update}
-				disabled={!settingsState.ready}
+				bind:checked={() => Boolean(value), (next) => void update(next)}
+				{disabled}
 				aria-labelledby={`${id}-label`}
 				aria-describedby={`${id}-description`}
 				class="bg-input data-[state=checked]:bg-primary focus-visible:ring-ring inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -116,8 +164,12 @@
 			<select
 				{id}
 				value={String(value)}
-				onchange={(event) => update(event.currentTarget.value)}
-				disabled={!settingsState.ready}
+				onchange={(event) => {
+					const next = event.currentTarget.value;
+					if (translationPreference) event.currentTarget.value = String(value);
+					void update(next);
+				}}
+				{disabled}
 				aria-labelledby={`${id}-label`}
 				aria-describedby={`${id}-description`}
 				class="border-input bg-background focus-visible:ring-ring h-8 max-w-full rounded-md border px-2 text-sm outline-none focus-visible:ring-2 disabled:opacity-50"

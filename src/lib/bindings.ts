@@ -104,7 +104,7 @@ async searchEmotes(query: string, broadcasterId: string, limit: number | null) :
 
 /** user-defined types **/
 
-export type AppSettings = { schema_version: number; appearance: AppearanceSettings; layout: LayoutSettings; chat: ChatSettings; emotes: EmoteSettings; channel_cache: ChannelCacheSettings; auth: AuthSettings; eventsub: EventSubSettings; providers: ProviderSettings; diagnostics: DiagnosticsSettings }
+export type AppSettings = { schema_version: number; appearance: AppearanceSettings; layout: LayoutSettings; chat: ChatSettings; translation: TranslationSettings; emotes: EmoteSettings; channel_cache: ChannelCacheSettings; auth: AuthSettings; eventsub: EventSubSettings; providers: ProviderSettings; diagnostics: DiagnosticsSettings }
 export type AppearanceSettings = { theme: AppearanceTheme }
 export type AppearanceTheme = "system" | "light" | "dark"
 export type AuthPhase = "unauthorized" | "waitingForDeviceCode" | "waitingForAuth" | "failedAuth" | "authorized"
@@ -317,7 +317,7 @@ export type ChatJoinMode = "all" | "live" | "single"
 export type ChatRoomInfo = { broadcaster_id: string; broadcaster_login: string; broadcaster_name: string }
 export type ChatSendError = { kind: ChatSendErrorKind; message: string; details: string }
 export type ChatSendErrorKind = "authentication" | "permission_denied" | "rate_limited" | "rejected" | "connection" | "timeout" | "unexpected"
-export type ChatSettings = { join_mode: ChatJoinMode; show_history_divider: boolean; message_limit: number; pause_message_gc_while_paused: boolean; batch_live_messages: boolean; message_batch_interval_ms: number; message_gc_interval_ms: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; translation_layout: ChatTranslationLayout; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean }
+export type ChatSettings = { join_mode: ChatJoinMode; show_history_divider: boolean; message_limit: number; pause_message_gc_while_paused: boolean; batch_live_messages: boolean; message_batch_interval_ms: number; message_gc_interval_ms: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean }
 export type ChatTranslationLayout = "language_tag" | "message_text" | "timestamp_end" | "connector"
 export type CheerFragment = { index: number; text: string }
 export type DiagnosticsSettings = { capture_window_errors: boolean }
@@ -435,6 +435,7 @@ user_login: string;
 viewer_count: number }
 export type TextFragment = { index: number; text: string }
 export type TimestampStyle = "short" | "medium" | "long" | "full"
+export type TranslationSettings = { enabled: boolean; target_language: string; layout: ChatTranslationLayout }
 export type UserToken = { 
 /**
  * The access token used to authenticate requests with

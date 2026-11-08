@@ -40,7 +40,9 @@ describe('settings controls', () => {
 	});
 	it('covers every exposed field without operational fields', () => {
 		const paths = [...new Set(SETTINGS_CONTROLS.map((control) => control.path))].sort();
-		const expected = (['appearance', 'layout', 'diagnostics', 'chat', 'emotes'] as const)
+		const expected = (
+			['appearance', 'layout', 'diagnostics', 'chat', 'emotes', 'translation'] as const
+		)
 			.flatMap((section) =>
 				Object.keys(DEFAULT_APP_SETTINGS[section]).map((key) => `${section}.${key}`)
 			)
@@ -56,7 +58,7 @@ describe('settings controls', () => {
 			'chat.message_gc_interval_ms'
 		);
 		expect(matchingControls('connector').map((control) => control.id)).toEqual([
-			'chat.translation_layout'
+			'translation.layout'
 		]);
 		expect(matchingControls('app theme').map((control) => control.id)).toEqual([
 			'appearance.theme'
@@ -109,9 +111,14 @@ describe('settings controls', () => {
 		settings.appearance.theme = 'light';
 		settings.diagnostics.capture_window_errors = false;
 		settings.chat.message_limit = 900;
+		settings.translation = { enabled: true, target_language: 'rus', layout: 'connector' };
 		settings.channel_cache.poll_interval_secs = 99;
 		const chat = applySettingsPatch(settings, resetSettingsPatch('chat'));
 		expect(chat.chat.message_limit).toBe(500);
+		expect(chat.translation).toEqual(settings.translation);
+		const translation = applySettingsPatch(settings, resetSettingsPatch('translation'));
+		expect(translation.translation).toEqual(DEFAULT_APP_SETTINGS.translation);
+		expect(translation.chat.message_limit).toBe(900);
 		expect(chat.appearance.theme).toBe('light');
 		expect(chat.diagnostics.capture_window_errors).toBe(false);
 		const app = applySettingsPatch(settings, resetSettingsPatch('app'));
@@ -119,6 +126,7 @@ describe('settings controls', () => {
 		expect(app.chat.message_limit).toBe(900);
 		const all = applySettingsPatch(settings, resetSettingsPatch('all'));
 		expect(all.appearance.theme).toBe('dark');
+		expect(all.translation).toEqual(DEFAULT_APP_SETTINGS.translation);
 		expect(all.channel_cache.poll_interval_secs).toBe(99);
 	});
 });

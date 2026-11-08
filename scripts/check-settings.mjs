@@ -35,7 +35,8 @@ export const goto = async value => {
   page.params = value.includes('/chat/') ? { id: 'maya' } : {};
 };
 export const isTauriMobile = false;
-export const native = window.settingsNative = { delay: 0, fail: false, reject: false, writes: [], states: {} };
+export const native = window.settingsNative = { delay: 0, fail: false, reject: false, writes: [], states: {}, errors: [] };
+export const appErrors = { capture: (...args) => native.errors.push(args) };
 export class SyncedState {
   obj = $state({}); ready = $state(false); initialized;
   constructor(key, fallback) {
@@ -112,6 +113,11 @@ await build({
 	plugins: [svelte({ configFile: false }), tailwindcss()],
 	resolve: {
 		alias: [
+			{
+				find: /^@tauri-apps\/api\/(core|event)$/,
+				replacement: path.join(root, 'scripts/fixtures/translation-native.mjs')
+			},
+			{ find: '$lib/errors/controller', replacement: mocks },
 			{ find: /^\$lib\/bindings(?:\.ts)?$/, replacement: mocks },
 			{ find: /^\$lib\/tauri(?:\.ts)?$/, replacement: mocks },
 			...[
@@ -237,7 +243,7 @@ try {
 			await delay(50);
 		}
 		assert.fail(
-			`Timed out waiting for ${expression}; exceptions: ${JSON.stringify(exceptions.get(sessionId))}`
+			`Timed out waiting for ${expression}; exceptions: ${JSON.stringify(exceptions.get(sessionId))}; translation: ${JSON.stringify(await evaluate(sessionId, `({ calls: window.translationNative?.calls, errors: window.settingsNative?.errors, dialog: document.querySelector('[role="alertdialog"]')?.textContent, focus: document.activeElement?.outerHTML })`))}`
 		);
 	};
 	const click = async (sessionId, selector) => {
@@ -264,6 +270,7 @@ try {
 		const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
 		const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
 		await send('Runtime.enable', {}, sessionId);
+		await send('Page.bringToFront', {}, sessionId);
 		await send(
 			'Emulation.setDeviceMetricsOverride',
 			{ width: test.width, height: 800, deviceScaleFactor: 1, mobile: test.width < 768 },
@@ -298,10 +305,169 @@ try {
 			assert.equal(layout.sidebar, test.open ? 256 : 48, test.name + ' retained sidebar width');
 		await search(sessionId, 'connector');
 		assert.equal(
-			await evaluate(sessionId, `!!document.querySelector('#setting-chat-translation_layout')`),
+			await evaluate(sessionId, `!!document.querySelector('#setting-translation-layout')`),
 			true
 		);
 		await search(sessionId, '');
+		assert.equal(
+			await evaluate(sessionId, `window.translationNative.calls.includes('status')`),
+			false,
+			'disabled startup does not connect model management'
+		);
+		await click(sessionId, '[aria-label="Settings categories"] button:nth-child(3)');
+		assert.equal(await evaluate(sessionId, `document.querySelectorAll('[data-setting-row]').length`), 2);
+		assert.equal(await evaluate(sessionId, `!!document.querySelector('[data-model-manager]')`), false);
+		assert.equal(await evaluate(sessionId, `window.translationNative.calls.includes('status')`), false);
+		assert.equal(await evaluate(sessionId, `document.documentElement.scrollWidth > innerWidth`), false);
+		const capture = async (state) => {
+			const screenshot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+			await writeFile(path.join(output, `translation-${state}-${test.name}.png`), Buffer.from(screenshot.data, 'base64'));
+		};
+		await capture('basic');
+		if (test.name === 'expanded-dark') {
+			await evaluate(sessionId, `window.translationNative.emit({ phase: 'unavailable' })`);
+			await click(sessionId, '#setting-translation-enabled');
+			await waitFor(sessionId, `!!document.querySelector('[data-translation-setup-error]')`);
+			assert.equal(await evaluate(sessionId, `document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`), 'false');
+			await capture('error');
+			await evaluate(sessionId, `window.translationNative.emit({ phase: 'ready' })`);
+		}
+		await click(sessionId, '#setting-translation-enabled');
+		await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
+		assert.equal(await evaluate(sessionId, `window.translationNative.calls.includes('start_install')`), false);
+		assert.equal(await evaluate(sessionId, `document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`), 'false');
+		assert.equal(await evaluate(sessionId, `document.querySelector('[role="alertdialog"]').contains(document.activeElement)`), true);
+		await capture('consent');
+		await evaluate(sessionId, `Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Cancel').click()`);
+		await waitFor(sessionId, `!document.querySelector('[role="alertdialog"]')`);
+		assert.equal(await evaluate(sessionId, `window.translationNative.calls.includes('start_install')`), false);
+		await click(sessionId, '#setting-translation-enabled');
+		await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
+		await evaluate(sessionId, `Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Download & enable').click()`);
+		await waitFor(sessionId, `!!document.querySelector('[data-translation-setup]')`);
+		assert.equal(await evaluate(sessionId, `document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`), 'false');
+		await capture('setup');
+		if (test.name === 'expanded-dark') {
+			await click(sessionId, '[data-translation-cancel]');
+			await waitFor(sessionId, `!document.querySelector('[data-translation-setup]')`);
+			assert.equal(await evaluate(sessionId, `document.querySelector('#setting-translation-enabled').getAttribute('aria-checked')`), 'false');
+			await click(sessionId, '#setting-translation-enabled');
+			await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
+			await evaluate(sessionId, `Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Download & enable').click()`);
+			await waitFor(sessionId, `!!document.querySelector('[data-translation-setup]')`);
+		}
+		await evaluate(sessionId, `window.translationNative.finish()`);
+		await waitFor(sessionId, `document.querySelector('#setting-translation-enabled').getAttribute('aria-checked') === 'true'`);
+		if (test.name === 'expanded-dark') {
+			await evaluate(sessionId, `(() => { const select = document.querySelector('#setting-translation-target_language'); select.value = 'rus'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+			await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
+			await evaluate(sessionId, `Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Cancel').click()`);
+			await waitFor(sessionId, `!document.querySelector('[role="alertdialog"]')`);
+			assert.equal(await evaluate(sessionId, `document.querySelector('#setting-translation-target_language').value`), 'eng');
+		}
+		await capture('enabled');
+		await click(sessionId, '#setting-translation-enabled');
+		await waitFor(sessionId, `window.settingsNative.writes.at(-1)?.translation.enabled === false`);
+		await search(sessionId, 'models');
+		await click(sessionId, '[data-open-translation-models]');
+		await waitFor(sessionId, `document.querySelectorAll('[data-model-row]').length === 2`);
+		assert.equal(
+			await evaluate(sessionId, `document.activeElement.id`),
+			'translation-models',
+			'model search focuses its heading'
+		);
+		assert.equal(
+			await evaluate(sessionId, `document.documentElement.scrollWidth > innerWidth`),
+			false,
+			test.name + ' model list overflow'
+		);
+		assert.equal(
+			await evaluate(
+				sessionId,
+				`Array.from(document.querySelectorAll('[aria-label="Settings categories"] button')).every(button => { const r = button.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })`
+			),
+			true,
+			test.name + ' every category remains visible'
+		);
+		assert.equal(
+			await evaluate(
+				sessionId,
+				`!!document.querySelector('#setting-translation-enabled')`
+			),
+			false
+		);
+		const modelsScreenshot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+		await writeFile(
+			path.join(output, `translation-${test.name}.png`),
+			Buffer.from(modelsScreenshot.data, 'base64')
+		);
+		await capture('advanced');
+		await click(sessionId, '[data-model-row="eng:rus"] [data-model-action="install"]');
+		await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
+		assert.equal(
+			await evaluate(sessionId, `document.querySelector('[data-model-installation]')?.textContent.includes('English → Russian') ?? false`),
+			false,
+			'download requires consent'
+		);
+		assert.equal(
+			await evaluate(
+				sessionId,
+				`document.querySelector('[role="alertdialog"]').contains(document.activeElement)`
+			),
+			true,
+			'confirmation receives focus'
+		);
+		await evaluate(
+			sessionId,
+			`Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Download').focus()`
+		);
+		await send(
+			'Input.dispatchKeyEvent',
+			{
+				type: 'keyDown',
+				key: 'Enter',
+				code: 'Enter',
+				windowsVirtualKeyCode: 13,
+				nativeVirtualKeyCode: 13,
+				text: '\r',
+				unmodifiedText: '\r'
+			},
+			sessionId
+		);
+		await send(
+			'Input.dispatchKeyEvent',
+			{
+				type: 'keyUp',
+				key: 'Enter',
+				code: 'Enter',
+				windowsVirtualKeyCode: 13,
+				nativeVirtualKeyCode: 13
+			},
+			sessionId
+		);
+		await waitFor(sessionId, `!!document.querySelector('[data-model-installation]')`);
+		assert.equal(
+			await evaluate(sessionId, `document.querySelector('[data-model-progress-details]').open`),
+			false
+		);
+		assert.equal(await evaluate(sessionId, `document.querySelector('progress').value`), 25);
+		await click(sessionId, '[aria-label="Settings categories"] button:first-child');
+		assert.equal(
+			await evaluate(sessionId, `!!document.querySelector('[data-model-installation]')`),
+			false,
+			'progress stays in Translation settings'
+		);
+		await search(sessionId, 'models');
+		await click(sessionId, '[data-open-translation-models]');
+		await waitFor(sessionId, `!!document.querySelector('[data-model-installation]')`);
+		await evaluate(sessionId, `window.translationNative.finish()`);
+		await waitFor(sessionId, `document.querySelector('[data-model-notice="installed"]') !== null`);
+		assert.equal(
+			await evaluate(sessionId, `window.translationNative.calls.includes('verify_model')`),
+			false,
+			'opening settings does not verify models'
+		);
+		await click(sessionId, '[aria-label="Settings categories"] button:first-child');
 		if (test.name === 'expanded-dark') {
 			await evaluate(sessionId, `window.settingsNative.delay = 180`);
 			await click(sessionId, '#setting-chat-show_badges');

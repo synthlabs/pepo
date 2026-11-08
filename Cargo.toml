@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+exclude = ["utils/rust/translate", "utils/rust/translate-build"]
 members = [
     "src-tauri",
 ]

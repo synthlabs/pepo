@@ -12,6 +12,7 @@
     "store:default",
     "process:default",
     "inbound:default",
-    "internal:default"
+    "internal:default",
+    "translate:default"
   ]
 }

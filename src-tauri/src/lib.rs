@@ -1399,6 +1399,7 @@ pub fn run() {
     let internal_build = internal_build_info(&inbound_build);
 
     let builder = tauri::Builder::default()
+        .plugin(synth_translate::plugin::init(Default::default()))
         .plugin(
             tauri_plugin_log::Builder::new()
                 .max_file_size(9_000_000) // 9 MB per log file

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { onDestroy, setContext, untrack } from 'svelte';
+	import { TranslationSession, TRANSLATION_CONTEXT } from '$lib/translation/session.svelte';
+	import TranslationConfirmation from '$lib/components/settings/translation-confirmation.svelte';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.ts';
 	import AppSidebar from '$lib/components/app-sidebar.svelte';
 	import { isTauriMobile } from '$lib/tauri';
@@ -10,13 +13,26 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { hasUsableAuth } from '$lib/auth';
-	import { getNormalizedAppSettings, updateAppSettings } from '$lib/stores/settings.svelte';
+	import {
+		getNormalizedAppSettings,
+		updateAppSettings,
+		settingsState
+	} from '$lib/stores/settings.svelte';
 	import SettingsStatus from '$lib/components/settings/settings-status.svelte';
 	import { InternalRoot } from '$internal';
 	import { channelHeader } from '$lib/chat/channel-header';
 
 	let { children } = $props();
 	let normalizedAppSettings = $derived(getNormalizedAppSettings());
+	const translation = setContext(TRANSLATION_CONTEXT, new TranslationSession());
+	$effect(() => {
+		const ready = settingsState.ready;
+		const enabled = normalizedAppSettings.translation.enabled;
+		untrack(() => translation.start(ready, enabled));
+	});
+	onDestroy(() => {
+		void translation.dispose();
+	});
 
 	let authState = new SyncedState<AuthState>('auth_state');
 
@@ -61,4 +77,5 @@
 		</div>
 	</main>
 	<InternalRoot />
+	<TranslationConfirmation session={translation} />
 </Sidebar.Provider>

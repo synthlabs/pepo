@@ -3,6 +3,26 @@ import type { AppSettings } from '$lib/bindings';
 import { DEFAULT_APP_SETTINGS, gridTemplateColumns, normalizeAppSettings, px } from './settings';
 
 describe('settings helpers', () => {
+	it('defaults translation independently of the discarded legacy layout', () => {
+		const legacy = structuredClone(DEFAULT_APP_SETTINGS) as Partial<AppSettings>;
+		delete legacy.translation;
+		Object.assign(legacy.chat!, { translation_layout: 'connector' });
+		expect(normalizeAppSettings(legacy as AppSettings).translation).toEqual({
+			enabled: false,
+			target_language: 'eng',
+			layout: 'message_text'
+		});
+		const invalid = {
+			...DEFAULT_APP_SETTINGS,
+			translation: { enabled: 'yes', target_language: 'deu', layout: 'future' }
+		} as unknown as AppSettings;
+		expect(normalizeAppSettings(invalid).translation).toEqual(DEFAULT_APP_SETTINGS.translation);
+		const configured = {
+			...DEFAULT_APP_SETTINGS,
+			translation: { enabled: true, target_language: 'rus', layout: 'connector' as const }
+		};
+		expect(normalizeAppSettings(configured).translation).toEqual(configured.translation);
+	});
 	it('defaults the diagnostics section and rejects non-boolean capture flags', () => {
 		const legacy = structuredClone(DEFAULT_APP_SETTINGS) as Partial<AppSettings>;
 		delete legacy.diagnostics;
@@ -104,45 +124,45 @@ describe('settings helpers', () => {
 	it('accepts the timestamp-end chat translation layout', () => {
 		const settings = normalizeAppSettings({
 			...DEFAULT_APP_SETTINGS,
-			chat: {
-				...DEFAULT_APP_SETTINGS.chat,
-				translation_layout: 'timestamp_end'
+			translation: {
+				...DEFAULT_APP_SETTINGS.translation,
+				layout: 'timestamp_end'
 			}
 		});
 
-		expect(settings.chat.translation_layout).toBe('timestamp_end');
+		expect(settings.translation.layout).toBe('timestamp_end');
 	});
 
 	it('accepts the connector chat translation layout', () => {
 		const settings = normalizeAppSettings({
 			...DEFAULT_APP_SETTINGS,
-			chat: {
-				...DEFAULT_APP_SETTINGS.chat,
-				translation_layout: 'connector'
+			translation: {
+				...DEFAULT_APP_SETTINGS.translation,
+				layout: 'connector'
 			}
 		});
 
-		expect(settings.chat.translation_layout).toBe('connector');
+		expect(settings.translation.layout).toBe('connector');
 	});
 
 	it('falls back to the default chat translation layout when missing or invalid', () => {
 		const missingLayout = normalizeAppSettings({
 			...DEFAULT_APP_SETTINGS,
-			chat: {
-				...DEFAULT_APP_SETTINGS.chat,
-				translation_layout: undefined
+			translation: {
+				...DEFAULT_APP_SETTINGS.translation,
+				layout: undefined
 			}
 		} as unknown as AppSettings);
 		const invalidLayout = normalizeAppSettings({
 			...DEFAULT_APP_SETTINGS,
-			chat: {
-				...DEFAULT_APP_SETTINGS.chat,
-				translation_layout: 'future_layout'
+			translation: {
+				...DEFAULT_APP_SETTINGS.translation,
+				layout: 'future_layout'
 			}
 		} as unknown as AppSettings);
 
-		expect(missingLayout.chat.translation_layout).toBe('message_text');
-		expect(invalidLayout.chat.translation_layout).toBe('message_text');
+		expect(missingLayout.translation.layout).toBe('message_text');
+		expect(invalidLayout.translation.layout).toBe('message_text');
 	});
 
 	it('formats positive layout values', () => {

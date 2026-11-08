@@ -3,6 +3,8 @@ name = "pepo"
 path = "src/main.rs"
 
 [build-dependencies]
+[build-dependencies.translate-build]
+path = "../utils/rust/translate-build"
 [build-dependencies.inbound-build]
 path = "../utils/rust/inbound-build"
 [build-dependencies.pepo-internal]
@@ -11,6 +13,10 @@ path = "../internal/rust"
 [build-dependencies.tauri-build]
 features = []
 version = "2"
+
+[dependencies.synth-translate]
+path = "../utils/rust/translate"
+features = ["tauri-plugin"]
 
 [dependencies]
 color-eyre = "0.6.3"

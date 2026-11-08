@@ -44,6 +44,7 @@ pub struct AppSettings {
     pub appearance: AppearanceSettings,
     pub layout: LayoutSettings,
     pub chat: ChatSettings,
+    pub translation: TranslationSettings,
     pub emotes: EmoteSettings,
     pub channel_cache: ChannelCacheSettings,
     pub auth: AuthSettings,
@@ -59,6 +60,7 @@ impl Default for AppSettings {
             appearance: AppearanceSettings::default(),
             layout: LayoutSettings::default(),
             chat: ChatSettings::default(),
+            translation: TranslationSettings::default(),
             emotes: EmoteSettings::default(),
             channel_cache: ChannelCacheSettings::default(),
             auth: AuthSettings::default(),
@@ -73,6 +75,7 @@ impl AppSettings {
     pub fn normalized(mut self) -> Self {
         self.schema_version = APP_SETTINGS_SCHEMA_VERSION;
         self.chat = self.chat.normalized();
+        self.translation = self.translation.normalized();
         self.emotes = self.emotes.normalized();
         self.channel_cache = self.channel_cache.normalized();
         self.auth = self.auth.normalized();
@@ -402,7 +405,6 @@ pub struct ChatSettings {
     pub show_timestamps: bool,
     pub timestamp_locale: String,
     pub timestamp_style: TimestampStyle,
-    pub translation_layout: ChatTranslationLayout,
     pub show_badges: bool,
     pub show_emotes: bool,
     pub alternate_backgrounds: bool,
@@ -422,7 +424,6 @@ impl Default for ChatSettings {
             show_timestamps: true,
             timestamp_locale: "en".to_string(),
             timestamp_style: TimestampStyle::Short,
-            translation_layout: ChatTranslationLayout::MessageText,
             show_badges: true,
             show_emotes: true,
             alternate_backgrounds: true,
@@ -447,6 +448,33 @@ impl ChatSettings {
         }
         if self.timestamp_locale.trim().is_empty() {
             self.timestamp_locale = defaults.timestamp_locale;
+        }
+        self
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct TranslationSettings {
+    pub enabled: bool,
+    pub target_language: String,
+    pub layout: ChatTranslationLayout,
+}
+
+impl Default for TranslationSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            target_language: "eng".to_owned(),
+            layout: ChatTranslationLayout::MessageText,
+        }
+    }
+}
+
+impl TranslationSettings {
+    pub fn normalized(mut self) -> Self {
+        if !matches!(self.target_language.as_str(), "eng" | "rus") {
+            self.target_language = Self::default().target_language;
         }
         self
     }
@@ -1224,7 +1252,7 @@ mod tests {
         assert_eq!(settings.chat.message_limit, 500);
         assert_eq!(settings.chat.autoscroll_threshold_px, 32);
         assert_eq!(
-            settings.chat.translation_layout,
+            settings.translation.layout,
             ChatTranslationLayout::MessageText
         );
         assert_eq!(settings.emotes.autocomplete_min_chars, 2);
@@ -1350,13 +1378,15 @@ mod tests {
         let settings = settings.normalized();
 
         assert_eq!(settings.chat.message_limit, 500);
+        assert!(!settings.translation.enabled);
+        assert_eq!(settings.translation.target_language, "eng");
         assert!(settings.chat.pause_message_gc_while_paused);
         assert!(!settings.chat.batch_live_messages);
         assert_eq!(settings.chat.message_batch_interval_ms, 250);
         assert_eq!(settings.chat.message_gc_interval_ms, 250);
         assert!(settings.chat.show_timestamps);
         assert_eq!(
-            settings.chat.translation_layout,
+            settings.translation.layout,
             ChatTranslationLayout::MessageText
         );
         assert_eq!(settings.emotes.providers.len(), 4);
@@ -1367,6 +1397,41 @@ mod tests {
             settings.providers.metadata_retention_secs,
             30 * 24 * 60 * 60
         );
+    }
+
+    #[test]
+    fn translation_settings_reset_legacy_layout_and_round_trip_new_preferences() {
+        let legacy: AppSettings = serde_json::from_str(
+            r#"{"schema_version":1,"chat":{"translation_layout":"connector","message_limit":900}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            legacy.translation.layout,
+            ChatTranslationLayout::MessageText
+        );
+        assert_eq!(legacy.chat.message_limit, 900);
+        assert!(serde_json::to_value(&legacy).unwrap()["chat"]
+            .get("translation_layout")
+            .is_none());
+
+        let configured: AppSettings = serde_json::from_str(
+            r#"{"translation":{"enabled":true,"target_language":"rus","layout":"connector"}}"#,
+        )
+        .unwrap();
+        let round_trip: AppSettings =
+            serde_json::from_value(serde_json::to_value(configured).unwrap()).unwrap();
+        assert!(round_trip.translation.enabled);
+        assert_eq!(round_trip.translation.target_language, "rus");
+        assert_eq!(
+            round_trip.translation.layout,
+            ChatTranslationLayout::Connector
+        );
+        let invalid = TranslationSettings {
+            target_language: "deu".into(),
+            ..Default::default()
+        }
+        .normalized();
+        assert_eq!(invalid.target_language, "eng");
     }
 
     #[test]

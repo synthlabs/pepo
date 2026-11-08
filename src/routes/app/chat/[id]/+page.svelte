@@ -984,11 +984,11 @@
 									transition:slide={{ easing: quadInOut, duration: 40 }}
 									class="min-w-0 text-wrap wrap-anywhere"
 								>
-									{@render translationPrefix(msg, chatSettings.translation_layout)}
+									{@render translationPrefix(msg, normalizedAppSettings.translation.layout)}
 									<Translation
 										translation={msg.translation}
 										authorName={msg.chatter_user_name}
-										layout={chatSettings.translation_layout}
+										layout={normalizedAppSettings.translation.layout}
 									/>
 								</div>
 							{/if}

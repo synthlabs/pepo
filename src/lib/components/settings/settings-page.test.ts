@@ -38,10 +38,15 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import SettingsPage from './settings-page.svelte';
 import SettingsStatus from './settings-status.svelte';
+import TranslationConfirmation from './translation-confirmation.svelte';
 import { getNormalizedAppSettings, updateAppSettings } from '$lib/stores/settings.svelte';
+import { TranslationSession } from '$lib/translation/session.svelte';
+import { EN_RU, fixture, local, settle } from '$lib/translation/test-fixtures';
 
 let component: ReturnType<typeof mount> | undefined;
 let status: ReturnType<typeof mount> | undefined;
+let confirmation: ReturnType<typeof mount> | undefined;
+const sessions: TranslationSession[] = [];
 let sequence = 0;
 
 async function flushUi() {
@@ -74,6 +79,25 @@ async function edit(selector: string, value: string, key = 'Enter') {
 	await flushUi();
 	return input;
 }
+async function translationPage() {
+	await unmount(component!);
+	const f = fixture();
+	const session = new TranslationSession(f.client);
+	sessions.push(session);
+	const target = document.createElement('div');
+	document.body.append(target);
+	component = mount(SettingsPage, { target, props: { translationSession: session } });
+	confirmation = mount(TranslationConfirmation, { target, props: { session } });
+	await flushUi();
+	await click('[aria-label="Settings categories"] button:nth-child(3)');
+	return { ...f, session };
+}
+async function chooseLanguage(value: string) {
+	const select = element<HTMLSelectElement>('#setting-translation-target_language');
+	select.value = value;
+	select.dispatchEvent(new Event('change', { bubbles: true }));
+	await flushUi();
+}
 
 beforeEach(async () => {
 	vi.useFakeTimers();
@@ -101,24 +125,173 @@ beforeEach(async () => {
 afterEach(async () => {
 	if (component) await unmount(component);
 	if (status) await unmount(status);
+	if (confirmation) await unmount(confirmation);
+	for (const session of sessions.splice(0)) await session.dispose();
 	await flushUi();
 	component = undefined;
 	status = undefined;
+	confirmation = undefined;
 	document.body.replaceChildren();
 	vi.restoreAllMocks();
 	vi.useRealTimers();
 });
 
 describe('settings page', () => {
+	it('shows only two translation preferences and asks consent before downloading or enabling', async () => {
+		const f = await translationPage();
+		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(2);
+		expect(document.querySelector('[data-model-manager]')).toBeNull();
+		expect(document.querySelector('#setting-translation-layout')).toBeNull();
+		expect(f.client.watchState).not.toHaveBeenCalled();
+		await click('#setting-translation-enabled');
+		expect(element('[role="alertdialog"]').textContent).toContain('Download translation support?');
+		expect(element('[role="alertdialog"]').textContent).toContain('Download & enable');
+		expect(f.client.startInstall).not.toHaveBeenCalled();
+		expect(getNormalizedAppSettings().translation.enabled).toBe(false);
+		f.session.respond(false);
+		await flushUi();
+		expect(element('#setting-translation-enabled').getAttribute('aria-checked')).toBe('false');
+		expect(f.client.startInstall).not.toHaveBeenCalled();
+		await click('#setting-translation-enabled');
+		f.session.respond(true);
+		await flushUi();
+		expect(document.querySelector('[data-translation-setup]')).not.toBeNull();
+		expect(getNormalizedAppSettings().translation.enabled).toBe(false);
+		await click('[aria-label="Settings categories"] button:first-child');
+		f.finish();
+		await flushUi();
+		expect(getNormalizedAppSettings().translation.enabled).toBe(true);
+		await click('[aria-label="Settings categories"] button:nth-child(3)');
+		expect(element('#setting-translation-enabled').getAttribute('aria-checked')).toBe('true');
+	});
+	it('keeps the previous target on declined consent and saves a new target only after setup succeeds', async () => {
+		const f = await translationPage();
+		f.rows([local()]);
+		await click('#setting-translation-enabled');
+		expect(getNormalizedAppSettings().translation.enabled).toBe(true);
+		await chooseLanguage('rus');
+		expect(f.session.confirmation?.pair).toEqual(EN_RU);
+		expect(getNormalizedAppSettings().translation.target_language).toBe('eng');
+		f.session.respond(false);
+		await flushUi();
+		expect(element<HTMLSelectElement>('#setting-translation-target_language').value).toBe('eng');
+		await chooseLanguage('rus');
+		f.session.respond(true);
+		await flushUi();
+		expect(getNormalizedAppSettings().translation.target_language).toBe('eng');
+		f.finish();
+		await flushUi();
+		expect(getNormalizedAppSettings().translation.target_language).toBe('rus');
+	});
+	it('cancels setup without enabling translation and selects a language without downloading while off', async () => {
+		const f = await translationPage();
+		await chooseLanguage('rus');
+		expect(f.client.watchState).not.toHaveBeenCalled();
+		expect(getNormalizedAppSettings().translation.target_language).toBe('rus');
+		await click('#setting-translation-enabled');
+		f.session.respond(true);
+		await flushUi();
+		await click('[data-translation-cancel]');
+		expect(f.client.cancelInstall).toHaveBeenCalledTimes(1);
+		f.finish({ code: 'cancelled', message: 'Cancelled' });
+		await flushUi();
+		expect(getNormalizedAppSettings().translation.enabled).toBe(false);
+		expect(document.querySelector('[data-translation-setup-error]')).toBeNull();
+	});
+	it('applies the same download consent when enabling from search', async () => {
+		const f = await translationPage();
+		await search('translate chat');
+		await click('#setting-translation-enabled');
+		expect(f.session.confirmation?.action).toBe('install');
+		expect(f.client.startInstall).not.toHaveBeenCalled();
+		f.session.respond(false);
+		await flushUi();
+		expect(getNormalizedAppSettings().translation.enabled).toBe(false);
+	});
+	it('shows setup failures and prevents a late download completion from undoing a reset', async () => {
+		const f = await translationPage();
+		f.emit({ phase: 'unavailable' });
+		await click('#setting-translation-enabled');
+		expect(element('[data-translation-setup-error]').textContent).toContain(
+			'Try again or open Advanced'
+		);
+		expect(getNormalizedAppSettings().translation.enabled).toBe(false);
+		f.emit({ phase: 'ready' });
+		await click('#setting-translation-enabled');
+		f.session.respond(true);
+		await flushUi();
+		await click('[data-open-translation-models]');
+		await click('[aria-label="Reset settings"] > button');
+		[...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
+			.find((button) => button.textContent === 'Reset to defaults')!
+			.click();
+		await flushUi();
+		f.finish();
+		await flushUi();
+		expect(getNormalizedAppSettings().translation.enabled).toBe(false);
+		expect(f.client.cancelInstall).not.toHaveBeenCalled();
+		expect(f.client.removeModel).not.toHaveBeenCalled();
+	});
+	it('finds model management and saves translation preferences with independent reset and rollback', async () => {
+		await unmount(component!);
+		const f = fixture();
+		f.rows([local(), local(EN_RU)]);
+		const session = new TranslationSession(f.client);
+		const target = document.createElement('div');
+		document.body.append(target);
+		component = mount(SettingsPage, { target, props: { translationSession: session } });
+		await flushUi();
+		await search('models');
+		await click('[data-open-translation-models]');
+		await settle();
+		await flushUi();
+		expect(document.activeElement?.id).toBe('translation-models');
+		expect(f.client.watchState).toHaveBeenCalledTimes(1);
+		expect(getNormalizedAppSettings().translation.enabled).toBe(false);
+		await click('[data-translation-back]');
+		expect(document.activeElement?.hasAttribute('data-open-translation-models')).toBe(true);
+		await click('#setting-translation-enabled');
+		const select = element<HTMLSelectElement>('#setting-translation-target_language');
+		select.value = 'rus';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		await flushUi();
+		expect(getNormalizedAppSettings().translation).toEqual({
+			enabled: true,
+			target_language: 'rus',
+			layout: 'message_text'
+		});
+		native.save = async () => false;
+		await click('#setting-translation-enabled');
+		expect(getNormalizedAppSettings().translation.enabled).toBe(true);
+		native.save = async (value) => {
+			native.emit(value);
+			return true;
+		};
+		await updateAppSettings({ chat: { message_limit: 900 } });
+		await flushUi();
+		await click('[data-open-translation-models]');
+		await click('[aria-label="Reset settings"] > button');
+		[...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
+			.find((button) => button.textContent === 'Reset to defaults')!
+			.click();
+		await flushUi();
+		expect(getNormalizedAppSettings().translation).toEqual(DEFAULT_APP_SETTINGS.translation);
+		expect(getNormalizedAppSettings().chat.message_limit).toBe(900);
+		expect(f.client.removeModel).not.toHaveBeenCalled();
+		expect(f.client.cancelInstall).not.toHaveBeenCalled();
+		await unmount(component!);
+		component = undefined;
+		await session.dispose();
+	});
 	it('starts with Chat essentials and searches editable collapsed controls and choice labels', async () => {
 		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(6);
-		expect(document.querySelector('[data-setting-row="chat.translation_layout"]')).toBeNull();
+		expect(document.querySelector('[data-setting-row="translation.layout"]')).toBeNull();
 		await search('connector');
-		const select = element<HTMLSelectElement>('#setting-chat-translation_layout');
+		const select = element<HTMLSelectElement>('#setting-translation-layout');
 		select.value = 'connector';
 		select.dispatchEvent(new Event('change', { bubbles: true }));
 		await flushUi();
-		expect(getNormalizedAppSettings().chat.translation_layout).toBe('connector');
+		expect(getNormalizedAppSettings().translation.layout).toBe('connector');
 		await search('no such setting');
 		expect(document.body.textContent).toContain('No settings match');
 		await click('[aria-label="Settings categories"] button:last-child');

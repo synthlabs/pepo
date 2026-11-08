@@ -5,6 +5,11 @@ import type { EditableSettingsSection, SettingsPatch, SettingsUpdate } from './a
 export const SETTINGS_CATEGORIES = [
 	{ id: 'chat', label: 'Chat', description: 'How messages look and behave.' },
 	{ id: 'emotes', label: 'Emotes', description: 'Emote providers, autocomplete, and display.' },
+	{
+		id: 'translation',
+		label: 'Translation',
+		description: 'Read chat in your language.'
+	},
 	{ id: 'app', label: 'App', description: 'Appearance and the channel sidebar.' }
 ] as const;
 export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]['id'];
@@ -119,9 +124,30 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 		]
 	},
 	{
-		...chatMore,
-		id: 'chat.translation_layout',
-		path: 'chat.translation_layout',
+		id: 'translation.enabled',
+		path: 'translation.enabled',
+		category: 'translation',
+		label: 'Translate chat',
+		description: 'Translate incoming messages automatically.',
+		kind: 'toggle'
+	},
+	{
+		id: 'translation.target_language',
+		path: 'translation.target_language',
+		category: 'translation',
+		label: 'Translate into',
+		description: 'Used across all channels.',
+		kind: 'select',
+		options: [
+			{ value: 'eng', label: 'English' },
+			{ value: 'rus', label: 'Russian' }
+		]
+	},
+	{
+		category: 'translation',
+		id: 'translation.layout',
+		more: true,
+		path: 'translation.layout',
 		label: 'Translation layout',
 		description: 'Position translated text and its language label.',
 		kind: 'select',
@@ -368,6 +394,7 @@ export function matchingControls(query: string): SettingControl[] {
 export function resetSettingsPatch(category: SettingsCategory | 'all'): SettingsPatch {
 	const defaults = structuredClone(DEFAULT_APP_SETTINGS);
 	if (category === 'chat') return { chat: defaults.chat };
+	if (category === 'translation') return { translation: defaults.translation };
 	if (category === 'emotes') return { emotes: defaults.emotes };
 	if (category === 'app')
 		return {
@@ -380,6 +407,7 @@ export function resetSettingsPatch(category: SettingsCategory | 'all'): Settings
 		layout: defaults.layout,
 		diagnostics: defaults.diagnostics,
 		chat: defaults.chat,
+		translation: defaults.translation,
 		emotes: defaults.emotes
 	};
 }
