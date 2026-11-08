@@ -29,6 +29,7 @@ pub struct EmoteManager {
     token_manager: Option<TokenManager>,
     persistence: SharedEmoteMetadataStore,
     name_cache: SharedMap<String>,
+    owner: String,
 }
 
 impl EmoteManager {
@@ -36,6 +37,7 @@ impl EmoteManager {
         client: twitch_api::HelixClient<'static, reqwest::Client>,
         token_manager: TokenManager,
         app_handle: tauri::AppHandle,
+        owner: String,
     ) -> EmoteManager {
         EmoteManager {
             providers: Arc::new(Mutex::new(Vec::new())),
@@ -43,6 +45,7 @@ impl EmoteManager {
             token_manager: Some(token_manager),
             persistence: Arc::new(TauriEmoteMetadataStore::new(app_handle)),
             name_cache: Default::default(),
+            owner,
         }
     }
 
@@ -54,6 +57,7 @@ impl EmoteManager {
             token_manager: None,
             persistence,
             name_cache: Default::default(),
+            owner: String::new(),
         }
     }
 
@@ -130,6 +134,96 @@ impl EmoteManager {
         }
     }
 
+    pub fn schedule(
+        &self,
+        app: &tauri::AppHandle,
+        engine: &Arc<crate::chat::ChatEngine>,
+        channel: Option<(String, String)>,
+    ) {
+        use tauri::Manager;
+        let settings = crate::app_settings(app.state::<crate::StateSyncer>().inner());
+        let scope = channel
+            .as_ref()
+            .map(|(_, id)| id.as_str())
+            .unwrap_or(GLOBAL_SCOPE_KEY);
+        self.preload(scope, &settings.emotes, &settings.providers);
+        for provider in self.ensure_providers(&settings.emotes) {
+            let name = provider.get_name();
+            let key = format!("emotes:{name}:{scope}");
+            let cached = !provider
+                .get_emote_cache(scope.to_owned())
+                .search_emotes("", 1)
+                .is_empty();
+            let job_app = app.clone();
+            let scope = scope.to_owned();
+            let run_provider = provider.clone();
+            app.state::<crate::network::NetworkRuntime>()
+                .enqueue(crate::network::MetadataJob {
+                    key,
+                    provider: if provider.get_id() == EmoteProviderId::Twitch {
+                        "twitch".into()
+                    } else {
+                        name.clone()
+                    },
+                    feature: format!(
+                        "{} emotes",
+                        match provider.get_id() {
+                            EmoteProviderId::Twitch => "Twitch",
+                            EmoteProviderId::Bttv => "BTTV",
+                            EmoteProviderId::Ffz => "FFZ",
+                            EmoteProviderId::Seventv => "7TV",
+                        }
+                    ),
+                    cached,
+                    priority: crate::network::metadata_priority(
+                        engine,
+                        channel.as_ref().map(|(login, _)| login.clone()),
+                    ),
+                    run: Arc::new(move || {
+                        let provider = run_provider.clone();
+                        let app = job_app.clone();
+                        let scope = scope.clone();
+                        Box::pin(async move {
+                            let settings =
+                                crate::app_settings(app.state::<crate::StateSyncer>().inner());
+                            if !settings.emotes.provider_enabled(provider.get_id()) {
+                                return Ok(());
+                            }
+                            let client = provider_client(&settings.providers);
+                            if scope == GLOBAL_SCOPE_KEY {
+                                provider.refresh_global(&client, &settings.providers).await
+                            } else {
+                                provider
+                                    .refresh_channel(scope, &client, &settings.providers)
+                                    .await
+                            }
+                        })
+                    }),
+                });
+            if channel.is_none() && provider.get_id() == EmoteProviderId::Twitch {
+                let app_ref = app.clone();
+                app.state::<crate::network::NetworkRuntime>().enqueue(
+                    crate::network::MetadataJob {
+                        key: "emotes:twitch:user".into(),
+                        provider: "twitch".into(),
+                        feature: "Twitch user emotes".into(),
+                        cached,
+                        priority: crate::network::metadata_priority(engine, None),
+                        run: Arc::new(move || {
+                            let provider = provider.clone();
+                            let app = app_ref.clone();
+                            Box::pin(async move {
+                                let settings =
+                                    crate::app_settings(app.state::<crate::StateSyncer>().inner());
+                                provider.refresh_user(&settings.providers).await
+                            })
+                        }),
+                    },
+                );
+            }
+        }
+    }
+
     pub fn get_emote_cache(&self, scope: String, emote_settings: &EmoteSettings) -> MultiCache {
         let providers = self.providers.lock().unwrap();
         let provider_ids = emote_settings
@@ -177,6 +271,8 @@ impl EmoteManager {
                     .as_ref()
                     .expect("twitch provider requires token manager")
                     .clone(),
+                self.persistence.clone(),
+                self.owner.clone(),
             )),
             EmoteProviderId::Bttv => Arc::new(BttvProvider::new(self.persistence.clone())),
             EmoteProviderId::Ffz => Arc::new(FfzProvider::new(self.persistence.clone())),

@@ -138,41 +138,53 @@ impl EmoteProvider<MultiCache> for BttvProvider {
             .is_some()
     }
 
-    fn load_global_emotes(&self, client: &reqwest::Client, provider_settings: &ProviderSettings) {
-        let fallback = self.hydrate_persisted_cache(GLOBAL_SCOPE_KEY, provider_settings);
-        let url = format!("{}/emotes/global", self.api_base);
+    fn refresh_global<'a>(
+        &'a self,
+        client: &'a reqwest::Client,
+        provider_settings: &'a ProviderSettings,
+    ) -> futures::future::BoxFuture<'a, Result<(), crate::network::Failure>> {
+        Box::pin(async move {
+            let fallback = self.hydrate_persisted_cache(GLOBAL_SCOPE_KEY, provider_settings);
+            let url = format!("{}/emotes/global", self.api_base);
 
-        match tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                fetch_json::<Vec<BttvEmote>>(client, "BTTV", "global", &url).await
-            })
-        }) {
-            Ok(emotes) => {
-                let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
-                debug!(count = emotes.len(), "loaded bttv global emotes");
-                for bttv in &emotes {
-                    cache.set_emote(bttv.code.clone(), bttv_to_emote(bttv, "Global"));
+            match { fetch_json::<Vec<BttvEmote>>(client, "BTTV", "global", &url).await } {
+                Ok(emotes) => {
+                    let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
+                    debug!(count = emotes.len(), "loaded bttv global emotes");
+                    for bttv in &emotes {
+                        cache.set_emote(bttv.code.clone(), bttv_to_emote(bttv, "Global"));
+                    }
+                    self.store_fresh_cache(GLOBAL_SCOPE_KEY.to_owned(), cache, provider_settings);
                 }
-                self.store_fresh_cache(GLOBAL_SCOPE_KEY.to_owned(), cache, provider_settings);
+                Err(err) => {
+                    self.log_fallback(GLOBAL_SCOPE_KEY, fallback);
+                    return Err(err.into());
+                }
             }
-            Err(err) => {
-                error!("failed to load bttv global emotes: err={}", err);
-                self.log_fallback(GLOBAL_SCOPE_KEY, fallback);
-            }
+
+            Ok(())
+        })
+    }
+    fn load_global_emotes(&self, client: &reqwest::Client, provider_settings: &ProviderSettings) {
+        if let Err(error) = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(self.refresh_global(client, provider_settings))
+        }) {
+            error!("failed to load bttv global emotes: err={}", error.message);
         }
     }
 
-    fn load_channel_emotes(
-        &self,
+    fn refresh_channel<'a>(
+        &'a self,
         broadcaster_id: String,
-        client: &reqwest::Client,
-        provider_settings: &ProviderSettings,
-    ) {
-        let fallback = self.hydrate_persisted_cache(&broadcaster_id, provider_settings);
-        let url = format!("{}/users/twitch/{}", self.api_base, broadcaster_id);
+        client: &'a reqwest::Client,
+        provider_settings: &'a ProviderSettings,
+    ) -> futures::future::BoxFuture<'a, Result<(), crate::network::Failure>> {
+        Box::pin(async move {
+            let fallback = self.hydrate_persisted_cache(&broadcaster_id, provider_settings);
+            let url = format!("{}/users/twitch/{}", self.api_base, broadcaster_id);
 
-        match tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
+            match {
                 fetch_json::<BttvChannelResponse>(
                     client,
                     "BTTV",
@@ -180,28 +192,43 @@ impl EmoteProvider<MultiCache> for BttvProvider {
                     &url,
                 )
                 .await
-            })
-        }) {
-            Ok(resp) => {
-                let cache = EmoteCache::new(broadcaster_id.clone(), self.get_name());
-                let total = resp.channel_emotes.len() + resp.shared_emotes.len();
-                debug!(broadcaster_id, count = total, "loaded bttv channel emotes");
-                for bttv in resp.channel_emotes.iter().chain(resp.shared_emotes.iter()) {
-                    cache.set_emote(bttv.code.clone(), bttv_to_emote(bttv, "Channel"));
+            } {
+                Ok(resp) => {
+                    let cache = EmoteCache::new(broadcaster_id.clone(), self.get_name());
+                    let total = resp.channel_emotes.len() + resp.shared_emotes.len();
+                    debug!(broadcaster_id, count = total, "loaded bttv channel emotes");
+                    for bttv in resp.channel_emotes.iter().chain(resp.shared_emotes.iter()) {
+                        cache.set_emote(bttv.code.clone(), bttv_to_emote(bttv, "Channel"));
+                    }
+                    self.store_fresh_cache(broadcaster_id, cache, provider_settings);
                 }
-                self.store_fresh_cache(broadcaster_id, cache, provider_settings);
+                Err(err) if err.is_not_found() => {
+                    debug!(broadcaster_id, err = %err, "no bttv channel emotes");
+                    self.log_fallback(&broadcaster_id, fallback);
+                }
+                Err(err) => {
+                    self.log_fallback(&broadcaster_id, fallback);
+                    return Err(err.into());
+                }
             }
-            Err(err) if err.is_not_found() => {
-                debug!(broadcaster_id, err = %err, "no bttv channel emotes");
-                self.log_fallback(&broadcaster_id, fallback);
-            }
-            Err(err) => {
-                error!(
-                    broadcaster_id,
-                    "failed to load bttv channel emotes: err={}", err
-                );
-                self.log_fallback(&broadcaster_id, fallback);
-            }
+
+            Ok(())
+        })
+    }
+    fn load_channel_emotes(
+        &self,
+        broadcaster_id: String,
+        client: &reqwest::Client,
+        provider_settings: &ProviderSettings,
+    ) {
+        if let Err(error) = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.refresh_channel(
+                broadcaster_id,
+                client,
+                provider_settings,
+            ))
+        }) {
+            error!("failed to load bttv channel emotes: err={}", error.message);
         }
     }
 

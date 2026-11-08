@@ -151,97 +151,125 @@ impl BadgeManager {
         );
     }
 
-    pub async fn load_global(
+    pub async fn refresh(
         &self,
-        client: twitch_api::HelixClient<'static, reqwest::Client>,
-        provider_settings: &ProviderSettings,
-    ) -> Result<(), String> {
-        self.hydrate_global(provider_settings).await;
-
-        let req = get_global_chat_badges::GetGlobalChatBadgesRequest::new();
-
-        debug!("getting global badges");
-        let Some(token_manager) = &self.token_manager else {
-            return Err("no active token".to_owned());
+        scope: &str,
+        client: &twitch_api::HelixClient<'static, reqwest::Client>,
+        settings: &ProviderSettings,
+    ) -> Result<(), crate::network::Failure> {
+        use crate::network::Failure;
+        if scope == GLOBAL_SCOPE_KEY {
+            self.hydrate_global(settings).await;
+        } else {
+            self.hydrate_channel(scope, settings).await;
+        }
+        let manager = self.token_manager.as_ref().ok_or_else(|| {
+            Failure::new("authentication", "Waiting for Twitch authentication.", true)
+        })?;
+        let token = manager.active_twitch_token().await.ok_or_else(|| {
+            Failure::new("authentication", "Waiting for Twitch authentication.", true)
+        })?;
+        let response: Vec<twitch_api::helix::chat::BadgeSet> = if scope == GLOBAL_SCOPE_KEY {
+            client
+                .req_get(
+                    get_global_chat_badges::GetGlobalChatBadgesRequest::new(),
+                    &token,
+                )
+                .await
+                .map_err(Failure::helix)?
+                .data
+        } else {
+            client
+                .req_get(
+                    get_channel_chat_badges::GetChannelChatBadgesRequest::broadcaster_id(
+                        scope.to_owned(),
+                    ),
+                    &token,
+                )
+                .await
+                .map_err(Failure::helix)?
+                .data
         };
-        let Some(token) = token_manager.active_twitch_token().await else {
-            return Err("no active token".to_owned());
-        };
-        let response: Vec<twitch_api::helix::chat::BadgeSet> =
-            match client.req_get(req, &token).await {
-                Ok(resp) => resp.data,
-                Err(err) => return Err(err.to_string()),
-            };
-
-        let badge_sets = response
-            .into_iter()
-            .map(|b| {
-                debug!("adding badgeset: badgeset={:?}", b);
-                BadgeSet::from(b)
-            })
-            .collect();
-        self.store_global_badges(badge_sets, provider_settings)
-            .await;
-
+        let badges = response.into_iter().map(BadgeSet::from).collect();
+        if scope == GLOBAL_SCOPE_KEY {
+            self.store_global_badges(badges, settings).await;
+        } else {
+            self.store_channel_badges(scope.into(), badges, settings)
+                .await;
+        }
         Ok(())
     }
 
+    pub async fn load_global(
+        &self,
+        client: twitch_api::HelixClient<'static, reqwest::Client>,
+        settings: &ProviderSettings,
+    ) -> Result<(), String> {
+        self.refresh(GLOBAL_SCOPE_KEY, &client, settings)
+            .await
+            .map_err(|error| error.message)
+    }
     pub async fn load_channel(
         self,
-        broadcaster_id: String,
+        scope: String,
         client: twitch_api::HelixClient<'static, reqwest::Client>,
-        provider_settings: &ProviderSettings,
+        settings: &ProviderSettings,
     ) {
-        debug!(broadcaster_id, "loading channel");
-        self.hydrate_channel(&broadcaster_id, provider_settings)
-            .await;
-
-        let mut badges: HashMap<String, BadgeSet> = Default::default();
-        debug!(broadcaster_id, "refreshing channel badges");
-        let req = get_channel_chat_badges::GetChannelChatBadgesRequest::broadcaster_id(
-            broadcaster_id.clone(),
-        );
-
-        debug!(broadcaster_id, "getting badges");
-        let Some(token_manager) = &self.token_manager else {
-            error!(
-                broadcaster_id,
-                "failed to load channel badges: no active token"
-            );
-            return;
-        };
-        let Some(token) = token_manager.active_twitch_token().await else {
-            error!(
-                broadcaster_id,
-                "failed to load channel badges: no active token"
-            );
-            return;
-        };
-        let response: Vec<twitch_api::helix::chat::BadgeSet> =
-            match client.req_get(req, &token).await {
-                Ok(resp) => resp.data,
-                Err(err) => {
-                    error!(
-                        broadcaster_id,
-                        "failed to load channel badges: err={}",
-                        err.to_string()
-                    );
-                    return;
-                }
-            };
-
-        for b in response {
-            let new_b = BadgeSet::from(b.clone());
-            debug!(broadcaster_id, "adding badgeset: badgeset={:?}", b);
-            badges.insert(new_b.set_id.clone(), new_b.clone());
+        if let Err(error) = self.refresh(&scope, &client, settings).await {
+            error!("failed to load channel badges: {}", error.message);
         }
+    }
 
-        self.store_channel_badges(
-            broadcaster_id,
-            scope_to_badge_sets(badges),
-            provider_settings,
-        )
-        .await;
+    pub async fn schedule(
+        &self,
+        app: &tauri::AppHandle,
+        engine: &std::sync::Arc<crate::chat::ChatEngine>,
+        channel: Option<(String, String)>,
+    ) {
+        use tauri::Manager;
+        let scope = channel
+            .as_ref()
+            .map(|(_, id)| id.as_str())
+            .unwrap_or(GLOBAL_SCOPE_KEY)
+            .to_owned();
+        let settings = crate::app_settings(app.state::<crate::StateSyncer>().inner());
+        if channel.is_none() {
+            self.hydrate_global(&settings.providers).await;
+        } else {
+            self.hydrate_channel(&scope, &settings.providers).await;
+        }
+        let cached = if channel.is_none() {
+            !self.global_badges.lock().await.is_empty()
+        } else {
+            self.scoped_badges.lock().await.contains_key(&scope)
+        };
+        let manager = self.clone();
+        let app_ref = app.clone();
+        app.state::<crate::network::NetworkRuntime>()
+            .enqueue(crate::network::MetadataJob {
+                key: format!("badges:{scope}"),
+                provider: "twitch".into(),
+                feature: "Twitch badges".into(),
+                cached,
+                priority: crate::network::metadata_priority(
+                    engine,
+                    channel.map(|(login, _)| login),
+                ),
+                run: std::sync::Arc::new(move || {
+                    let manager = manager.clone();
+                    let app = app_ref.clone();
+                    let scope = scope.clone();
+                    Box::pin(async move {
+                        let settings =
+                            crate::app_settings(app.state::<crate::StateSyncer>().inner());
+                        let client = app
+                            .state::<twitch_api::HelixClient<'static, reqwest::Client>>()
+                            .inner()
+                            .clone();
+                        manager.refresh(&scope, &client, &settings.providers).await
+                    })
+                }),
+            });
     }
 
     pub async fn get(self, set_id: String, channel: String) -> Option<BadgeSet> {
@@ -288,10 +316,6 @@ fn badge_sets_to_scope(badge_sets: Vec<BadgeSet>) -> Scope<BadgeSet> {
         .into_iter()
         .map(|badge_set| (badge_set.set_id.clone(), badge_set))
         .collect()
-}
-
-fn scope_to_badge_sets(scope: Scope<BadgeSet>) -> Vec<BadgeSet> {
-    scope.into_values().collect()
 }
 
 #[cfg(test)]

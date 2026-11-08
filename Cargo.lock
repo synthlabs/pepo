@@ -2301,6 +2301,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin-log",
+ "tokio",
 ]
 
 [[package]]
@@ -3360,6 +3361,7 @@ dependencies = [
  "color-eyre",
  "eyre",
  "futures",
+ "httpdate",
  "httpmock",
  "inbound",
  "inbound-build",
@@ -4793,6 +4795,7 @@ name = "synth-translate"
 version = "0.1.0"
 dependencies = [
  "fxtranslate",
+ "httpdate",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

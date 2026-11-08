@@ -341,17 +341,9 @@ pub fn start(app: AppHandle, engine: Arc<ChatEngine>) {
             .state::<twitch_api::HelixClient<'static, reqwest::Client>>()
             .inner()
             .clone();
-        let cosmetics = Arc::new(tokio::sync::Semaphore::new(4));
-        let mut refreshes = tokio::task::JoinSet::<String>::new();
-        let mut refreshing = HashSet::new();
         let mut coordinator = AdmissionCoordinator::default();
         let mut hydrated = HashSet::new();
         while engine.active() {
-            while let Some(result) = refreshes.try_join_next() {
-                if let Ok(login) = result {
-                    refreshing.remove(&login);
-                }
-            }
             for (login, reason) in manager.take_room_failures() {
                 let mut state = engine.state.lock().unwrap();
                 if state
@@ -451,47 +443,24 @@ pub fn start(app: AppHandle, engine: Arc<ChatEngine>) {
                                 .await
                             {
                                 Ok(JoinOutcome::Joined) if manager.channel_complete(&login) => {
-                                    let mut state = engine.state.lock().unwrap();
-                                    state.failures.remove(&login);
-                                    let wanted = state
-                                        .membership
-                                        .would_admit(&login, state.settings.join_mode);
-                                    if wanted {
-                                        state.membership.selected.insert(login.clone());
-                                    }
-                                    drop(state);
+                                    let wanted = {
+                                        let mut state = engine.state.lock().unwrap();
+                                        state.failures.remove(&login);
+                                        let wanted = state
+                                            .membership
+                                            .would_admit(&login, state.settings.join_mode);
+                                        if wanted {
+                                            state.membership.selected.insert(login.clone());
+                                        }
+                                        wanted
+                                    };
                                     engine.wake();
                                     if !wanted {
                                         coordinator.require_cleanup(&login);
-                                    } else if refreshing.insert(login.clone()) {
-                                        let refreshed_login = login.clone();
-                                        let permits = cosmetics.clone();
-                                        let badges = badges.clone();
-                                        let emotes = emotes.clone();
-                                        let client = client.clone();
-                                        let weak = Arc::downgrade(&engine);
-                                        refreshes.spawn(async move {
-                                            let Ok(_permit) = permits.acquire_owned().await else {
-                                                return refreshed_login;
-                                            };
-                                            if !weak.upgrade().is_some_and(|engine| engine.active())
-                                            {
-                                                return refreshed_login;
-                                            }
-                                            tokio::join!(
-                                                badges.load_channel(
-                                                    info.broadcaster_id.clone(),
-                                                    client,
-                                                    &settings.providers
-                                                ),
-                                                emotes.load_channel(
-                                                    info.broadcaster_id,
-                                                    &settings.emotes,
-                                                    &settings.providers
-                                                )
-                                            );
-                                            refreshed_login
-                                        });
+                                    } else {
+                                        let channel = Some((login.clone(), info.broadcaster_id));
+                                        badges.schedule(&app, &engine, channel.clone()).await;
+                                        emotes.schedule(&app, &engine, channel);
                                     }
                                 }
                                 Ok(_) => {}
@@ -555,6 +524,20 @@ pub fn start(app: AppHandle, engine: Arc<ChatEngine>) {
                 (status, status_changed)
             };
             if status_changed {
+                let network = app.state::<crate::network::NetworkRuntime>();
+                if status.connected {
+                    network.recovered(&app, "chat.connect");
+                } else {
+                    network.failed(
+                        &app,
+                        "chat.connect",
+                        "Chat",
+                        &crate::network::Failure::new("connection", "Reconnecting to chat.", true),
+                        false,
+                        true,
+                        None,
+                    );
+                }
                 let _ = app.emit("chat_engine_status", &status);
             }
             tokio::time::sleep(Duration::from_millis(100)).await;

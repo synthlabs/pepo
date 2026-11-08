@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
 use std::time::Duration;
-use twitch_api::{client::CompatError, HelixClient};
 use twitch_oauth2::TwitchToken;
 
 use crate::{
@@ -50,6 +49,7 @@ pub struct AppSettings {
     pub auth: AuthSettings,
     pub eventsub: EventSubSettings,
     pub providers: ProviderSettings,
+    pub network: NetworkSettings,
     pub diagnostics: DiagnosticsSettings,
 }
 
@@ -66,6 +66,7 @@ impl Default for AppSettings {
             auth: AuthSettings::default(),
             eventsub: EventSubSettings::default(),
             providers: ProviderSettings::default(),
+            network: NetworkSettings::default(),
             diagnostics: DiagnosticsSettings::default(),
         }
     }
@@ -81,6 +82,7 @@ impl AppSettings {
         self.auth = self.auth.normalized();
         self.eventsub = self.eventsub.normalized();
         self.providers = self.providers.normalized();
+        self.network = self.network.normalized();
         self
     }
 }
@@ -123,10 +125,6 @@ impl ChannelCacheSettings {
 
     pub fn poll_interval(self) -> Duration {
         Duration::from_secs(self.poll_interval_secs)
-    }
-
-    pub fn error_log_throttle(self) -> Duration {
-        Duration::from_secs(self.error_log_throttle_secs)
     }
 }
 
@@ -272,15 +270,17 @@ pub struct ProviderSettings {
     pub http_request_timeout_secs: u64,
     pub metadata_retention_enabled: bool,
     pub metadata_retention_secs: u64,
+    pub stale_metadata_fallback: bool,
 }
 
 impl Default for ProviderSettings {
     fn default() -> Self {
         Self {
-            http_connect_timeout_secs: 5,
-            http_request_timeout_secs: 15,
+            http_connect_timeout_secs: 15,
+            http_request_timeout_secs: 30,
             metadata_retention_enabled: true,
             metadata_retention_secs: 30 * 24 * 60 * 60,
+            stale_metadata_fallback: true,
         }
     }
 }
@@ -309,6 +309,52 @@ impl ProviderSettings {
 
     pub fn http_request_timeout(self) -> Duration {
         Duration::from_secs(self.http_request_timeout_secs)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct NetworkSettings {
+    pub connect_timeout_secs: u64,
+    pub request_timeout_secs: u64,
+    pub metadata_concurrency: usize,
+    pub retry_base_secs: u64,
+    pub retry_max_secs: u64,
+}
+
+impl Default for NetworkSettings {
+    fn default() -> Self {
+        Self {
+            connect_timeout_secs: 15,
+            request_timeout_secs: 30,
+            metadata_concurrency: 4,
+            retry_base_secs: 15,
+            retry_max_secs: 300,
+        }
+    }
+}
+
+impl NetworkSettings {
+    pub fn normalized(mut self) -> Self {
+        let defaults = Self::default();
+        self.connect_timeout_secs =
+            u64_or_default(self.connect_timeout_secs, defaults.connect_timeout_secs);
+        self.request_timeout_secs =
+            u64_or_default(self.request_timeout_secs, defaults.request_timeout_secs);
+        self.metadata_concurrency =
+            usize_or_default(self.metadata_concurrency, defaults.metadata_concurrency).min(32);
+        self.retry_base_secs = u64_or_default(self.retry_base_secs, defaults.retry_base_secs);
+        self.retry_max_secs =
+            u64_or_default(self.retry_max_secs, defaults.retry_max_secs).max(self.retry_base_secs);
+        self
+    }
+
+    pub fn retry_delay(self, attempt: u32) -> Duration {
+        Duration::from_secs(
+            self.retry_base_secs
+                .saturating_mul(2u64.saturating_pow(attempt.saturating_sub(1).min(63)))
+                .min(self.retry_max_secs),
+        )
     }
 }
 
@@ -717,29 +763,26 @@ impl UserToken {
         }
     }
 
-    pub async fn to_twitch_token(
-        self,
-        client: HelixClient<'static, reqwest::Client>,
-    ) -> std::result::Result<
-        twitch_oauth2::UserToken,
-        twitch_oauth2::tokens::errors::RetrieveTokenError<CompatError<reqwest::Error>>,
-    > {
-        let access_token = twitch_oauth2::AccessToken::from(self.access_token);
-        match self.refresh_token.filter(|token| !token.is_empty()) {
-            Some(refresh_token) => {
-                twitch_oauth2::UserToken::from_existing_or_refresh_token(
-                    &client,
-                    access_token,
-                    twitch_oauth2::RefreshToken::from(refresh_token),
-                    twitch_oauth2::ClientId::from(self.client_id),
-                    None,
-                )
-                .await
-            }
-            None => twitch_oauth2::UserToken::from_existing(&client, access_token, None, None)
-                .await
-                .map_err(Into::into),
+    pub fn into_unvalidated_twitch_token(self) -> Option<twitch_oauth2::UserToken> {
+        if self.access_token.is_empty()
+            || self.client_id.is_empty()
+            || self.user_id.is_empty()
+            || self.login.is_empty()
+        {
+            return None;
         }
+        Some(twitch_oauth2::UserToken::from_existing_unchecked(
+            self.access_token,
+            self.refresh_token
+                .filter(|token| !token.is_empty())
+                .map(twitch_oauth2::RefreshToken::from),
+            self.client_id,
+            None,
+            self.login.into(),
+            self.user_id.into(),
+            None,
+            Some(Duration::from_secs(self.expires_in)),
+        ))
     }
 }
 
@@ -1284,8 +1327,8 @@ mod tests {
         assert!(settings.eventsub.repeated_log_throttle_enabled);
         assert_eq!(settings.eventsub.unparseable_warning_throttle_secs, 60);
         assert_eq!(settings.eventsub.subscription_error_throttle_secs, 300);
-        assert_eq!(settings.providers.http_connect_timeout_secs, 5);
-        assert_eq!(settings.providers.http_request_timeout_secs, 15);
+        assert_eq!(settings.providers.http_connect_timeout_secs, 15);
+        assert_eq!(settings.providers.http_request_timeout_secs, 30);
         assert!(settings.providers.metadata_retention_enabled);
         assert_eq!(
             settings.providers.metadata_retention_secs,
@@ -1482,6 +1525,7 @@ mod tests {
                 http_request_timeout_secs: 0,
                 metadata_retention_enabled: false,
                 metadata_retention_secs: 0,
+                stale_metadata_fallback: true,
             },
             ..Default::default()
         }
@@ -1504,12 +1548,64 @@ mod tests {
         assert!(!settings.eventsub.repeated_log_throttle_enabled);
         assert_eq!(settings.eventsub.unparseable_warning_throttle_secs, 60);
         assert_eq!(settings.eventsub.subscription_error_throttle_secs, 300);
-        assert_eq!(settings.providers.http_connect_timeout_secs, 5);
-        assert_eq!(settings.providers.http_request_timeout_secs, 15);
+        assert_eq!(settings.providers.http_connect_timeout_secs, 15);
+        assert_eq!(settings.providers.http_request_timeout_secs, 30);
         assert!(!settings.providers.metadata_retention_enabled);
         assert_eq!(
             settings.providers.metadata_retention_secs,
             30 * 24 * 60 * 60
+        );
+    }
+}
+
+#[cfg(test)]
+mod slow_network_settings_tests {
+    use super::*;
+    #[test]
+    fn saved_credentials_restore_locally_without_inventing_granted_scopes() {
+        let saved = UserToken {
+            access_token: "saved-access".into(),
+            refresh_token: Some("saved-refresh".into()),
+            client_id: "client".into(),
+            login: "viewer".into(),
+            user_id: "1234".into(),
+            expires_in: 3600,
+            profile_image_url: "saved-avatar".into(),
+        };
+        let restored = saved.clone().into_unvalidated_twitch_token().unwrap();
+        assert_eq!(restored.access_token.secret(), "saved-access");
+        assert_eq!(
+            restored.refresh_token.as_ref().unwrap().secret(),
+            "saved-refresh"
+        );
+        assert_eq!(restored.user_id.as_str(), "1234");
+        assert_eq!(restored.login.as_str(), "viewer");
+        assert!(restored.scopes().is_empty());
+        assert!(UserToken {
+            access_token: String::new(),
+            ..saved
+        }
+        .into_unvalidated_twitch_token()
+        .is_none());
+    }
+    #[test]
+    fn old_timeout_choices_survive_new_defaults() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({"providers":{"http_connect_timeout_secs":5,"http_request_timeout_secs":15}})).unwrap();
+        let settings = settings.normalized();
+        assert_eq!(settings.providers.http_connect_timeout_secs, 5);
+        assert_eq!(settings.providers.http_request_timeout_secs, 15);
+        assert_eq!(settings.network.metadata_concurrency, 4);
+        assert!(settings.providers.stale_metadata_fallback);
+        let restored: AppSettings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(restored.providers.http_request_timeout_secs, 15);
+    }
+    #[test]
+    fn optional_request_backoff_caps_without_overflowing() {
+        let settings = NetworkSettings::default();
+        assert_eq!(
+            [1, 2, 3, 4, 5, 6, 1000].map(|attempt| settings.retry_delay(attempt).as_secs()),
+            [15, 30, 60, 120, 240, 300, 300]
         );
     }
 }

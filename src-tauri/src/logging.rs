@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use log::LevelFilter;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 const CHAT_PARSE_SUMMARY_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -75,16 +75,39 @@ pub(crate) fn record_chat_parse(
     }
 }
 
+pub(crate) fn warn_repeated(key: impl Into<String>, message: impl Into<String>) {
+    repeated_logs().warn(key, message);
+}
+
 fn repeated_logs() -> &'static Coalescer {
     REPEATED_LOGS.get_or_init(Coalescer::default)
 }
 
 #[derive(Default)]
-struct Coalescer {
+pub(crate) struct Coalescer {
     entries: Mutex<HashMap<String, CoalescedEntry>>,
 }
 
 impl Coalescer {
+    pub(crate) fn warn(&self, key: impl Into<String>, message: impl Into<String>) {
+        let key = key.into();
+        let message = message.into();
+        match self.record(
+            key.clone(),
+            message.clone(),
+            Instant::now(),
+            Duration::from_secs(300),
+        ) {
+            RepeatLogDecision::Emit => warn!("{message}"),
+            RepeatLogDecision::Suppress => {}
+            RepeatLogDecision::Summary(summary) => warn!(
+                key,
+                suppressed = summary.suppressed,
+                last = summary.last_message,
+                "suppressed repeated network warning"
+            ),
+        }
+    }
     fn record(
         &self,
         key: String,

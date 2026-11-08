@@ -13,6 +13,36 @@ mod tests;
 pub const GLOBAL_SCOPE_KEY: &str = "_global";
 
 pub trait EmoteProvider<T: EmoteCacheTrait>: Send + Sync {
+    fn refresh_global<'a>(
+        &'a self,
+        client: &'a reqwest::Client,
+        settings: &'a ProviderSettings,
+    ) -> futures::future::BoxFuture<'a, Result<(), crate::network::Failure>> {
+        Box::pin(async move {
+            self.load_global_emotes(client, settings);
+            Ok(())
+        })
+    }
+    fn refresh_channel<'a>(
+        &'a self,
+        scope: String,
+        client: &'a reqwest::Client,
+        settings: &'a ProviderSettings,
+    ) -> futures::future::BoxFuture<'a, Result<(), crate::network::Failure>> {
+        Box::pin(async move {
+            self.load_channel_emotes(scope, client, settings);
+            Ok(())
+        })
+    }
+    fn refresh_user<'a>(
+        &'a self,
+        _settings: &'a ProviderSettings,
+    ) -> futures::future::BoxFuture<'a, Result<(), crate::network::Failure>> {
+        Box::pin(async move {
+            self.load_user_emotes();
+            Ok(())
+        })
+    }
     fn get_id(&self) -> EmoteProviderId;
     fn get_name(&self) -> String {
         self.get_id().provider_name().to_string()

@@ -155,45 +155,57 @@ impl EmoteProvider<MultiCache> for FfzProvider {
             .is_some()
     }
 
-    fn load_global_emotes(&self, client: &reqwest::Client, provider_settings: &ProviderSettings) {
-        let fallback = self.hydrate_persisted_cache(GLOBAL_SCOPE_KEY, provider_settings);
-        let url = format!("{}/set/global", self.api_base);
+    fn refresh_global<'a>(
+        &'a self,
+        client: &'a reqwest::Client,
+        provider_settings: &'a ProviderSettings,
+    ) -> futures::future::BoxFuture<'a, Result<(), crate::network::Failure>> {
+        Box::pin(async move {
+            let fallback = self.hydrate_persisted_cache(GLOBAL_SCOPE_KEY, provider_settings);
+            let url = format!("{}/set/global", self.api_base);
 
-        match tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                fetch_json::<FfzGlobalResponse>(client, "FFZ", "global", &url).await
-            })
-        }) {
-            Ok(resp) => {
-                let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
-                let mut count = 0;
-                for set in resp.sets.values() {
-                    for emote in &set.emotes {
-                        cache.set_emote(emote.name.clone(), ffz_to_emote(emote, "Global"));
-                        count += 1;
+            match { fetch_json::<FfzGlobalResponse>(client, "FFZ", "global", &url).await } {
+                Ok(resp) => {
+                    let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
+                    let mut count = 0;
+                    for set in resp.sets.values() {
+                        for emote in &set.emotes {
+                            cache.set_emote(emote.name.clone(), ffz_to_emote(emote, "Global"));
+                            count += 1;
+                        }
                     }
+                    debug!(count, "loaded ffz global emotes");
+                    self.store_fresh_cache(GLOBAL_SCOPE_KEY.to_owned(), cache, provider_settings);
                 }
-                debug!(count, "loaded ffz global emotes");
-                self.store_fresh_cache(GLOBAL_SCOPE_KEY.to_owned(), cache, provider_settings);
+                Err(err) => {
+                    self.log_fallback(GLOBAL_SCOPE_KEY, fallback);
+                    return Err(err.into());
+                }
             }
-            Err(err) => {
-                error!("failed to load ffz global emotes: err={}", err);
-                self.log_fallback(GLOBAL_SCOPE_KEY, fallback);
-            }
+
+            Ok(())
+        })
+    }
+    fn load_global_emotes(&self, client: &reqwest::Client, provider_settings: &ProviderSettings) {
+        if let Err(error) = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(self.refresh_global(client, provider_settings))
+        }) {
+            error!("failed to load ffz global emotes: err={}", error.message);
         }
     }
 
-    fn load_channel_emotes(
-        &self,
+    fn refresh_channel<'a>(
+        &'a self,
         broadcaster_id: String,
-        client: &reqwest::Client,
-        provider_settings: &ProviderSettings,
-    ) {
-        let fallback = self.hydrate_persisted_cache(&broadcaster_id, provider_settings);
-        let url = format!("{}/room/id/{}", self.api_base, broadcaster_id);
+        client: &'a reqwest::Client,
+        provider_settings: &'a ProviderSettings,
+    ) -> futures::future::BoxFuture<'a, Result<(), crate::network::Failure>> {
+        Box::pin(async move {
+            let fallback = self.hydrate_persisted_cache(&broadcaster_id, provider_settings);
+            let url = format!("{}/room/id/{}", self.api_base, broadcaster_id);
 
-        match tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
+            match {
                 fetch_json::<FfzRoomResponse>(
                     client,
                     "FFZ",
@@ -201,31 +213,46 @@ impl EmoteProvider<MultiCache> for FfzProvider {
                     &url,
                 )
                 .await
-            })
-        }) {
-            Ok(resp) => {
-                let cache = EmoteCache::new(broadcaster_id.clone(), self.get_name());
-                let mut count = 0;
-                for set in resp.sets.values() {
-                    for emote in &set.emotes {
-                        cache.set_emote(emote.name.clone(), ffz_to_emote(emote, "Channel"));
-                        count += 1;
+            } {
+                Ok(resp) => {
+                    let cache = EmoteCache::new(broadcaster_id.clone(), self.get_name());
+                    let mut count = 0;
+                    for set in resp.sets.values() {
+                        for emote in &set.emotes {
+                            cache.set_emote(emote.name.clone(), ffz_to_emote(emote, "Channel"));
+                            count += 1;
+                        }
                     }
+                    debug!(broadcaster_id, count, "loaded ffz channel emotes");
+                    self.store_fresh_cache(broadcaster_id, cache, provider_settings);
                 }
-                debug!(broadcaster_id, count, "loaded ffz channel emotes");
-                self.store_fresh_cache(broadcaster_id, cache, provider_settings);
+                Err(err) if err.is_not_found() => {
+                    debug!(broadcaster_id, err = %err, "no ffz channel emotes");
+                    self.log_fallback(&broadcaster_id, fallback);
+                }
+                Err(err) => {
+                    self.log_fallback(&broadcaster_id, fallback);
+                    return Err(err.into());
+                }
             }
-            Err(err) if err.is_not_found() => {
-                debug!(broadcaster_id, err = %err, "no ffz channel emotes");
-                self.log_fallback(&broadcaster_id, fallback);
-            }
-            Err(err) => {
-                error!(
-                    broadcaster_id,
-                    "failed to load ffz channel emotes: err={}", err
-                );
-                self.log_fallback(&broadcaster_id, fallback);
-            }
+
+            Ok(())
+        })
+    }
+    fn load_channel_emotes(
+        &self,
+        broadcaster_id: String,
+        client: &reqwest::Client,
+        provider_settings: &ProviderSettings,
+    ) {
+        if let Err(error) = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.refresh_channel(
+                broadcaster_id,
+                client,
+                provider_settings,
+            ))
+        }) {
+            error!("failed to load ffz channel emotes: err={}", error.message);
         }
     }
 

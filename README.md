@@ -154,6 +154,13 @@ Use `PEPO_LOG=trace` when you need hot-path chat parser and emote-cache lookup d
 | Windows  | `%LOCALAPPDATA%\com.pepo.chat\logs`                   |
 | Linux    | `${XDG_DATA_HOME:-~/.local/share}/com.pepo.chat/logs` |
 
+### Slow connections
+
+Connection problems appear as a small account-avatar indicator, or a tooltip icon beside the Settings title. Open **Settings → Chat → Background activity** for
+details and safe retry controls.
+
+Configure timeouts and recovery in **Settings → App → Advanced → Network**.
+
 ### Disclosure
 
 Due to my essentially zero experience with front end testing, the tests for this project were generated with claude

@@ -6,6 +6,7 @@ import {
 	type ModelManagerSnapshot
 } from '$utils/translate';
 import { appErrors } from '$lib/errors/controller';
+import { networkHealth } from '$lib/network/health';
 
 export const TRANSLATION_CONTEXT = Symbol('translation');
 type SessionClient = ModelManagerClient & { dispose(): Promise<void> };
@@ -25,6 +26,8 @@ export class TranslationSession {
 	private disposal?: Promise<void>;
 	private stop: () => void;
 	private started = false;
+	private disposed = false;
+	private catalogRefreshing = false;
 
 	constructor(private client: SessionClient = createTranslationClient()) {
 		this.controller = new ModelManagerController({
@@ -43,6 +46,19 @@ export class TranslationSession {
 		});
 		this.stop = this.controller.subscribe((snapshot) => {
 			this.snapshot = snapshot;
+
+			if (!this.disposed) {
+				const catalog = snapshot.service?.catalog;
+				const newAttempt = this.catalogRefreshing && !catalog?.refreshing;
+				this.catalogRefreshing = Boolean(catalog?.refreshing);
+				networkHealth.setExternal(
+					'external:translation',
+					'Translation language list',
+					catalog?.error ? catalog.error.message : null,
+					Boolean(catalog?.catalog),
+					{ retryable: catalog?.error?.details?.retryable !== 'false', newAttempt }
+				);
+			}
 		});
 	}
 
@@ -176,6 +192,8 @@ export class TranslationSession {
 
 	dispose(): Promise<void> {
 		if (this.disposal) return this.disposal;
+		this.disposed = true;
+		networkHealth.setExternal('external:translation', 'Translation language list', null);
 		this.abandonSetup();
 		this.respond(false);
 		this.disposal = (async () => {

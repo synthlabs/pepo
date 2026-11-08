@@ -19,12 +19,16 @@
 		settingsState
 	} from '$lib/stores/settings.svelte';
 	import SettingsStatus from '$lib/components/settings/settings-status.svelte';
+	import NetworkStatus from '$lib/components/network-status.svelte';
+	import NetworkStatusIcon from '$lib/components/network-status-icon.svelte';
+	import { NETWORK_STATUS_CONTEXT, NetworkStatusController } from '$lib/network/status.svelte';
 	import { InternalRoot } from '$internal';
 	import { channelHeader } from '$lib/chat/channel-header';
 
 	let { children } = $props();
 	let normalizedAppSettings = $derived(getNormalizedAppSettings());
 	const translation = setContext(TRANSLATION_CONTEXT, new TranslationSession());
+	const network = setContext(NETWORK_STATUS_CONTEXT, new NetworkStatusController());
 	$effect(() => {
 		const ready = settingsState.ready;
 		const enabled = normalizedAppSettings.translation.enabled;
@@ -65,6 +69,7 @@
 				<div class="flex items-center gap-2 px-4">
 					<h1 class="text-base font-semibold">Settings</h1>
 					<SettingsStatus />
+					<NetworkStatusIcon />
 				</div>
 			{:else}
 				<ChannelHeader {header} />
@@ -76,6 +81,7 @@
 			{/key}
 		</div>
 	</main>
+	<NetworkStatus controller={network} showButton={false} />
 	<InternalRoot />
 	<TranslationConfirmation session={translation} />
 </Sidebar.Provider>

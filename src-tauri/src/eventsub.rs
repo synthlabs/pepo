@@ -164,10 +164,13 @@ enum EventSubFailure {
 async fn connect(connect_url: String) -> Result<EventSubSocket, Report> {
     info!(url = connect_url, "connecting to twitch");
     let config = tungstenite::protocol::WebSocketConfig::default();
-    let (socket, _) =
-        tokio_tungstenite::connect_async_with_config(connect_url, Some(config), false)
-            .await
-            .wrap_err("Can't connect")?;
+    let (socket, _) = tokio::time::timeout(
+        Duration::from_secs(30),
+        tokio_tungstenite::connect_async_with_config(connect_url, Some(config), false),
+    )
+    .await
+    .wrap_err("WebSocket connection timed out")?
+    .wrap_err("Can't connect")?;
 
     Ok(socket)
 }
@@ -746,6 +749,7 @@ impl EventSubManager {
                         sleep(settings.debug_cost_watcher_interval()).await;
                         continue;
                     };
+                    let request_guard = token_manager.background_request_guard().await;
                     let chatters: Vec<twitch_api::eventsub::EventSubSubscription> = match client
                         .get_eventsub_subscriptions(None, None, None, &current_token)
                         .map_ok(|sub| {
@@ -761,14 +765,20 @@ impl EventSubManager {
                     {
                         Ok(resp) => resp,
                         Err(err) => {
-                            error!(
-                                "failed to get eventsub subscriptions: err={}",
-                                err.to_string()
-                            );
+                            let failure = crate::network::Failure::helix(err);
+                            if failure.reportable {
+                                error!("failed to get eventsub subscriptions: {}", failure.message);
+                            } else {
+                                crate::logging::warn_repeated(
+                                    format!("eventsub:cost:{}", failure.category),
+                                    failure.message,
+                                );
+                            }
                             Default::default()
                         }
                     };
 
+                    drop(request_guard);
                     for sub in chatters.iter() {
                         debug!(
                             "EventSubSubscription: id={}, cost={}, condition={:?}, status={:?}",
@@ -807,9 +817,9 @@ impl EventSubManager {
                     Err(error) => {
                         let delay = retry_delay(retry_attempt, settings_reader());
                         retry_attempt = retry_attempt.saturating_add(1);
-                        warn!(
-                            operation = "eventsub_preflight",
-                            "{error}; retrying in {delay:?}"
+                        crate::logging::warn_repeated(
+                            "eventsub:preflight",
+                            format!("{error}; retrying in {delay:?}"),
                         );
                         sleep(delay).await;
                         continue;
@@ -822,7 +832,10 @@ impl EventSubManager {
                     Err(e) => {
                         let delay = retry_delay(retry_attempt, settings_reader());
                         retry_attempt = retry_attempt.saturating_add(1);
-                        error!("eventsub connect failed, retrying in {:?}: {:?}", delay, e);
+                        crate::logging::warn_repeated(
+                            "eventsub:connect",
+                            format!("eventsub connect failed, retrying in {delay:?}: {e:?}"),
+                        );
                         sleep(delay).await;
                         continue;
                     }
@@ -863,7 +876,10 @@ impl EventSubManager {
                                 }
                                 Err(err) => {
                                     let err_msg = format!("{:?}", err);
-                                    error!("eventsub reconnect handoff failed - {}", err_msg);
+                                    crate::logging::warn_repeated(
+                                        "eventsub:handoff",
+                                        format!("eventsub reconnect handoff failed: {err_msg}"),
+                                    );
                                     match self.action_for_report(&err) {
                                         SocketAction::AuthFailed(failure) => {
                                             let _ =
@@ -924,19 +940,29 @@ impl EventSubManager {
                     Ok(action) => action,
                     Err(e) => {
                         let err_msg = format!("{:?}", e);
-                        error!("process_message - {}", err_msg);
+                        if transient_transport_error(&e) {
+                            crate::logging::warn_repeated(
+                                "eventsub:transport",
+                                format!("process_message will reconnect: {err_msg}"),
+                            );
+                        } else {
+                            error!("process_message - {}", err_msg);
+                        }
                         self.action_for_report(&e)
                     }
                 }
             }
             SocketRead::Closed => {
-                warn!("eventsub stream closed, reconnecting");
+                crate::logging::warn_repeated(
+                    "eventsub:closed",
+                    "eventsub stream closed, reconnecting",
+                );
                 SocketAction::FreshReconnect
             }
             SocketRead::IdleTimeout => {
-                warn!(
-                    idle_timeout_secs = eventsub_settings.socket_idle_timeout_secs,
-                    "eventsub idle timeout (missed keepalives), reconnecting"
+                crate::logging::warn_repeated(
+                    "eventsub:idle",
+                    "eventsub idle timeout (missed keepalives), reconnecting",
                 );
                 SocketAction::FreshReconnect
             }
@@ -945,8 +971,14 @@ impl EventSubManager {
                 match err {
                     tungstenite::Error::Protocol(
                         tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
-                    ) => error!("eventsub connection reset, reconnecting"),
-                    _ => error!("eventsub receive error, reconnecting: {:?}", err),
+                    ) => crate::logging::warn_repeated(
+                        "eventsub:reset",
+                        "eventsub connection reset, reconnecting",
+                    ),
+                    _ => crate::logging::warn_repeated(
+                        "eventsub:receive",
+                        format!("eventsub receive error, reconnecting: {err:?}"),
+                    ),
                 }
                 self.action_for_failure(classify_error_text(&err_msg), err_msg)
             }
@@ -1218,12 +1250,19 @@ impl EventSubManager {
             if classify_error_text(&err_msg) == EventSubFailure::AuthFailed {
                 return Err(err);
             }
-            error_or_error_repeated(
-                eventsub_settings,
-                format!("eventsub_user_update_subscription:{err_msg}"),
-                format!("failed to create user update EventSub subscription: {err_msg}"),
-                eventsub_settings.subscription_error_throttle(),
-            );
+            if transient_transport_error(&err) {
+                crate::logging::warn_repeated(
+                    "eventsub:user_update",
+                    format!("failed to create user update EventSub subscription: {err_msg}"),
+                );
+            } else {
+                error_or_error_repeated(
+                    eventsub_settings,
+                    format!("eventsub_user_update_subscription:{err_msg}"),
+                    format!("failed to create user update EventSub subscription: {err_msg}"),
+                    eventsub_settings.subscription_error_throttle(),
+                );
+            }
         }
 
         Ok(())
@@ -1878,4 +1917,16 @@ mod subscription_tests {
             Some(&RecoveryError::SessionChanged)
         );
     }
+}
+
+fn transient_transport_error(error: &Report) -> bool {
+    subscription_error_status::<reqwest::Client>(error)
+        .is_some_and(|status| matches!(status, 401 | 408 | 429) || (500..600).contains(&status))
+        || error.chain().any(|source| {
+            source
+                .downcast_ref::<reqwest::Error>()
+                .is_some_and(|error| {
+                    error.is_timeout() || error.is_connect() || error.is_body() || error.is_decode()
+                })
+        })
 }

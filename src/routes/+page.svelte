@@ -8,6 +8,7 @@
 	import { hasUsableAuth } from '$lib/auth';
 	import { cn } from '$lib/utils.js';
 	import Logger from '$utils/log';
+	import NetworkStatus from '$lib/components/network-status.svelte';
 
 	let authState = new SyncedState<AuthState>('auth_state', {
 		phase: 'unauthorized',
@@ -20,6 +21,7 @@
 	);
 
 	let showPostAuthSpinner = $state(false);
+	let loginError = $state('');
 	let postAuthTimer: ReturnType<typeof setTimeout> | undefined;
 	let usableAuth = $derived(hasUsableAuth(authState.obj));
 
@@ -42,15 +44,23 @@
 	});
 
 	async function login() {
+		loginError = '';
 		Logger.debug('login hook');
 		authState.obj.phase = 'waitingForDeviceCode';
 		await authState.sync();
 
-		let result = await commands.login(false);
-		if (result.status == 'ok') {
-			goto(resolve('/app'));
-		} else {
-			Logger.error('failure', result.error);
+		try {
+			const result = await commands.login(false);
+			if (result.status === 'ok') goto(resolve('/app'));
+			else {
+				loginError = result.error;
+				authState.obj.phase = 'unauthorized';
+				await authState.sync();
+			}
+		} catch {
+			loginError = 'Could not start sign-in. Try again.';
+			authState.obj.phase = 'unauthorized';
+			await authState.sync();
 		}
 	}
 </script>
@@ -84,6 +94,10 @@
 			{/if}
 		</span>
 	</button>
+	{#if loginError}<p class="text-destructive mt-3 max-w-sm px-4 text-center text-sm" role="alert">
+			{loginError}
+		</p>{/if}
+	<div class="flex max-w-full items-center justify-center"><NetworkStatus /></div>
 	{#if authState.obj.phase === 'waitingForAuth'}
 		<span class="text-muted-foreground flex p-2 text-center text-xs hover:cursor-text">
 			or goto <br />

@@ -1,11 +1,14 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { PUBLIC_UPDATE_INSTALL_MODE } from '$env/static/public';
 	import '../app.css';
 	import { checkForAppUpdates, type UpdateAction } from '$utils/updater';
 	import { Toaster } from '$lib/components/ui/sonner/index.ts';
 	import { applyThemePreference } from '$lib/settings';
 	import ErrorHost from '$lib/components/error-host.svelte';
+	import { networkHealth } from '$lib/network/health';
+	import { withBackgroundRequest } from '$lib/network/request';
+	import { errorDetails } from '$utils/inbound';
 	import { appSettings, getNormalizedAppSettings } from '$lib/stores/settings.svelte';
 
 	let { children } = $props();
@@ -26,10 +29,31 @@
 		return applyThemePreference(normalizedAppSettings.appearance.theme);
 	});
 
-	onMount(async () => {
-		await checkForAppUpdates('https://github.com/synthlabs/pepo/releases/latest', {
-			updateAction
-		});
+	onMount(() => {
+		const abort = new AbortController();
+		void (async () => {
+			await appSettings.initialized;
+			await tick();
+			if (abort.signal.aborted) return;
+			await checkForAppUpdates('https://github.com/synthlabs/pepo/releases/latest', {
+				updateAction,
+				withRequest: withBackgroundRequest,
+				signal: abort.signal,
+				requestTimeoutMs: getNormalizedAppSettings().network.request_timeout_secs * 1000,
+				onStatus: ({ error, retryInMs }) =>
+					networkHealth.setExternal(
+						'external:updates',
+						'Update checks',
+						error === null ? null : errorDetails(error),
+						false,
+						{
+							retryAt: retryInMs === undefined ? undefined : Date.now() + retryInMs,
+							newAttempt: true
+						}
+					)
+			});
+		})();
+		return () => abort.abort();
 	});
 </script>
 

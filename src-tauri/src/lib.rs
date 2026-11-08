@@ -17,7 +17,7 @@ use tauri_svelte_synced_store::{StateSyncer, StateSyncerConfig};
 use token::TokenManager;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
-use twitch_api::{client::ClientDefault, HelixClient};
+use twitch_api::HelixClient;
 
 use crate::badgemanager::BadgeManager;
 use crate::emote::cache::EmoteCacheTrait;
@@ -40,6 +40,11 @@ mod eventsub;
 mod internal;
 mod logging;
 mod message;
+mod network;
+use network::{
+    begin_background_request, end_background_request, get_network_status, retry_network_operation,
+    NetworkRuntime,
+};
 #[cfg(target_os = "linux")]
 mod platform;
 mod token;
@@ -250,6 +255,10 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             emit_state,
             update_state,
             search_emotes,
+            get_network_status,
+            begin_background_request,
+            end_background_request,
+            retry_network_operation,
         ])
         .events(tauri_specta::collect_events![])
 }
@@ -485,6 +494,7 @@ async fn fetch_live_streams_for_logins<C: twitch_api::HttpClient>(
         .collect())
 }
 
+#[cfg(test)]
 const CHANNEL_CACHE_POLL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[derive(Debug)]
@@ -528,6 +538,7 @@ fn channel_cache_request_category(error: &(dyn std::error::Error + 'static)) -> 
 
 struct ChannelCacheTransport<'a, C> {
     inner: &'a C,
+    timeout: std::time::Duration,
 }
 
 impl<C: twitch_api::HttpClient> twitch_api::HttpClient for ChannelCacheTransport<'_, C> {
@@ -540,10 +551,16 @@ impl<C: twitch_api::HttpClient> twitch_api::HttpClient for ChannelCacheTransport
     {
         let response = self.inner.req(request);
         Box::pin(async move {
-            let response = response.await.map_err(|error| ChannelCacheRequestError {
-                category: channel_cache_request_category(&error),
-                status: None,
-            })?;
+            let response = tokio::time::timeout(self.timeout, response)
+                .await
+                .map_err(|_| ChannelCacheRequestError {
+                    category: "timeout",
+                    status: None,
+                })?
+                .map_err(|error| ChannelCacheRequestError {
+                    category: channel_cache_request_category(&error),
+                    status: None,
+                })?;
             // Capture HTTP status before Helix substitutes the JSON error status.
             if !response.status().is_success() {
                 return Err(ChannelCacheRequestError {
@@ -641,17 +658,23 @@ async fn poll_channel_cache(app_handle: &AppHandle) -> Result<(), ChannelCachePo
             failure: ChannelCacheFetchError::session_unavailable(),
             identity: None,
         })?;
-    poll_channel_cache_with_token(app_handle, snapshot.token, &polling_engine)
-        .await
-        .map_err(|failure| ChannelCachePollError {
-            failure,
-            identity: Some(snapshot.identity),
-        })
+    poll_channel_cache_with_token(
+        app_handle,
+        snapshot.token,
+        &snapshot.identity,
+        &polling_engine,
+    )
+    .await
+    .map_err(|failure| ChannelCachePollError {
+        failure,
+        identity: Some(snapshot.identity),
+    })
 }
 
 async fn poll_channel_cache_with_token(
     app_handle: &AppHandle,
     token: twitch_oauth2::UserToken,
+    identity: &token::TokenIdentity,
     polling_engine: &chat::ChatEngine,
 ) -> Result<(), ChannelCacheFetchError> {
     let client = app_handle.state::<HelixClient<'static, reqwest::Client>>();
@@ -682,14 +705,26 @@ async fn poll_channel_cache_with_token(
         .collect();
 
     debug!("polling channel cache");
-    complete_channel_cache_poll(
-        fetch_channel_cache(
-            client,
-            &token,
-            channel_cache_settings,
-            &previous_cache,
-            joined_candidates,
+    let fetched = fetch_channel_cache(
+        client,
+        &token,
+        channel_cache_settings,
+        &previous_cache,
+        joined_candidates,
+        std::time::Duration::from_secs(
+            app_settings(state_syncer.inner())
+                .network
+                .request_timeout_secs,
         ),
+    )
+    .await?;
+    let token_manager = app_handle.state::<TokenManager>();
+    let _session = token_manager
+        .guard_session(Some(identity))
+        .await
+        .ok_or_else(ChannelCacheFetchError::session_unavailable)?;
+    complete_channel_cache_poll(
+        async { Ok(fetched) },
         |ChannelCachePollUpdate { channels, cache }| {
             let mut state = polling_engine.state.lock().unwrap();
             if !state.active {
@@ -724,6 +759,15 @@ async fn poll_channel_cache_with_token(
                 cache.channels.len(),
                 cache.channels.values().filter(|c| c.is_live).count()
             );
+            if let Ok(store) = app_handle.store("channel-directory.json") {
+                store.set(token.user_id.as_str(), serde_json::json!(cache));
+                if let Err(error) = store.save() {
+                    warn!("could not save channel directory: {error}");
+                }
+            }
+            app_handle
+                .state::<NetworkRuntime>()
+                .recovered(app_handle, "channels.refresh");
             state_syncer.update::<types::ChannelCache>("channel_cache", cache, true);
         },
     )
@@ -734,13 +778,7 @@ async fn complete_channel_cache_poll(
     fetch: impl std::future::Future<Output = Result<ChannelCachePollUpdate, ChannelCacheFetchError>>,
     publish: impl FnOnce(ChannelCachePollUpdate),
 ) -> Result<(), ChannelCacheFetchError> {
-    let update = tokio::time::timeout(CHANNEL_CACHE_POLL_TIMEOUT, fetch)
-        .await
-        .map_err(|_| ChannelCacheFetchError {
-            operation: "poll",
-            category: "timeout",
-            status: None,
-        })??;
+    let update = fetch.await?;
     publish(update);
     Ok(())
 }
@@ -751,9 +789,11 @@ async fn fetch_channel_cache<C: twitch_api::HttpClient>(
     settings: types::ChannelCacheSettings,
     previous_cache: &types::ChannelCache,
     joined_candidates: Vec<ChannelCacheCandidate>,
+    timeout: std::time::Duration,
 ) -> Result<ChannelCachePollUpdate, ChannelCacheFetchError> {
     let client = HelixClient::with_client(ChannelCacheTransport {
         inner: client.get_client(),
+        timeout,
     });
     let channels: Vec<twitch_api::helix::channels::FollowedBroadcaster> = client
         .get_followed_channels(token.user_id.to_string(), token)
@@ -835,17 +875,39 @@ async fn handle_channel_cache_poll_error(
     }
 
     let error = failure.failure;
-    let channel_cache_settings =
-        app_settings(app_handle.state::<StateSyncer>().inner()).channel_cache;
-    let message = format!("{context} channel cache poll failed: {error}");
-    if channel_cache_settings.error_log_throttle_enabled {
-        logging::error_repeated(
-            format!("channel_cache_poll:{context}:{error}"),
-            message,
-            channel_cache_settings.error_log_throttle(),
-        );
-    } else {
-        error!("{message}");
+    let retryable = error.status.map_or_else(
+        || {
+            matches!(
+                error.category,
+                "timeout" | "connect" | "response_body" | "request"
+            )
+        },
+        |status| status == 408 || status == 429 || (500..600).contains(&status),
+    );
+    let failure = network::Failure::new(
+        error.category,
+        format!("Channel list refresh failed ({}).", error.category),
+        retryable,
+    );
+    app_handle.state::<NetworkRuntime>().failed(
+        app_handle,
+        "channels.refresh",
+        "Channel list",
+        &failure,
+        !app_handle
+            .state::<StateSyncer>()
+            .snapshot::<types::ChannelCache>("channel_cache")
+            .channels
+            .is_empty(),
+        false,
+        Some(
+            app_settings(app_handle.state::<StateSyncer>().inner())
+                .channel_cache
+                .poll_interval(),
+        ),
+    );
+    if !retryable {
+        error!("{context} channel cache poll failed: {error}");
     }
     false
 }
@@ -874,10 +936,23 @@ async fn channel_cache_poll_should_stop<F: std::future::Future<Output = ()>>(
     false
 }
 
+#[cfg(test)]
 async fn run_channel_cache_poll_loop<P, E>(
+    settings: impl Fn() -> types::ChannelCacheSettings,
+    poll: impl FnMut() -> P,
+    handle_error: impl FnMut(&'static str, ChannelCachePollError) -> E,
+) where
+    P: std::future::Future<Output = Result<(), ChannelCachePollError>>,
+    E: std::future::Future<Output = bool>,
+{
+    run_channel_cache_poll_loop_with_wake(settings, poll, handle_error, None).await;
+}
+
+async fn run_channel_cache_poll_loop_with_wake<P, E>(
     settings: impl Fn() -> types::ChannelCacheSettings,
     mut poll: impl FnMut() -> P,
     mut handle_error: impl FnMut(&'static str, ChannelCachePollError) -> E,
+    wake: Option<Arc<tokio::sync::Notify>>,
 ) where
     P: std::future::Future<Output = Result<(), ChannelCachePollError>>,
     E: std::future::Future<Output = bool>,
@@ -888,8 +963,13 @@ async fn run_channel_cache_poll_loop<P, E>(
         }
     }
     loop {
-        tokio::time::sleep(settings().poll_interval()).await;
-        if !settings().recurring_poll_enabled {
+        let manual = if let Some(wake) = &wake {
+            tokio::select! { _ = tokio::time::sleep(settings().poll_interval()) => false, _ = wake.notified() => true }
+        } else {
+            tokio::time::sleep(settings().poll_interval()).await;
+            false
+        };
+        if !manual && !settings().recurring_poll_enabled {
             continue;
         }
         if let Err(error) = poll().await {
@@ -918,7 +998,6 @@ async fn login(
         .ensure_loaded(auth_state_snapshot.token.clone())
         .await?;
 
-    let twitch_token: twitch_oauth2::UserToken;
     let user_token: types::UserToken;
     if clear_stale_authorized_auth_if_needed(&app_handle, &token_manager, &auth_state_snapshot)
         .await
@@ -928,12 +1007,8 @@ async fn login(
         }
     }
 
-    if token_manager.is_active_token_valid().await {
-        debug!("token is already valid");
-        twitch_token = token_manager
-            .active_twitch_token()
-            .await
-            .ok_or_else(|| "no active token".to_owned())?;
+    if token_manager.active_snapshot().await.is_some() {
+        debug!("using saved token while validation runs in the background");
         user_token = token_manager
             .active_public_token()
             .await
@@ -941,7 +1016,7 @@ async fn login(
     } else if quick {
         return Err("no valid token".to_string());
     } else {
-        let device_code = token_manager.start_device_code_flow().await;
+        let device_code = token_manager.start_device_code_flow().await?;
 
         {
             let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
@@ -966,19 +1041,40 @@ async fn login(
             .open_url(device_code.verification_uri.clone(), None::<&str>)
             .unwrap();
 
-        twitch_token = token_manager.finish_device_code_flow().await;
+        token_manager.finish_device_code_flow().await?;
         user_token = token_manager
             .active_public_token()
             .await
             .ok_or_else(|| "no active token".to_owned())?;
     }
 
+    let directory_store = app_handle.store("channel-directory.json").ok();
+    let cached_directory = directory_store
+        .and_then(|store| store.get(&user_token.user_id))
+        .and_then(|value| serde_json::from_value::<ChannelCache>(value).ok())
+        .unwrap_or_else(|| {
+            if auth_state_snapshot
+                .token
+                .as_ref()
+                .is_some_and(|token| token.user_id == user_token.user_id)
+            {
+                state_syncer.snapshot::<ChannelCache>("channel_cache")
+            } else {
+                ChannelCache::default()
+            }
+        });
+    state_syncer.update::<ChannelCache>("channel_cache", cached_directory.clone(), true);
+
     // Create empty managers - no network calls, just register state so
     // other Tauri commands can access them immediately.
     let eventsub_manager = EventSubManager::new();
     let badge_manager = BadgeManager::empty(token_manager.clone(), app_handle.clone());
-    let emote_manager =
-        EmoteManager::empty(client.clone(), token_manager.clone(), app_handle.clone());
+    let emote_manager = EmoteManager::empty(
+        client.clone(),
+        token_manager.clone(),
+        app_handle.clone(),
+        user_token.user_id.clone(),
+    );
 
     // Register or update shared state (safe for re-login)
     if !app_handle.manage::<SharedEventSubManager>(Mutex::new(eventsub_manager.clone())) {
@@ -1007,53 +1103,72 @@ async fn login(
 
     // --- Background tasks ---
 
-    // Profile image fetch
     {
-        let client = client.clone();
-        let twitch_token = twitch_token.clone();
-        let token_manager = token_manager.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Ok(Some(user_info)) = client
-                .get_user_from_id(&twitch_token.user_id, &twitch_token)
-                .await
-            {
-                match token_manager
-                    .update_profile_image(
-                        twitch_token.user_id.as_str(),
-                        user_info.profile_image_url.unwrap_or_default(),
-                    )
-                    .await
-                {
-                    Ok(_) => {}
-                    Err(err) => error!("failed to persist profile image: {}", err),
-                }
-            }
-        });
+        let mut state = chat_engine.state.lock().unwrap();
+        for (login, channel) in &cached_directory.channels {
+            state.directory.insert(
+                login.clone(),
+                types::ChatRoomInfo {
+                    broadcaster_id: channel.broadcaster_id.clone(),
+                    broadcaster_login: login.clone(),
+                    broadcaster_name: channel.display_name.clone(),
+                },
+            );
+        }
     }
-
-    // Global badges
+    app_handle
+        .state::<NetworkRuntime>()
+        .start(app_handle.clone());
     {
-        let badge_manager = badge_manager.clone();
-        let client = client.clone();
-        let provider_settings = app_settings(state_syncer.inner()).providers;
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = badge_manager.load_global(client, &provider_settings).await {
-                error!("failed to load global badges: {}", e);
-            }
-        });
+        let app = app_handle.clone();
+        app_handle
+            .state::<NetworkRuntime>()
+            .enqueue(network::MetadataJob {
+                key: "twitch:profile".into(),
+                provider: "twitch".into(),
+                feature: "Profile picture".into(),
+                cached: !user_token.profile_image_url.is_empty(),
+                priority: network::metadata_priority(&chat_engine, None),
+                run: Arc::new(move || {
+                    let app = app.clone();
+                    Box::pin(async move {
+                        let manager = app.state::<TokenManager>();
+                        let token = manager.active_twitch_token().await.ok_or_else(|| {
+                            network::Failure::new(
+                                "authentication",
+                                "Waiting for Twitch authentication.",
+                                true,
+                            )
+                        })?;
+                        let client = app.state::<HelixClient<'static, reqwest::Client>>();
+                        if let Some(user) = client
+                            .get_user_from_id(&token.user_id, &token)
+                            .await
+                            .map_err(network::Failure::helix)?
+                        {
+                            manager
+                                .update_profile_image(
+                                    token.user_id.as_str(),
+                                    user.profile_image_url.unwrap_or_default(),
+                                )
+                                .await
+                                .map_err(|_| {
+                                    network::Failure::new(
+                                        "persistence",
+                                        "Could not save the profile picture.",
+                                        false,
+                                    )
+                                })?;
+                        }
+                        Ok(())
+                    })
+                }),
+            });
     }
-
-    // Global + user emotes
-    {
-        let emote_manager = emote_manager.clone();
-        let settings = app_settings(state_syncer.inner());
-        let emote_settings = settings.emotes;
-        let provider_settings = settings.providers;
-        tauri::async_runtime::spawn(async move {
-            emote_manager.load_global(&emote_settings, &provider_settings);
-            emote_manager.load_user_emotes();
-        });
-    }
+    badge_manager
+        .schedule(&app_handle, &chat_engine, None)
+        .await;
+    emote_manager.schedule(&app_handle, &chat_engine, None);
 
     // EventSub connection + message processing thread
     {
@@ -1137,15 +1252,63 @@ async fn login(
         });
     }
 
-    chat::runtime::start(app_handle.clone(), chat_engine);
+    chat::runtime::start(app_handle.clone(), chat_engine.clone());
+    {
+        let app = app_handle.clone();
+        let engine = Arc::downgrade(&chat_engine);
+        let validation = tauri::async_runtime::spawn(async move {
+            let mut attempt = 0;
+            while engine.upgrade().is_some_and(|engine| engine.active()) {
+                let manager = app.state::<TokenManager>();
+                let network = app.state::<NetworkRuntime>();
+                match manager.validate_startup().await {
+                    Ok(()) => {
+                        network.recovered(&app, "auth.validate");
+                        break;
+                    }
+                    Err(token::RecoveryError::ReauthenticationRequired(failure)) => {
+                        clear_auth_if_current_async(&app, true, Some(&failure.identity)).await;
+                        break;
+                    }
+                    Err(token::RecoveryError::SessionChanged) => break,
+                    Err(_) => {
+                        attempt += 1;
+                        let delay = app_settings(app.state::<StateSyncer>().inner())
+                            .network
+                            .retry_delay(attempt);
+                        network.failed(
+                            &app,
+                            "auth.validate",
+                            "Twitch authentication",
+                            &network::Failure::new(
+                                "connection",
+                                "Waiting to confirm your saved Twitch session.",
+                                true,
+                            ),
+                            true,
+                            true,
+                            Some(delay),
+                        );
+                        tokio::time::sleep(delay).await;
+                    }
+                }
+            }
+        });
+        app_handle
+            .state::<SharedEventSubHandles>()
+            .lock()
+            .await
+            .push(validation);
+    }
 
     // Channel cache: initial poll + recurring loop
     let poll_app = app_handle.clone();
     let poll_handle = tauri::async_runtime::spawn(async move {
-        run_channel_cache_poll_loop(
+        run_channel_cache_poll_loop_with_wake(
             || app_settings(poll_app.state::<StateSyncer>().inner()).channel_cache,
             || poll_channel_cache(&poll_app),
             |context, error| handle_channel_cache_poll_error(&poll_app, context, error),
+            Some(poll_app.state::<NetworkRuntime>().channels_retry.clone()),
         )
         .await;
     });
@@ -1178,6 +1341,7 @@ async fn clear_auth_if_current_async(
         return false;
     };
     app_handle.state::<ChatRuntime>().stop(app_handle);
+    app_handle.state::<NetworkRuntime>().reset(app_handle);
     let state_syncer = app_handle.state::<StateSyncer>();
 
     {
@@ -1399,7 +1563,6 @@ pub fn run() {
     let internal_build = internal_build_info(&inbound_build);
 
     let builder = tauri::Builder::default()
-        .plugin(synth_translate::plugin::init(Default::default()))
         .plugin(
             tauri_plugin_log::Builder::new()
                 .max_file_size(9_000_000) // 9 MB per log file
@@ -1489,9 +1652,28 @@ pub fn run() {
             let state_syncer = StateSyncer::new(sync_cfg, app.handle().clone());
 
             let _auth_state: AuthState = state_syncer.load("auth_state");
+            let saved_channels: ChannelCache = state_syncer.load("channel_cache");
             let mut internal_state: InternalState = state_syncer.load("internal_state");
             let settings: AppSettings = state_syncer.load(APP_SETTINGS_KEY);
             let settings = settings.normalized();
+            state_syncer.set(APP_SETTINGS_KEY, settings.clone());
+            app.manage(state_syncer.clone());
+            app.manage(NetworkRuntime::default());
+            let catalog_app = app.handle().clone();
+            let gate: synth_translate::CatalogRequestGate = Arc::new(move || {
+                let app = catalog_app.clone();
+                Box::pin(async move {
+                    let network = app.state::<NetworkRuntime>().inner().clone();
+                    network.request_guard(&app, "translation-catalog").await
+                })
+            });
+            app.handle()
+                .plugin(synth_translate::plugin::init_with_catalog_network(
+                    Default::default(),
+                    std::time::Duration::from_secs(settings.network.connect_timeout_secs),
+                    std::time::Duration::from_secs(settings.network.request_timeout_secs),
+                    Some(gate),
+                ))?;
             internal_state.version = app.package_info().version.to_string();
             internal_state.name = app.package_info().name.to_string();
 
@@ -1570,6 +1752,7 @@ pub fn run() {
                 let owner = window.label().to_owned();
                 window.on_window_event(move |event| {
                     if matches!(event, WindowEvent::Destroyed) {
+                        focus_app.state::<NetworkRuntime>().release_owner(&owner);
                         if let Ok(engine) = focus_app.state::<ChatRuntime>().current() {
                             engine.close_owner(&owner);
                         }
@@ -1586,20 +1769,25 @@ pub fn run() {
                 });
             }
 
-            let client: HelixClient<'static, reqwest::Client> =
-                twitch_api::HelixClient::with_client(
-                    ClientDefault::default_client_with_name(Some(
-                        "pepo".parse().expect("invalid client name"),
+            let client: HelixClient<'static, reqwest::Client> = HelixClient::with_client(
+                reqwest::Client::builder()
+                    .user_agent(concat!("pepo/", env!("CARGO_PKG_VERSION")))
+                    .redirect(reqwest::redirect::Policy::none())
+                    .connect_timeout(std::time::Duration::from_secs(
+                        settings.network.connect_timeout_secs,
                     ))
-                    .unwrap(),
-                );
+                    .timeout(std::time::Duration::from_secs(
+                        settings.network.request_timeout_secs,
+                    ))
+                    .build()
+                    .expect("valid Twitch HTTP client"),
+            );
 
             info!("made client");
 
             state_syncer.set("internal_state", internal_state);
-            state_syncer.set("channel_cache", ChannelCache::default());
+            state_syncer.set("channel_cache", saved_channels);
             state_syncer.set(APP_SETTINGS_KEY, settings);
-            app.manage::<StateSyncer>(state_syncer);
             app.manage::<SharedPollHandle>(Mutex::new(None));
             app.manage(ChatRuntime::default());
             {

@@ -1,4 +1,10 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
+	import { mergeProps } from 'bits-ui';
+	import { page } from '$app/state';
+	import * as Tooltip from '$lib/components/ui/tooltip';
+	import NetworkTooltip from './network-tooltip.svelte';
+	import { NETWORK_STATUS_CONTEXT, type NetworkStatusController } from '$lib/network/status.svelte';
 	import * as Avatar from '$lib/components/ui/avatar/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -43,6 +49,11 @@
 	}: Props = $props();
 	const sidebar = useSidebar();
 	let reportOpen = $state(false);
+	let accountMenuOpen = $state(false);
+	const network = getContext<NetworkStatusController | undefined>(NETWORK_STATUS_CONTEXT);
+	let showNetworkStatus = $derived(
+		Boolean(network?.issues.length) && page.url.pathname !== resolve('/app/settings')
+	);
 	let activeAccount = $derived(
 		accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? null
 	);
@@ -80,144 +91,171 @@
 	class="px-2 py-1 transition-[padding] duration-200 ease-linear group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0"
 >
 	<Sidebar.MenuItem>
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger>
-				{#snippet child({ props })}
-					<Sidebar.MenuButton
-						size="sm"
-						class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground mb-1 group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:p-2"
-						{...props}
+		<Tooltip.Provider delayDuration={200}>
+			<Tooltip.Root disabled={!showNetworkStatus || accountMenuOpen}>
+				<DropdownMenu.Root bind:open={accountMenuOpen}>
+					<Tooltip.Trigger>
+						{#snippet child({ props: tooltipProps })}
+							<DropdownMenu.Trigger>
+								{#snippet child({ props })}
+									<Sidebar.MenuButton
+										size="sm"
+										class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground mb-1 group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:p-2"
+										{...mergeProps(tooltipProps, props)}
+										aria-label={`Account menu for ${activeAccount?.login ?? 'Account'}${showNetworkStatus ? `. ${network?.summary.text}` : ''}`}
+										data-account-menu-trigger
+									>
+										<div class="relative shrink-0">
+											<Avatar.Root class="ring-primary/55 size-8 ring-2">
+												<Avatar.Image
+													src={activeAccount?.avatar ?? ''}
+													alt={activeAccount?.login ?? 'Account'}
+												/>
+												<Avatar.Fallback>{activeAccount?.login ?? '?'}</Avatar.Fallback>
+											</Avatar.Root>
+											{@render providerBadge('', 16, 'bg-sidebar ring-2 ring-sidebar')}
+											{#if showNetworkStatus}
+												<span
+													class={[
+														'ring-sidebar pointer-events-none absolute -top-0.5 -right-0.5 size-2 rounded-full ring-2',
+														network?.summary.urgent
+															? 'bg-destructive'
+															: 'bg-amber-600 dark:bg-amber-400'
+													]}
+													aria-hidden="true"
+													data-network-avatar-status
+													data-severity={network?.summary.urgent ? 'attention' : 'refreshing'}
+												></span>
+											{/if}
+										</div>
+										<div
+											class="min-w-0 flex-1 pl-2 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden"
+										>
+											<span class="truncate font-semibold">{activeAccount?.login ?? 'Account'}</span
+											>
+										</div>
+										<ChevronsUpDown class="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
+									</Sidebar.MenuButton>
+								{/snippet}
+							</DropdownMenu.Trigger>
+						{/snippet}
+					</Tooltip.Trigger>
+					<DropdownMenu.Content
+						class="border-border/80 bg-popover w-68 rounded-lg p-1.5 shadow-xl"
+						side={sidebar.isMobile ? 'bottom' : 'right'}
+						align="end"
+						sideOffset={10}
 					>
-						<div class="relative shrink-0">
-							<Avatar.Root class="ring-primary/55 size-8 ring-2">
-								<Avatar.Image
-									src={activeAccount?.avatar ?? ''}
-									alt={activeAccount?.login ?? 'Account'}
-								/>
-								<Avatar.Fallback>{activeAccount?.login ?? '?'}</Avatar.Fallback>
-							</Avatar.Root>
-							{@render providerBadge('', 16, 'bg-sidebar ring-2 ring-sidebar')}
-						</div>
-						<div
-							class="min-w-0 flex-1 pl-2 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden"
-						>
-							<span class="truncate font-semibold">{activeAccount?.login ?? 'Account'}</span>
-						</div>
-						<ChevronsUpDown class="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
-					</Sidebar.MenuButton>
-				{/snippet}
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content
-				class="border-border/80 bg-popover w-68 rounded-lg p-1.5 shadow-xl"
-				side={sidebar.isMobile ? 'bottom' : 'right'}
-				align="end"
-				sideOffset={10}
-			>
-				<DropdownMenu.Label class="p-0 font-normal">
-					<div class="flex items-center gap-3 px-2 py-2.5 text-left">
-						<div class="relative shrink-0">
-							<Avatar.Root class="ring-primary/70 size-10 ring-2">
-								<Avatar.Image
-									src={activeAccount?.avatar ?? ''}
-									alt={activeAccount?.login ?? 'Account'}
-								/>
-								<Avatar.Fallback>{activeAccount?.login ?? '?'}</Avatar.Fallback>
-							</Avatar.Root>
-							{@render providerBadge('', 16, 'bg-background ring-2 ring-popover')}
-						</div>
-						<div class="min-w-0 flex-1">
-							<div class="flex min-w-0 items-center gap-1.5">
-								<span class="truncate text-sm font-semibold"
-									>{activeAccount?.login ?? 'Account'}</span
-								>
-							</div>
-							<div class="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
-								{#if isSignedIn}
-									<CircleCheck class={['size-3.5', authStatus.class]} />
-								{:else}
-									<TriangleAlert class={['size-3.5', authStatus.class]} />
-								{/if}
-								<span>{authStatus.label}</span>
-							</div>
-						</div>
-					</div>
-				</DropdownMenu.Label>
-				<DropdownMenu.Separator class="my-2" />
-				<DropdownMenu.Group>
-					{#if switchableAccounts.length > 0}
-						<DropdownMenu.GroupHeading
-							class="text-muted-foreground px-2 pt-0 pb-1.5 text-[10px] font-semibold tracking-wider uppercase"
-						>
-							Switch to
-						</DropdownMenu.GroupHeading>
-						{#each switchableAccounts as account (account.id)}
-							<DropdownMenu.Item
-								class="my-0.5 gap-3 rounded-md px-2 py-2"
-								onclick={() => onswitchaccount(account.id)}
-							>
+						<DropdownMenu.Label class="p-0 font-normal">
+							<div class="flex items-center gap-3 px-2 py-2.5 text-left">
 								<div class="relative shrink-0">
-									<Avatar.Root class="size-8">
-										<Avatar.Image src={account.avatar} alt={account.login} />
-										<Avatar.Fallback>{account.login}</Avatar.Fallback>
+									<Avatar.Root class="ring-primary/70 size-10 ring-2">
+										<Avatar.Image
+											src={activeAccount?.avatar ?? ''}
+											alt={activeAccount?.login ?? 'Account'}
+										/>
+										<Avatar.Fallback>{activeAccount?.login ?? '?'}</Avatar.Fallback>
 									</Avatar.Root>
-									{@render providerBadge('', 13, 'bg-background ring-2 ring-popover')}
+									{@render providerBadge('', 16, 'bg-background ring-2 ring-popover')}
 								</div>
 								<div class="min-w-0 flex-1">
-									<div class="truncate text-sm font-semibold">{account.login}</div>
+									<div class="flex min-w-0 items-center gap-1.5">
+										<span class="truncate text-sm font-semibold"
+											>{activeAccount?.login ?? 'Account'}</span
+										>
+									</div>
+									<div class="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
+										{#if isSignedIn}
+											<CircleCheck class={['size-3.5', authStatus.class]} />
+										{:else}
+											<TriangleAlert class={['size-3.5', authStatus.class]} />
+										{/if}
+										<span>{authStatus.label}</span>
+									</div>
 								</div>
+							</div>
+						</DropdownMenu.Label>
+						<DropdownMenu.Separator class="my-2" />
+						<DropdownMenu.Group>
+							{#if switchableAccounts.length > 0}
+								<DropdownMenu.GroupHeading
+									class="text-muted-foreground px-2 pt-0 pb-1.5 text-[10px] font-semibold tracking-wider uppercase"
+								>
+									Switch to
+								</DropdownMenu.GroupHeading>
+								{#each switchableAccounts as account (account.id)}
+									<DropdownMenu.Item
+										class="my-0.5 gap-3 rounded-md px-2 py-2"
+										onclick={() => onswitchaccount(account.id)}
+									>
+										<div class="relative shrink-0">
+											<Avatar.Root class="size-8">
+												<Avatar.Image src={account.avatar} alt={account.login} />
+												<Avatar.Fallback>{account.login}</Avatar.Fallback>
+											</Avatar.Root>
+											{@render providerBadge('', 13, 'bg-background ring-2 ring-popover')}
+										</div>
+										<div class="min-w-0 flex-1">
+											<div class="truncate text-sm font-semibold">{account.login}</div>
+										</div>
+									</DropdownMenu.Item>
+								{/each}
+							{/if}
+							<DropdownMenu.Item
+								disabled
+								aria-label="Add an account coming soon"
+								class="text-muted-foreground my-0.5 gap-3 rounded-md px-2 py-1.5 data-disabled:opacity-75"
+								onclick={onaddaccount}
+							>
+								<span class="border-border/80 grid size-7 place-items-center rounded-full border">
+									<Plus class="size-4" />
+								</span>
+								<span>Add an account</span>
 							</DropdownMenu.Item>
-						{/each}
-					{/if}
-					<DropdownMenu.Item
-						disabled
-						aria-label="Add an account coming soon"
-						class="text-muted-foreground my-0.5 gap-3 rounded-md px-2 py-1.5 data-disabled:opacity-75"
-						onclick={onaddaccount}
-					>
-						<span class="border-border/80 grid size-7 place-items-center rounded-full border">
-							<Plus class="size-4" />
-						</span>
-						<span>Add an account</span>
-					</DropdownMenu.Item>
-				</DropdownMenu.Group>
-				<DropdownMenu.Separator class="my-1" />
-				<DropdownMenu.Group>
-					<DropdownMenu.Item
-						class="rounded-md px-2 py-2"
-						onclick={() => goto(resolve('/app/settings'))}
-					>
-						<Settings />
-						Settings
-					</DropdownMenu.Item>
-					<DropdownMenu.Item disabled class="rounded-md px-2 py-2 data-disabled:opacity-65">
-						<Bell />
-						Notifications
-					</DropdownMenu.Item>
-					<DropdownMenu.Item class="rounded-md px-2 py-2" onclick={() => (reportOpen = true)}>
-						<Bug />
-						Report a bug
-					</DropdownMenu.Item>
-				</DropdownMenu.Group>
-				<DropdownMenu.Separator class="my-1" />
-				{#if !isSignedIn}
-					<DropdownMenu.Item
-						class="text-destructive focus:text-destructive data-highlighted:text-destructive rounded-md px-2 py-2"
-						onclick={onlogout}
-					>
-						<TriangleAlert />
-						Reauthenticate
-					</DropdownMenu.Item>
-					<DropdownMenu.Separator class="my-1" />
-				{/if}
-				<DropdownMenu.Item
-					class="rounded-md px-2 py-2 text-red-600 focus:text-red-600 data-highlighted:text-red-600 dark:text-red-400 dark:focus:text-red-400 dark:data-highlighted:text-red-400"
-					onclick={onlogout}
-				>
-					<LogOut />
-					Log out
-				</DropdownMenu.Item>
-			</DropdownMenu.Content>
-		</DropdownMenu.Root>
+						</DropdownMenu.Group>
+						<DropdownMenu.Separator class="my-1" />
+						<DropdownMenu.Group>
+							<DropdownMenu.Item
+								class="rounded-md px-2 py-2"
+								onclick={() => goto(resolve('/app/settings'))}
+							>
+								<Settings />
+								Settings
+							</DropdownMenu.Item>
+							<DropdownMenu.Item disabled class="rounded-md px-2 py-2 data-disabled:opacity-65">
+								<Bell />
+								Notifications
+							</DropdownMenu.Item>
+							<DropdownMenu.Item class="rounded-md px-2 py-2" onclick={() => (reportOpen = true)}>
+								<Bug />
+								Report a bug
+							</DropdownMenu.Item>
+						</DropdownMenu.Group>
+						<DropdownMenu.Separator class="my-1" />
+						{#if !isSignedIn}
+							<DropdownMenu.Item
+								class="text-destructive focus:text-destructive data-highlighted:text-destructive rounded-md px-2 py-2"
+								onclick={onlogout}
+							>
+								<TriangleAlert />
+								Reauthenticate
+							</DropdownMenu.Item>
+							<DropdownMenu.Separator class="my-1" />
+						{/if}
+						<DropdownMenu.Item
+							class="rounded-md px-2 py-2 text-red-600 focus:text-red-600 data-highlighted:text-red-600 dark:text-red-400 dark:focus:text-red-400 dark:data-highlighted:text-red-400"
+							onclick={onlogout}
+						>
+							<LogOut />
+							Log out
+						</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+				{#if showNetworkStatus && network}<Tooltip.Content class="max-w-xs" side="right" align="end"
+						><NetworkTooltip summary={network.summary} /></Tooltip.Content
+					>{/if}
+			</Tooltip.Root>
+		</Tooltip.Provider>
 	</Sidebar.MenuItem>
 </Sidebar.Menu>
 

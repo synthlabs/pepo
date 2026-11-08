@@ -27,6 +27,7 @@ pub(crate) enum ProviderFetchError {
         status: StatusCode,
         elapsed: Duration,
         body_preview: String,
+        retry_after: Duration,
     },
     Decode {
         provider: String,
@@ -66,6 +67,7 @@ impl fmt::Display for ProviderFetchError {
                 status,
                 elapsed,
                 body_preview,
+                ..
             } => write!(
                 f,
                 "provider={provider} scope={scope} url={url} status={status} after {:.1}ms body_preview={body_preview:?}",
@@ -129,6 +131,7 @@ where
             source,
         })?;
     let status = response.status();
+    let retry_after = crate::network::retry_after(response.headers());
     let body = response
         .bytes()
         .await
@@ -150,6 +153,7 @@ where
             status,
             elapsed,
             body_preview,
+            retry_after,
         });
     }
 
@@ -166,6 +170,28 @@ where
 
 fn duration_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1_000.0
+}
+
+impl From<ProviderFetchError> for crate::network::Failure {
+    fn from(error: ProviderFetchError) -> Self {
+        let mut failure = match &error {
+            ProviderFetchError::Request { source, .. } => Self::request(source),
+            ProviderFetchError::Status {
+                status,
+                retry_after,
+                ..
+            } => {
+                let mut failure = Self::status(status.as_u16());
+                failure.retry_after = *retry_after;
+                failure
+            }
+            ProviderFetchError::Decode { .. } => {
+                Self::new("decode", "Emote metadata could not be decoded.", false)
+            }
+        };
+        failure.message = error.to_string();
+        failure
+    }
 }
 
 fn preview_body(body: &[u8]) -> String {

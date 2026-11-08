@@ -25,6 +25,8 @@
 	} from '$lib/settings/controls';
 	import { settingsState, updateAppSettings } from '$lib/stores/settings.svelte';
 	import SettingRow from './setting-row.svelte';
+	import { NETWORK_STATUS_CONTEXT, type NetworkStatusController } from '$lib/network/status.svelte';
+	const network = getContext<NetworkStatusController | undefined>(NETWORK_STATUS_CONTEXT);
 	let {
 		translationSession = getContext<TranslationSession | undefined>(TRANSLATION_CONTEXT)
 	}: { translationSession?: TranslationSession } = $props();
@@ -250,6 +252,15 @@
 						<div class="divide-y overflow-hidden rounded-lg border">
 							{#each basicControls as control (control.id)}<SettingRow {control} />{/each}
 						</div>
+						{#if selected === 'chat'}
+							<Button
+								variant="outline"
+								size="sm"
+								class="self-start"
+								onclick={(event) => network?.show(event.currentTarget)}
+								data-open-background-activity>Background activity</Button
+							>
+						{/if}
 						{#if extraControls.length > 0}
 							<Button
 								variant="ghost"
@@ -262,12 +273,21 @@
 								}}
 							>
 								{#if more[selected]}<ChevronDown />{:else}<ChevronRight />{/if}
-								{more[selected] ? 'Hide extra options' : `More options (${extraControls.length})`}
+								{selected === 'app'
+									? more.app
+										? 'Hide advanced settings'
+										: 'Advanced'
+									: more[selected]
+										? 'Hide extra options'
+										: `More options (${extraControls.length})`}
 							</Button>
 							{#if more[selected]}<div
 									id={`settings-more-${selected}`}
 									class="divide-y overflow-hidden rounded-lg border"
 								>
+									{#if selected === 'app'}<h3 class="px-4 py-3 text-sm font-semibold">
+											Network
+										</h3>{/if}
 									{#each extraControls as control (control.id)}<SettingRow {control} />{/each}
 								</div>{/if}
 						{/if}

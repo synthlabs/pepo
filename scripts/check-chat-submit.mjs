@@ -49,6 +49,8 @@ export class SyncedState {
     async sync() { return true; }
 }
 export const commands = {
+    beginBackgroundRequest: async () => ({ status: 'ok', data: 'updates' }),
+    endBackgroundRequest: async () => {},
     getChatFeedContext: async () => ({ status: 'ok', data: { epoch: 'submit-page' } }),
     subscribeChat: async (channel, request, sink) => {
         native.joins.push(channel);
@@ -81,6 +83,8 @@ export async function error(message, options) {
 }
 export async function invoke(command, args) {
     switch (command) {
+        case 'plugin:inbound|register_submission':
+        case 'plugin:inbound|cancel_submission': return undefined;
         case 'plugin:inbound|capabilities':
             if (native.failCapabilities) throw new Error('capabilities failure');
             return { has_config: false };

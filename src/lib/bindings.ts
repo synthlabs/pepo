@@ -91,6 +91,23 @@ async searchEmotes(query: string, broadcasterId: string, limit: number | null) :
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async getNetworkStatus() : Promise<NetworkHealthSnapshot> {
+    return await TAURI_INVOKE("get_network_status");
+},
+async beginBackgroundRequest(provider: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("begin_background_request", { provider }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async endBackgroundRequest(id: string) : Promise<void> {
+    await TAURI_INVOKE("end_background_request", { id });
+},
+async retryNetworkOperation(id: string) : Promise<void> {
+    await TAURI_INVOKE("retry_network_operation", { id });
 }
 }
 
@@ -104,7 +121,7 @@ async searchEmotes(query: string, broadcasterId: string, limit: number | null) :
 
 /** user-defined types **/
 
-export type AppSettings = { schema_version: number; appearance: AppearanceSettings; layout: LayoutSettings; chat: ChatSettings; translation: TranslationSettings; emotes: EmoteSettings; channel_cache: ChannelCacheSettings; auth: AuthSettings; eventsub: EventSubSettings; providers: ProviderSettings; diagnostics: DiagnosticsSettings }
+export type AppSettings = { schema_version: number; appearance: AppearanceSettings; layout: LayoutSettings; chat: ChatSettings; translation: TranslationSettings; emotes: EmoteSettings; channel_cache: ChannelCacheSettings; auth: AuthSettings; eventsub: EventSubSettings; providers: ProviderSettings; network: NetworkSettings; diagnostics: DiagnosticsSettings }
 export type AppearanceSettings = { theme: AppearanceTheme }
 export type AppearanceTheme = "system" | "light" | "dark"
 export type AuthPhase = "unauthorized" | "waitingForDeviceCode" | "waitingForAuth" | "failedAuth" | "authorized"
@@ -382,7 +399,10 @@ export type FeedFrame = { cursor: number; event: FeedEvent }
 export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment }
 export type InternalState = { version: string; name: string; sidebar_open: boolean }
 export type LayoutSettings = { sidebar_open: boolean }
-export type ProviderSettings = { http_connect_timeout_secs: number; http_request_timeout_secs: number; metadata_retention_enabled: boolean; metadata_retention_secs: number }
+export type NetworkHealthSnapshot = { revision: number; issues: NetworkIssue[] }
+export type NetworkIssue = { id: string; feature: string; category: string; message: string; failures: number; affected: number; cached: boolean; last_failure_at: number; retry_at: number | null; retryable: boolean; core: boolean; can_retry: boolean }
+export type NetworkSettings = { connect_timeout_secs: number; request_timeout_secs: number; metadata_concurrency: number; retry_base_secs: number; retry_max_secs: number }
+export type ProviderSettings = { http_connect_timeout_secs: number; http_request_timeout_secs: number; metadata_retention_enabled: boolean; metadata_retention_secs: number; stale_metadata_fallback: boolean }
 export type StateUpdate = { version: number | null; name: string; value: string }
 export type Stream = { 
 /**

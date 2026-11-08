@@ -304,6 +304,97 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 		max: U32_MAX
 	},
 	{
+		id: 'network.connect_timeout_secs',
+		path: 'network.connect_timeout_secs',
+		category: 'app',
+		more: true,
+		kind: 'number',
+		unit: 'seconds',
+		max: 3600,
+		label: 'API connection timeout',
+		description:
+			'Time allowed to connect to Twitch and metadata services. Restart Pepo after changing this.'
+	},
+	{
+		id: 'network.request_timeout_secs',
+		path: 'network.request_timeout_secs',
+		category: 'app',
+		more: true,
+		kind: 'number',
+		unit: 'seconds',
+		max: 3600,
+		label: 'API request timeout',
+		description:
+			'Time allowed for a small API request. Large downloads and report uploads use separate limits. Restart Pepo after changing this.'
+	},
+	{
+		id: 'providers.http_connect_timeout_secs',
+		path: 'providers.http_connect_timeout_secs',
+		category: 'app',
+		more: true,
+		kind: 'number',
+		unit: 'seconds',
+		max: 3600,
+		label: 'Emote provider connection timeout',
+		description: 'Connection timeout for BTTV, FFZ, and 7TV. Applies to new requests.'
+	},
+	{
+		id: 'providers.http_request_timeout_secs',
+		path: 'providers.http_request_timeout_secs',
+		category: 'app',
+		more: true,
+		kind: 'number',
+		unit: 'seconds',
+		max: 3600,
+		label: 'Emote provider request timeout',
+		description: 'Time allowed for an emote metadata request. Applies to new requests.'
+	},
+	{
+		id: 'network.metadata_concurrency',
+		path: 'network.metadata_concurrency',
+		category: 'app',
+		more: true,
+		kind: 'number',
+		unit: 'requests',
+		max: 32,
+		label: 'Background request limit',
+		description:
+			'Maximum optional metadata requests in progress, with one request per provider. Opened channels take priority. Applies to subsequent requests.'
+	},
+	{
+		id: 'network.retry_base_secs',
+		path: 'network.retry_base_secs',
+		category: 'app',
+		more: true,
+		kind: 'number',
+		unit: 'seconds',
+		max: 86400,
+		label: 'Initial retry delay',
+		description: 'Delay after the first failed metadata request. Later failures double the delay.'
+	},
+	{
+		id: 'network.retry_max_secs',
+		path: 'network.retry_max_secs',
+		category: 'app',
+		more: true,
+		kind: 'number',
+		unit: 'seconds',
+		max: 86400,
+		label: 'Maximum retry delay',
+		description: 'Longest normal metadata retry delay. Server-requested waits are respected.'
+	},
+	{
+		id: 'providers.stale_metadata_fallback',
+		path: 'providers.stale_metadata_fallback',
+		category: 'app',
+		more: true,
+		kind: 'toggle',
+		label: 'Keep cached emotes and badges until refreshed',
+		description:
+			'Use saved metadata even when it is older than the retention period. Successful refreshes replace it.'
+	},
+
+	{
 		id: 'appearance.theme',
 		path: 'appearance.theme',
 		category: 'app',
@@ -399,7 +490,13 @@ export function resetSettingsPatch(category: SettingsCategory | 'all'): Settings
 		return {
 			appearance: defaults.appearance,
 			layout: defaults.layout,
-			diagnostics: defaults.diagnostics
+			diagnostics: defaults.diagnostics,
+			network: defaults.network,
+			providers: {
+				http_connect_timeout_secs: defaults.providers.http_connect_timeout_secs,
+				http_request_timeout_secs: defaults.providers.http_request_timeout_secs,
+				stale_metadata_fallback: defaults.providers.stale_metadata_fallback
+			}
 		};
 	return {
 		appearance: defaults.appearance,
@@ -407,7 +504,13 @@ export function resetSettingsPatch(category: SettingsCategory | 'all'): Settings
 		diagnostics: defaults.diagnostics,
 		chat: defaults.chat,
 		translation: defaults.translation,
-		emotes: defaults.emotes
+		emotes: defaults.emotes,
+		network: defaults.network,
+		providers: {
+			http_connect_timeout_secs: defaults.providers.http_connect_timeout_secs,
+			http_request_timeout_secs: defaults.providers.http_request_timeout_secs,
+			stale_metadata_fallback: defaults.providers.stale_metadata_fallback
+		}
 	};
 }
 

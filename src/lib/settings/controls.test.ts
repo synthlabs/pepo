@@ -38,14 +38,19 @@ describe('settings controls', () => {
 			{ id: 'bttv', enabled: false }
 		]);
 	});
-	it('covers every exposed field without operational fields', () => {
+	it('covers user preferences and the approved advanced network controls', () => {
 		const paths = [...new Set(SETTINGS_CONTROLS.map((control) => control.path))].sort();
 		const expected = (
-			['appearance', 'layout', 'diagnostics', 'chat', 'emotes', 'translation'] as const
+			['appearance', 'layout', 'diagnostics', 'chat', 'emotes', 'translation', 'network'] as const
 		)
 			.flatMap((section) =>
 				Object.keys(DEFAULT_APP_SETTINGS[section]).map((key) => `${section}.${key}`)
 			)
+			.concat([
+				'providers.http_connect_timeout_secs',
+				'providers.http_request_timeout_secs',
+				'providers.stale_metadata_fallback'
+			])
 			.sort();
 		expect(paths).toEqual(expected);
 		expect(new Set(SETTINGS_CONTROLS.map((control) => control.id)).size).toBe(

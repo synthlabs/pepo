@@ -149,7 +149,14 @@ async fn poll_once(
 ) -> Result<(), ChannelCacheFetchError> {
     let previous = published.borrow().cache.clone();
     complete_channel_cache_poll(
-        fetch_channel_cache(client, &runtime_token(), settings, &previous, Vec::new()),
+        fetch_channel_cache(
+            client,
+            &runtime_token(),
+            settings,
+            &previous,
+            Vec::new(),
+            CHANNEL_CACHE_POLL_TIMEOUT,
+        ),
         |update| {
             let mut published = published.borrow_mut();
             published.cache = update.cache;
@@ -322,7 +329,10 @@ async fn deadline_cancels_fetch_at_every_stage_and_allows_success() {
         assert!(!cancelled.load(Ordering::SeqCst));
         assert_retained(&published.borrow());
         let failure = poll.await.unwrap_err();
-        assert_eq!(failure.operation, "poll");
+        assert!(matches!(
+            failure.operation,
+            "followed_channels" | "users" | "streams"
+        ));
         assert_eq!(failure.category, "timeout");
         assert!(!failure.is_auth_rejection());
         assert_eq!(started.elapsed(), CHANNEL_CACHE_POLL_TIMEOUT);
@@ -337,7 +347,7 @@ async fn deadline_cancels_fetch_at_every_stage_and_allows_success() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn deadline_covers_all_fetches_instead_of_resetting_per_request() {
+async fn slow_pagination_has_a_deadline_per_request() {
     let client = ScriptedClient::new([
         Step::Response(
             FOLLOWED_PATH,
@@ -351,15 +361,15 @@ async fn deadline_covers_all_fetches_instead_of_resetting_per_request() {
             EMPTY.as_bytes().to_vec(),
             Duration::from_secs(20),
         ),
+        reply(STREAMS_PATH, 200, EMPTY),
     ]);
     let published = RefCell::new(Published::default());
     let started = tokio::time::Instant::now();
-    let failure = poll_once(&client, &published, Default::default())
+    poll_once(&client, &published, Default::default())
         .await
-        .unwrap_err();
-    assert_eq!(failure.category, "timeout");
-    assert_eq!(started.elapsed(), CHANNEL_CACHE_POLL_TIMEOUT);
-    assert_retained(&published.borrow());
+        .unwrap();
+    assert_eq!(started.elapsed(), Duration::from_secs(40));
+    assert_eq!(published.borrow().updates, 1);
     client.get_client().assert_finished();
 }
 
@@ -559,6 +569,31 @@ async fn disabled_recurring_polling_keeps_initial_poll_and_rechecks_settings() {
     tokio::join!(poll_loop, reenable);
     assert_eq!(attempts.get(), 2);
     assert_eq!(started.elapsed(), Duration::from_secs(30));
+}
+
+#[tokio::test]
+async fn manual_retry_runs_when_recurring_directory_polling_is_disabled() {
+    let attempts = Cell::new(0);
+    let retry = Arc::new(tokio::sync::Notify::new());
+    run_channel_cache_poll_loop_with_wake(
+        || types::ChannelCacheSettings {
+            recurring_poll_enabled: false,
+            ..Default::default()
+        },
+        || {
+            attempts.set(attempts.get() + 1);
+            std::future::ready(if attempts.get() == 1 {
+                retry.notify_one();
+                Ok(())
+            } else {
+                Err(no_session())
+            })
+        },
+        |_, _| std::future::ready(true),
+        Some(retry.clone()),
+    )
+    .await;
+    assert_eq!(attempts.get(), 2);
 }
 
 #[tokio::test]

@@ -3,8 +3,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::emote::persist::SharedEmoteMetadataStore;
+use crate::network::Failure;
 use futures::TryStreamExt;
-use tracing::{debug, error, info};
+use tracing::error;
 
 use crate::emote::{
     cache::{EmoteCache, EmoteCacheTrait, MultiCache},
@@ -23,17 +25,23 @@ pub struct TwitchProvider {
     cache: SharedMap<EmoteCache>,
     client: twitch_api::HelixClient<'static, reqwest::Client>,
     token_manager: TokenManager,
+    persistence: SharedEmoteMetadataStore,
+    owner: String,
 }
 
 impl TwitchProvider {
     pub fn new(
         client: twitch_api::HelixClient<'static, reqwest::Client>,
         token_manager: TokenManager,
+        persistence: SharedEmoteMetadataStore,
+        owner: String,
     ) -> Self {
         TwitchProvider {
             cache: Default::default(),
             client,
             token_manager,
+            persistence,
+            owner,
         }
     }
 }
@@ -43,73 +51,129 @@ impl EmoteProvider<MultiCache> for TwitchProvider {
         EmoteProviderId::Twitch
     }
 
-    fn load_global_emotes(&self, _client: &reqwest::Client, _provider_settings: &ProviderSettings) {
-        let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
-
-        match tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let Some(token) = self.token_manager.active_twitch_token().await else {
-                    return Err("no active token".to_owned());
-                };
-                self.client
-                    .get_global_emotes(&token)
-                    .await
-                    .map_err(|err| err.to_string())
-            })
-        }) {
-            Ok(resp) => resp
-                .iter()
-                .map(|v| cache.clone().set_emote(v.name.clone(), v.into()))
-                .collect(),
-            Err(err) => error!("failed to load global emotes: err={}", err.to_string()),
+    fn hydrate_cache(&self, scope: &str, settings: &ProviderSettings) -> bool {
+        let persisted_scope = if scope == USER_EMOTES_SCOPE_KEY {
+            format!("{USER_EMOTES_SCOPE_KEY}:{}", self.owner)
+        } else {
+            scope.to_owned()
+        };
+        if scope == GLOBAL_SCOPE_KEY {
+            self.hydrate_cache(USER_EMOTES_SCOPE_KEY, settings);
         }
-
-        let mut store = self.cache.lock().unwrap();
-        store.insert(GLOBAL_SCOPE_KEY.to_owned(), cache);
+        let mut caches = self.cache.lock().unwrap();
+        if caches.contains_key(scope) {
+            return true;
+        }
+        if let Some(hydrated) = self.persistence.load_cache(
+            EmoteProviderId::Twitch,
+            &persisted_scope,
+            &self.get_name(),
+            settings,
+        ) {
+            caches.insert(scope.into(), hydrated.cache);
+            true
+        } else {
+            false
+        }
     }
 
+    fn refresh_global<'a>(
+        &'a self,
+        _client: &'a reqwest::Client,
+        settings: &'a ProviderSettings,
+    ) -> futures::future::BoxFuture<'a, Result<(), Failure>> {
+        Box::pin(async move {
+            self.hydrate_cache(GLOBAL_SCOPE_KEY, settings);
+            let token = self
+                .token_manager
+                .active_twitch_token()
+                .await
+                .ok_or_else(|| {
+                    Failure::new("authentication", "Waiting for Twitch authentication.", true)
+                })?;
+            let emotes = self
+                .client
+                .get_global_emotes(&token)
+                .await
+                .map_err(Failure::helix)?;
+            let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.into(), self.get_name());
+            for emote in emotes {
+                cache.set_emote(emote.name.clone(), (&emote).into());
+            }
+            self.persistence.save_cache(
+                EmoteProviderId::Twitch,
+                GLOBAL_SCOPE_KEY,
+                &cache,
+                settings,
+            );
+            self.cache
+                .lock()
+                .unwrap()
+                .insert(GLOBAL_SCOPE_KEY.into(), cache);
+            Ok(())
+        })
+    }
+
+    fn refresh_user<'a>(
+        &'a self,
+        settings: &'a ProviderSettings,
+    ) -> futures::future::BoxFuture<'a, Result<(), Failure>> {
+        Box::pin(async move {
+            self.hydrate_cache(USER_EMOTES_SCOPE_KEY, settings);
+            let token = self
+                .token_manager
+                .active_twitch_token()
+                .await
+                .ok_or_else(|| {
+                    Failure::new("authentication", "Waiting for Twitch authentication.", true)
+                })?;
+            let emotes = self
+                .client
+                .get_user_emotes(&token.user_id, &token)
+                .try_collect::<Vec<_>>()
+                .await
+                .map_err(Failure::helix)?;
+            let cache = EmoteCache::new(USER_EMOTES_SCOPE_KEY.into(), self.get_name());
+            for emote in emotes {
+                cache.set_emote(emote.name.clone(), (&emote).into());
+            }
+            let scope = format!("{USER_EMOTES_SCOPE_KEY}:{}", self.owner);
+            self.persistence
+                .save_cache(EmoteProviderId::Twitch, &scope, &cache, settings);
+            self.cache
+                .lock()
+                .unwrap()
+                .insert(USER_EMOTES_SCOPE_KEY.into(), cache);
+            Ok(())
+        })
+    }
+
+    fn load_global_emotes(&self, client: &reqwest::Client, settings: &ProviderSettings) {
+        if let Err(error) = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.refresh_global(client, settings))
+        }) {
+            error!("failed to load global emotes: {}", error.message);
+        }
+    }
     fn load_channel_emotes(
         &self,
         broadcaster_id: String,
         _client: &reqwest::Client,
-        _provider_settings: &ProviderSettings,
+        _settings: &ProviderSettings,
     ) {
-        let mut store = self.cache.lock().unwrap();
-        store
+        self.cache
+            .lock()
+            .unwrap()
             .entry(broadcaster_id.clone())
-            .or_insert_with(|| EmoteCache::new(broadcaster_id.clone(), self.get_name()));
-        debug!(
-            broadcaster_id,
-            "prepared twitch channel emote cache for EventSub fragments"
-        );
+            .or_insert_with(|| EmoteCache::new(broadcaster_id, self.get_name()));
     }
-
     fn load_user_emotes(&self) {
-        let cache = EmoteCache::new(USER_EMOTES_SCOPE_KEY.to_owned(), self.get_name());
-
-        match tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let Some(token) = self.token_manager.active_twitch_token().await else {
-                    return Err("no active token".to_owned());
-                };
-                self.client
-                    .get_user_emotes(&token.user_id, &token)
-                    .try_collect::<Vec<_>>()
-                    .await
-                    .map_err(|err| err.to_string())
-            })
+        if let Err(error) = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(self.refresh_user(&ProviderSettings::default()))
         }) {
-            Ok(emotes) => {
-                info!("loaded {} user emotes", emotes.len());
-                for emote in &emotes {
-                    cache.set_emote(emote.name.clone(), emote.into());
-                }
-            }
-            Err(err) => error!("failed to load user emotes: err={}", err),
+            error!("failed to load user emotes: {}", error.message);
         }
-
-        let mut store = self.cache.lock().unwrap();
-        store.insert(USER_EMOTES_SCOPE_KEY.to_owned(), cache);
     }
 
     fn insert_emote(&self, scope: String, name: String, emote: Emote) {

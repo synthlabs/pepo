@@ -72,11 +72,19 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 		unparseable_warning_throttle_secs: 60,
 		subscription_error_throttle_secs: 300
 	},
+	network: {
+		connect_timeout_secs: 15,
+		request_timeout_secs: 30,
+		metadata_concurrency: 4,
+		retry_base_secs: 15,
+		retry_max_secs: 300
+	},
 	providers: {
-		http_connect_timeout_secs: 5,
-		http_request_timeout_secs: 15,
+		http_connect_timeout_secs: 15,
+		http_request_timeout_secs: 30,
 		metadata_retention_enabled: true,
-		metadata_retention_secs: 30 * 24 * 60 * 60
+		metadata_retention_secs: 30 * 24 * 60 * 60,
+		stale_metadata_fallback: true
 	}
 };
 
@@ -93,6 +101,7 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 	const channelCache = source.channel_cache ?? DEFAULT_APP_SETTINGS.channel_cache;
 	const auth = source.auth ?? DEFAULT_APP_SETTINGS.auth;
 	const eventsub = source.eventsub ?? DEFAULT_APP_SETTINGS.eventsub;
+	const network = source.network ?? DEFAULT_APP_SETTINGS.network;
 	const providersSettings = source.providers ?? DEFAULT_APP_SETTINGS.providers;
 	const providers: AppSettings['emotes']['providers'] = [];
 	const seen = new Set<EmoteProviderId>();
@@ -258,6 +267,30 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 			subscription_error_throttle_secs: positive(
 				eventsub.subscription_error_throttle_secs,
 				DEFAULT_APP_SETTINGS.eventsub.subscription_error_throttle_secs
+			)
+		},
+		network: {
+			...DEFAULT_APP_SETTINGS.network,
+			...network,
+			connect_timeout_secs: positive(
+				network.connect_timeout_secs,
+				DEFAULT_APP_SETTINGS.network.connect_timeout_secs
+			),
+			request_timeout_secs: positive(
+				network.request_timeout_secs,
+				DEFAULT_APP_SETTINGS.network.request_timeout_secs
+			),
+			metadata_concurrency: Math.min(
+				32,
+				positive(network.metadata_concurrency, DEFAULT_APP_SETTINGS.network.metadata_concurrency)
+			),
+			retry_base_secs: positive(
+				network.retry_base_secs,
+				DEFAULT_APP_SETTINGS.network.retry_base_secs
+			),
+			retry_max_secs: Math.max(
+				positive(network.retry_base_secs, DEFAULT_APP_SETTINGS.network.retry_base_secs),
+				positive(network.retry_max_secs, DEFAULT_APP_SETTINGS.network.retry_max_secs)
 			)
 		},
 		providers: {

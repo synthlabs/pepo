@@ -195,7 +195,8 @@ fn is_expired_channel_scope(
     now_unix_secs: u64,
     provider_settings: &ProviderSettings,
 ) -> bool {
-    provider_settings.metadata_retention_enabled
+    !provider_settings.stale_metadata_fallback
+        && provider_settings.metadata_retention_enabled
         && scope_key != GLOBAL_SCOPE_KEY
         && now_unix_secs.saturating_sub(saved_at_unix_secs)
             > provider_settings.metadata_retention_secs
@@ -370,7 +371,10 @@ mod tests {
             payload.validate_for(
                 "1234",
                 NOW + ProviderSettings::default().metadata_retention_secs + 1,
-                &ProviderSettings::default(),
+                &ProviderSettings {
+                    stale_metadata_fallback: false,
+                    ..Default::default()
+                },
             ),
             Err(LoadRejection::Expired)
         );
@@ -439,11 +443,37 @@ mod tests {
         persistence.save_scope(
             "fresh-channel",
             vec![badge_set("subscriber", "24")],
-            &ProviderSettings::default(),
+            &ProviderSettings {
+                stale_metadata_fallback: false,
+                ..Default::default()
+            },
         );
 
         assert!(!persistence.has_scope("old-channel"));
         assert!(persistence.has_scope(GLOBAL_SCOPE_KEY));
         assert!(persistence.has_scope("fresh-channel"));
+    }
+}
+
+#[cfg(test)]
+mod slow_network_retention_tests {
+    use super::*;
+    #[test]
+    fn retained_metadata_survives_expiry_during_network_failure() {
+        assert!(!is_expired_channel_scope(
+            "channel",
+            1,
+            4_000_000_000,
+            &ProviderSettings::default()
+        ));
+        assert!(is_expired_channel_scope(
+            "channel",
+            1,
+            4_000_000_000,
+            &ProviderSettings {
+                stale_metadata_fallback: false,
+                ..Default::default()
+            }
+        ));
     }
 }

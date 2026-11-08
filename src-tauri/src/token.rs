@@ -17,6 +17,7 @@ const ACCOUNT_STORE_FILE: &str = "account.json";
 const TOKENS_KEY: &str = "tokens";
 const ACTIVE_USER_ID_KEY: &str = "active_user_id";
 const LEGACY_TOKEN_KEY: &str = "token";
+#[cfg(test)]
 const AUTH_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -220,6 +221,7 @@ impl TokenManagerState {
 #[derive(Default)]
 struct TokenMaintenance {
     gate: Mutex<()>,
+    warnings: crate::logging::Coalescer,
 }
 
 #[derive(Clone, Copy)]
@@ -228,6 +230,7 @@ struct MaintenanceOptions {
     force_refresh: bool,
     threshold: Duration,
     retry_interval: Duration,
+    request_timeout: Duration,
     active_only: bool,
 }
 
@@ -284,8 +287,11 @@ impl TokenMaintenance {
 
         let mut rejected = false;
         if options.validate {
-            match tokio::time::timeout(AUTH_REQUEST_TIMEOUT, snapshot.token.validate_token(client))
-                .await
+            match tokio::time::timeout(
+                options.request_timeout,
+                snapshot.token.validate_token(client),
+            )
+            .await
             {
                 Ok(Ok(_)) => {}
                 Ok(Err(ValidationError::NotAuthorized)) => rejected = true,
@@ -294,11 +300,18 @@ impl TokenMaintenance {
                         ValidationError::Request(ref error) => request_issue(error),
                         _ => AuthIssue::retry("invalid_validation_response"),
                     };
-                    warn!(user_id = %identity.user_id, operation = "validate", category = issue.category, status = issue.status, "token validation will retry");
+                    self.warnings.warn(
+                        format!("auth:validate:{}", issue.category),
+                        format!(
+                            "token validation will retry: category={} status={:?}",
+                            issue.category, issue.status
+                        ),
+                    );
                 }
-                Err(_) => {
-                    warn!(user_id = %identity.user_id, operation = "validate", category = "timeout", "token validation will retry")
-                }
+                Err(_) => self.warnings.warn(
+                    "auth:validate:timeout",
+                    "token validation will retry: category=timeout",
+                ),
             }
         }
         let remaining = snapshot.token.expires_in();
@@ -314,7 +327,8 @@ impl TokenMaintenance {
         info!(user_id = %identity.user_id, operation = "refresh", "refreshing token");
         let mut refreshed = snapshot.token.clone();
         let result =
-            match tokio::time::timeout(AUTH_REQUEST_TIMEOUT, refreshed.refresh_token(client)).await
+            match tokio::time::timeout(options.request_timeout, refreshed.refresh_token(client))
+                .await
             {
                 Ok(Ok(())) => Ok(refreshed),
                 Ok(Err(error)) => Err(refresh_issue(&error)),
@@ -358,7 +372,13 @@ impl TokenMaintenance {
                     .get_mut(&identity.user_id)
                     .unwrap()
                     .last_failure = Some((Instant::now(), issue));
-                warn!(user_id = %identity.user_id, operation = "refresh", category = issue.category, status = issue.status, retry = !issue.terminal, "token refresh failed");
+                self.warnings.warn(
+                    format!("auth:refresh:{}", issue.category),
+                    format!(
+                        "token refresh failed: category={} status={:?} retry={}",
+                        issue.category, issue.status, !issue.terminal
+                    ),
+                );
                 if issue.terminal {
                     Err(RecoveryError::ReauthenticationRequired(AuthFailure {
                         identity: identity.clone(),
@@ -512,12 +532,8 @@ impl TokenManager {
 
         let mut runtime_tokens = BTreeMap::new();
         for (user_id, public_token) in &stored.tokens {
-            match public_token
-                .clone()
-                .to_twitch_token(self.client.clone())
-                .await
-            {
-                Ok(twitch_token) => {
+            match public_token.clone().into_unvalidated_twitch_token() {
+                Some(twitch_token) => {
                     let token_user_id = twitch_token.user_id.to_string();
                     let public = public_from_twitch_token(
                         twitch_token.clone(),
@@ -537,7 +553,7 @@ impl TokenManager {
                         },
                     );
                 }
-                Err(_) => warn!(
+                None => warn!(
                     user_id,
                     "failed to restore persisted token into runtime manager"
                 ),
@@ -568,42 +584,91 @@ impl TokenManager {
         Ok(())
     }
 
-    pub async fn start_device_code_flow(&self) -> twitch_oauth2::id::DeviceCodeResponse {
+    pub async fn start_device_code_flow(
+        &self,
+    ) -> Result<twitch_oauth2::id::DeviceCodeResponse, String> {
         debug!("starting device flow");
 
         let mut build_guard = self.builder.lock().await;
-        build_guard.start(&self.client).await.unwrap().clone()
+        build_guard
+            .start(&self.client)
+            .await
+            .cloned()
+            .map_err(|_| "Could not contact Twitch to start sign-in. Try again.".to_owned())
     }
 
-    pub async fn finish_device_code_flow(&self) -> twitch_oauth2::UserToken {
+    pub async fn finish_device_code_flow(&self) -> Result<twitch_oauth2::UserToken, String> {
         debug!("finishing device flow");
 
         let mut build_guard = self.builder.lock().await;
         let token = build_guard
             .wait_for_code(&self.client, tokio::time::sleep)
             .await
-            .unwrap();
+            .map_err(|_| "Twitch sign-in could not complete. Try again.".to_owned())?;
         drop(build_guard);
 
         if let Err(err) = self.set_active_twitch_token(token.clone(), None).await {
             error!("failed to persist completed device flow token: {}", err);
         }
 
-        token
+        Ok(token)
     }
 
-    pub async fn is_active_token_valid(&self) -> bool {
-        let Some(token) = self.active_twitch_token().await else {
-            debug!("active token isn't set");
-            return false;
-        };
-
-        match token.validate_token(&self.client.clone()).await {
-            Ok(_) => true,
-            Err(_) => {
-                error!("token validation failed");
-                false
+    pub(crate) async fn validate_startup(&self) -> Result<(), RecoveryError> {
+        let snapshot = self
+            .active_snapshot()
+            .await
+            .ok_or(RecoveryError::SessionChanged)?;
+        match snapshot.token.validate_token(&self.client).await {
+            Ok(validated) => {
+                let confirmed = UserToken::new(
+                    snapshot.token.access_token,
+                    snapshot.token.refresh_token,
+                    validated,
+                    None,
+                )
+                .map_err(|_| RecoveryError::RetryLater(AuthIssue::retry("validation")))?;
+                if confirmed.user_id.as_str() != snapshot.identity.user_id {
+                    return Err(RecoveryError::RetryLater(AuthIssue::retry(
+                        "identity_mismatch",
+                    )));
+                }
+                let mut state = self.state.lock().await;
+                if !state.matches(&snapshot.identity) {
+                    return Err(RecoveryError::SessionChanged);
+                }
+                let current = state.tokens.get_mut(&snapshot.identity.user_id).unwrap();
+                current.public = public_from_twitch_token(
+                    confirmed.clone(),
+                    Some(current.public.profile_image_url.clone()),
+                );
+                current.twitch = confirmed;
+                state.dirty = true;
+                self.persist_runtime_state(&state)
+                    .map_err(|_| RecoveryError::RetryLater(AuthIssue::retry("persistence")))?;
+                state.dirty = false;
+                Ok(())
             }
+            Err(ValidationError::NotAuthorized) => self
+                .recover_rejected_token(&snapshot.identity)
+                .await
+                .map(|_| ()),
+            Err(ValidationError::Request(error)) => {
+                Err(RecoveryError::RetryLater(request_issue(&error)))
+            }
+            Err(_) => Err(RecoveryError::RetryLater(AuthIssue::retry("validation"))),
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    pub(crate) async fn background_request_guard(&self) -> Box<dyn Send> {
+        let runtime = self
+            .app_handle
+            .try_state::<crate::network::NetworkRuntime>()
+            .map(|state| state.inner().clone());
+        match runtime {
+            Some(runtime) => runtime.request_guard(&self.app_handle, "twitch").await,
+            None => Box::new(()),
         }
     }
 
@@ -642,6 +707,11 @@ impl TokenManager {
             force_refresh: false,
             threshold: settings.refresh_threshold(),
             retry_interval: settings.refresh_supervisor_tick(),
+            request_timeout: Duration::from_secs(
+                crate::app_settings(syncer.inner())
+                    .network
+                    .request_timeout_secs,
+            ),
             active_only: true,
         }
     }
@@ -963,6 +1033,7 @@ mod tests {
             force_refresh,
             threshold: Duration::from_secs(600),
             retry_interval: Duration::from_secs(15),
+            request_timeout: AUTH_REQUEST_TIMEOUT,
             active_only: true,
         }
     }
