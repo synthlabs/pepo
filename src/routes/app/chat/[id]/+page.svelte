@@ -5,7 +5,7 @@
 	import { openRoomFeed } from '$lib/chat/feed';
 	import { showDividerAfter, type HistoryBoundary } from '$lib/chat/history-boundary';
 	import { onDestroy, onMount, tick } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
+	import { MediaQuery, SvelteMap } from 'svelte/reactivity';
 	import {
 		commands,
 		type ChatRoomInfo,
@@ -22,6 +22,7 @@
 	import Translation from '$lib/components/chat/+translation.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
 	import Smile from '@lucide/svelte/icons/smile';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
@@ -65,6 +66,7 @@
 	const SCROLL_RESTORE_FALLBACK_MS = 50;
 	const MAX_MESSAGE_LENGTH = 500;
 	const COUNTER_THRESHOLD = 400;
+	const reducedMotion = new MediaQuery('(prefers-reduced-motion: reduce)');
 
 	let chatDIV = $state<HTMLDivElement>();
 	let messageListDIV = $state<HTMLDivElement>();
@@ -145,6 +147,7 @@
 				queueResizeScrollRestore();
 			});
 			resizeObserver.observe(messageListDIV);
+			if (chatDIV) resizeObserver.observe(chatDIV);
 		}
 
 		document.addEventListener('visibilitychange', handleViewportWake);
@@ -1019,12 +1022,13 @@
 		</div>
 		{#if errorState.active}
 			<div
-				transition:slide={{ easing: quadInOut, duration: 250 }}
+				transition:slide={{ easing: quadInOut, duration: reducedMotion.current ? 0 : 250 }}
 				role="alert"
 				data-chat-input-error
-				class="shrink-0 cursor-not-allowed bg-red-950 text-center"
+				class="bg-background flex shrink-0 items-start gap-2 px-3 py-2 text-left text-sm leading-5 text-red-700 dark:text-red-400"
 			>
-				{errorState.msg}
+				<CircleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+				<span class="min-w-0 wrap-anywhere whitespace-pre-wrap">{errorState.msg}</span>
 			</div>
 		{/if}
 		<div class="relative shrink-0 border-t">

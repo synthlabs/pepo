@@ -105,7 +105,8 @@ async function createRouteFixture(native, tick) {
 		last: rows().at(-1)?.dataset.chatMessageIndex,
 		spacer: spacer(),
 		distance: feed.scrollHeight - feed.clientHeight - feed.scrollTop,
-		paused: !!document.querySelector('button[aria-label^="Jump to"]')
+		paused: !!document.querySelector('button[aria-label^="Jump to"]'),
+		error: document.querySelector('[data-chat-input-error]')?.textContent.trim() ?? null
 	});
 	emit(500);
 	await waitCount(500);
@@ -119,6 +120,11 @@ async function createRouteFixture(native, tick) {
 	const clip = { x: box.left + 8, y: box.top + 35, width: 300, height: 120, scale: 1 };
 	window.routeFixture = {
 		metadata,
+		showError: async (error) => {
+			native.feed.onmessage({ cursor: next, event: { type: 'unavailable', error } });
+			await frames();
+			return metadata();
+		},
 		emit: async (count) => {
 			emit(count);
 			await tick();
@@ -337,6 +343,84 @@ assert(
 	'Usage: node scripts/check-chat-scroll-route.mjs --browser <browser executable> [--scale <DPR>]'
 );
 const fixture = await buildFixture();
+
+async function checkNoticeScroll(command, evaluate) {
+	const state = () => evaluate('window.routeFixture.metadata()');
+	const show = async (message) => {
+		await evaluate('window.routeFixture.showError(' + JSON.stringify(message) + ')');
+		await delay(350);
+		return state();
+	};
+	const expire = async () => {
+		const deadline = Date.now() + 8000;
+		while ((await state()).error !== null && Date.now() < deadline) await delay(50);
+		assert.equal((await state()).error, null, 'Notice did not expire');
+		await delay(100);
+		return state();
+	};
+	const short = 'Message cannot be empty';
+	const long =
+		'Your previous message is still sending. Please wait before submitting another. '.repeat(3);
+	for (const motion of ['no-preference', 'reduce']) {
+		await command('Emulation.setEmulatedMedia', {
+			features: [{ name: 'prefers-reduced-motion', value: motion }]
+		});
+		for (const message of [short, long]) {
+			const shown = await show(message);
+			assert(
+				Math.abs(shown.distance) < 1 && !shown.paused,
+				`${motion}: notice lost live following: ${JSON.stringify(shown)}`
+			);
+		}
+		const hidden = await expire();
+		assert(
+			Math.abs(hidden.distance) < 1 && !hidden.paused,
+			`${motion}: expiry lost live following`
+		);
+		await evaluate('window.routeFixture.pause()');
+		const anchor = await evaluate('window.routeFixture.anchor()');
+		const checkAnchor = async () => {
+			assert((await state()).paused, `${motion}: notice resumed paused chat`);
+			const top = await evaluate(
+				'window.routeFixture.anchorTop(' + JSON.stringify(anchor.key) + ')'
+			);
+			assert(Math.abs(top - anchor.top) < 0.001, `${motion}: notice moved paused anchor`);
+		};
+		for (const message of [short, long]) {
+			await show(message);
+			await checkAnchor();
+			if (motion === 'no-preference' && message === short) {
+				const shot = await command('Page.captureScreenshot', { format: 'png' });
+				await writeFile(path.join(output, 'notice-paused.png'), Buffer.from(shot.data, 'base64'));
+			}
+			assert(
+				await evaluate(`(() => {
+				const button = document.querySelector('button[aria-label^="Jump to"]');
+				const error = document.querySelector('[data-chat-input-error]').getBoundingClientRect();
+				const rect = button.getBoundingClientRect();
+				return rect.bottom <= error.top && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest('button') === button;
+			})()`),
+				'Paused control is unobscured and clickable'
+			);
+		}
+		await expire();
+		await checkAnchor();
+		await show(short);
+		await evaluate('window.routeFixture.resume()');
+		await delay(200);
+		const resumed = await state();
+		assert(
+			!resumed.paused && Math.abs(resumed.distance) < 1,
+			'Jump works with an active error: ' + JSON.stringify(resumed)
+		);
+		await expire();
+	}
+	await command('Emulation.setEmulatedMedia', { features: [] });
+	console.log(
+		'PASS notice appearance, replacement, expiry and jump while pinned/paused, both motion preferences'
+	);
+}
+
 try {
 	for (const scale of values.scale ? [Number(values.scale)] : [1, 1.1, 1.25, 1.5, 1.75, 2]) {
 		await checkScale(values.browser, scale, fixture.origin, async ({ command, evaluate }) => {
@@ -429,6 +513,7 @@ try {
 			const resumed = await evaluate('window.routeFixture.resume()');
 			assert.equal(resumed.count, 500);
 			assert(Math.abs(resumed.distance) < 1, 'Resume lost bottom');
+			if (scale === 1) await checkNoticeScroll(command, evaluate);
 			await evaluate('window.routeFixture.pause()');
 			const pausedAnchor = await evaluate('window.routeFixture.anchor()');
 			await evaluate('window.routeFixture.setChat({ pause_message_gc_while_paused: false })');

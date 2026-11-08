@@ -19,7 +19,9 @@ describe('chat layout containment', () => {
 			'class="flex h-full min-h-0 w-full flex-col flex-nowrap overflow-hidden"'
 		);
 		expect(chatPage).toContain('class="relative min-h-0 grow"');
-		expect(chatPage).toContain('class="shrink-0 cursor-not-allowed bg-red-950 text-center"');
+		expect(chatPage.match(/data-chat-input-error\s+class="([^"]+)"/)?.[1].split(/\s+/)).toContain(
+			'shrink-0'
+		);
 		expect(chatPage).toContain('class="relative shrink-0 border-t"');
 		expect(chatPage).toContain(
 			'class="bg-background placeholder:text-muted-foreground h-full min-w-0 flex-1 p-3 text-sm outline-hidden focus:border-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"'

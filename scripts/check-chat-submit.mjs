@@ -34,6 +34,7 @@ export const native = window.chatNative = {
         scale: ['1.0'], theme_mode: ['light', 'dark'], url: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
         provider: 'Twitch', scope: 'Global' },
     logError(message) { return error(message); },
+    roomError(message) { this.feed.onmessage({ cursor: 1, event: { type: 'unavailable', error: message } }); },
     navigate(id) { page.params = { id }; },
     resolve(index, result) { this.requests[index].resolve(result); },
     reject(index, message) { this.requests[index].reject(new Error(message)); }
@@ -51,6 +52,7 @@ export const commands = {
     getChatFeedContext: async () => ({ status: 'ok', data: { epoch: 'submit-page' } }),
     subscribeChat: async (channel, request, sink) => {
         native.joins.push(channel);
+        native.feed = sink;
         sink.onmessage({ cursor: 0, event: { type: 'snapshot', messages: [] } });
         return { status: 'ok', data: { broadcaster_id: channel + '-id', broadcaster_login: channel, broadcaster_name: channel } };
     },
@@ -554,6 +556,151 @@ try {
 	assert.equal(await run('chatNative.calls.length'), callsBeforeEmote, 'Enter picked, not sent');
 	await type('');
 	console.log('PASS 500-character limit, counter and refused emote insertion');
+
+	await run("chatNative.navigate('notice-preview')");
+	await wait("chatNative.joins.at(-1) === 'notice-preview'");
+	await send(
+		'Emulation.setEmulatedMedia',
+		{
+			features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }]
+		},
+		sessionId
+	);
+	await run("chatNative.roomError('Message cannot be empty')");
+	await wait(
+		`document.querySelector('${inline}')?.getAnimations().some(animation => animation.effect.getTiming().duration === 250)`
+	);
+	await wait(`!document.querySelector('${inline}')`, 8000);
+	await send(
+		'Emulation.setEmulatedMedia',
+		{
+			features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
+		},
+		sessionId
+	);
+	await run("chatNative.roomError('Message cannot be empty')");
+	await wait(`!!document.querySelector('${inline}')`);
+	assert.equal(
+		await run(
+			`document.querySelector('${inline}').getAnimations().filter(animation => animation.effect.getTiming().duration > 0).length`
+		),
+		0
+	);
+	console.log('PASS notice motion follows the preference changed while mounted');
+
+	const inspectNotice = () => {
+		const notice = document.querySelector('[data-chat-input-error]');
+		const message = notice.querySelector('span');
+		const icon = notice.querySelector('svg');
+		const input = document.querySelector('[aria-label="Chat message"]');
+		const rect = notice.getBoundingClientRect();
+		const textRect = message.getBoundingClientRect();
+		const inputRect = input.getBoundingClientRect();
+		const style = getComputedStyle(notice);
+		const context = document.createElement('canvas').getContext('2d');
+		const luminance = (color) => {
+			context.clearRect(0, 0, 1, 1);
+			context.fillStyle = color;
+			context.fillRect(0, 0, 1, 1);
+			const rgb = [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map((channel) => {
+				const value = channel / 255;
+				return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+			});
+			return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+		};
+		const foreground = luminance(style.color);
+		const background = luminance(style.backgroundColor);
+		return {
+			text: message.textContent,
+			role: notice.getAttribute('role'),
+			iconHidden: icon.getAttribute('aria-hidden'),
+			focused: document.activeElement === input,
+			contrast:
+				(Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05),
+			lines: textRect.height / parseFloat(style.lineHeight),
+			fits:
+				textRect.right <= rect.right &&
+				textRect.left >= rect.left &&
+				notice.scrollWidth <= notice.clientWidth &&
+				rect.right <= innerWidth &&
+				inputRect.bottom <= innerHeight &&
+				inputRect.top >= rect.bottom - 1 &&
+				document.documentElement.scrollWidth <= innerWidth,
+			iconAligned:
+				Math.abs(
+					icon.getBoundingClientRect().top - textRect.top - parseFloat(style.lineHeight) / 10
+				) < 1
+		};
+	};
+	const messages = [
+		'Message cannot be empty',
+		'Your previous message is still sending.\nPlease wait before submitting another.',
+		'Connection failed: ' + 'x'.repeat(100)
+	];
+	for (const theme of ['light', 'dark']) {
+		for (const width of [900, 320]) {
+			for (const fontSize of [16, 32]) {
+				await send(
+					'Emulation.setDeviceMetricsOverride',
+					{
+						width,
+						height: 600,
+						deviceScaleFactor: 1,
+						mobile: false
+					},
+					sessionId
+				);
+				await run(
+					`document.documentElement.classList.toggle('dark', ${theme === 'dark'}); document.documentElement.style.fontSize = '${fontSize}px'`
+				);
+				for (const [messageIndex, message] of messages.entries()) {
+					await type('draft stays focused');
+					await run(`chatNative.roomError(${JSON.stringify(message)})`);
+					await wait(
+						`document.querySelector('${inline}')?.textContent.includes(${JSON.stringify(message)})`
+					);
+					const state = await run(`(${inspectNotice.toString()})()`);
+					const label = `${theme} ${width}px font ${fontSize}px message ${messageIndex}`;
+					assert.equal(state.text, message, label);
+					assert.equal(state.role, 'alert', label);
+					assert.equal(state.iconHidden, 'true', label);
+					assert(
+						state.focused && state.fits && state.iconAligned,
+						`${label}: ${JSON.stringify(state)}`
+					);
+					assert(state.contrast >= 4.5, `${label}: contrast ${state.contrast}`);
+					if (messageIndex === 1 || (messageIndex === 2 && (width === 320 || fontSize === 32))) {
+						assert(state.lines > 1, `${label}: message did not wrap`);
+					}
+					if (messageIndex === 0) {
+						const shot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+						await writeFile(
+							path.join(output, `notice-${theme}-${width}-${fontSize}.png`),
+							Buffer.from(shot.data, 'base64')
+						);
+					}
+				}
+			}
+		}
+	}
+	await send('Emulation.clearDeviceMetricsOverride', {}, sessionId);
+	await run(
+		"document.documentElement.style.fontSize = ''; document.documentElement.classList.remove('dark')"
+	);
+	await send('Emulation.setEmulatedMedia', { features: [] }, sessionId);
+	await type(':ka');
+	await wait('!!document.querySelector(\'img[alt="Kappa"]\')');
+	assert(
+		await run(
+			`document.querySelector('img[alt="Kappa"]').getBoundingClientRect().bottom <= ${input}.getBoundingClientRect().top`
+		),
+		'picker remains above the input while an error is visible'
+	);
+	await run(keydown);
+	await wait(`${input}.value === 'Kappa '`);
+	console.log(
+		'PASS 24 notice theme/width/text-size/content cases, contrast, focus and picker access'
+	);
 
 	await run(`chatNative.logError('native failure 42')`);
 	await wait(
