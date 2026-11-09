@@ -369,7 +369,18 @@ describe('settings page', () => {
 		await flushUi();
 		expect(document.activeElement?.id).toBe('translation-models');
 		expect(document.querySelector('#setting-translation-layout')).toBeNull();
-		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(0);
+		expect(
+			Array.from(
+				document.querySelectorAll('[data-setting-row]'),
+				(row) => (row as HTMLElement).dataset.settingRow
+			)
+		).toEqual([
+			'translation.translate_history',
+			'translation.detection_policy',
+			'translation.queue_policy',
+			'translation.queue_capacity',
+			'translation.max_in_flight'
+		]);
 		expect(f.client.watchState).toHaveBeenCalledTimes(1);
 		expect(getNormalizedAppSettings().translation.enabled).toBe(false);
 		await click('[data-translation-back]');
@@ -384,6 +395,7 @@ describe('settings page', () => {
 		select.dispatchEvent(new Event('change', { bubbles: true }));
 		await flushUi();
 		expect(getNormalizedAppSettings().translation).toEqual({
+			...DEFAULT_APP_SETTINGS.translation,
 			enabled: true,
 			target_language: 'rus',
 			layout: 'connector'

@@ -525,6 +525,44 @@ try {
 		await search(sessionId, 'models');
 		await click(sessionId, '[data-open-translation-models]');
 		await waitFor(sessionId, `document.querySelectorAll('[data-model-row]').length === 2`);
+		for (const field of [
+			'translate_history',
+			'detection_policy',
+			'queue_policy',
+			'queue_capacity',
+			'max_in_flight'
+		]) {
+			assert.equal(
+				await evaluate(sessionId, `!!document.querySelector('#setting-translation-${field}')`),
+				true
+			);
+		}
+		await evaluate(
+			sessionId,
+			`(() => {
+			const input = document.querySelector('#setting-translation-queue_capacity');
+			input.value = '257'; input.dispatchEvent(new Event('input', { bubbles: true }));
+			input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		})()`
+		);
+		await waitFor(
+			sessionId,
+			`document.querySelector('#setting-translation-queue_capacity').getAttribute('aria-invalid') === 'true'`
+		);
+		await evaluate(
+			sessionId,
+			`(() => {
+			const input = document.querySelector('#setting-translation-queue_capacity');
+			input.value = '32'; input.dispatchEvent(new Event('input', { bubbles: true }));
+			input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+			const select = document.querySelector('#setting-translation-detection_policy');
+			select.value = 'best_guess'; select.dispatchEvent(new Event('change', { bubbles: true }));
+		})()`
+		);
+		await waitFor(
+			sessionId,
+			`JSON.parse(localStorage.getItem('settings-check')).translation.queue_capacity === 32 && JSON.parse(localStorage.getItem('settings-check')).translation.detection_policy === 'best_guess'`
+		);
 		assert.equal(
 			await evaluate(sessionId, `!!document.querySelector('#setting-translation-layout')`),
 			false
@@ -557,6 +595,8 @@ try {
 			Buffer.from(modelsScreenshot.data, 'base64')
 		);
 		await capture('advanced');
+		await evaluate(sessionId, `document.querySelector('[data-settings-content]').scrollTop = 0`);
+		await capture('processing');
 		await click(sessionId, '[data-model-row="eng:rus"] [data-model-action="install"]');
 		await waitFor(sessionId, `!!document.querySelector('[data-reviewed-model]')`);
 		assert.equal(

@@ -505,6 +505,11 @@ pub struct TranslationSettings {
     pub enabled: bool,
     pub target_language: String,
     pub layout: ChatTranslationLayout,
+    pub translate_history: bool,
+    pub detection_policy: ChatDetectionPolicy,
+    pub queue_policy: TranslationQueuePolicy,
+    pub queue_capacity: usize,
+    pub max_in_flight: usize,
 }
 
 impl Default for TranslationSettings {
@@ -513,6 +518,11 @@ impl Default for TranslationSettings {
             enabled: false,
             target_language: "eng".to_owned(),
             layout: ChatTranslationLayout::MessageText,
+            translate_history: false,
+            detection_policy: ChatDetectionPolicy::ReliableOnly,
+            queue_policy: TranslationQueuePolicy::NewestFirst,
+            queue_capacity: 256,
+            max_in_flight: 16,
         }
     }
 }
@@ -522,8 +532,26 @@ impl TranslationSettings {
         if !matches!(self.target_language.as_str(), "eng" | "rus") {
             self.target_language = Self::default().target_language;
         }
+        self.queue_capacity = self.queue_capacity.clamp(1, 256);
+        self.max_in_flight = self.max_in_flight.clamp(1, 256);
         self
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatDetectionPolicy {
+    #[default]
+    ReliableOnly,
+    BestGuess,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TranslationQueuePolicy {
+    #[default]
+    NewestFirst,
+    OldestFirst,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq)]

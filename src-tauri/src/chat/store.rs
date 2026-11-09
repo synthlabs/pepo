@@ -12,6 +12,14 @@ pub struct StoreMetrics {
 pub trait MessageRepository: Send {
     fn insert(&mut self, message: ChannelMessage) -> Option<ChannelMessage>;
     fn history(&self, login: &str) -> Vec<ChannelMessage>;
+    fn translation_candidates(
+        &self,
+        login: &str,
+        after: u64,
+        before: u64,
+        newest: bool,
+        limit: usize,
+    ) -> Vec<ChannelMessage>;
     fn update(&mut self, login: &str, update: &ChannelMessageTranslationUpdate) -> bool;
     fn set_limit(&mut self, limit: usize);
     fn metrics(&self) -> StoreMetrics;
@@ -87,6 +95,39 @@ impl MessageRepository for MemoryRepository {
             .and_then(|id| self.rooms.get(id))
             .map(|room| room.iter().map(|e| e.message.clone()).collect())
             .unwrap_or_default()
+    }
+    fn translation_candidates(
+        &self,
+        login: &str,
+        after: u64,
+        before: u64,
+        newest: bool,
+        limit: usize,
+    ) -> Vec<ChannelMessage> {
+        let Some(room) = self.logins.get(login).and_then(|id| self.rooms.get(id)) else {
+            return vec![];
+        };
+        let eligible = |entry: &&Entry| {
+            entry.message.index > after
+                && entry.message.index < before
+                && entry.message.translation.is_none()
+                && crate::types::translation_input_from_fragments(&entry.message.fragments)
+                    .is_some()
+        };
+        if newest {
+            room.iter()
+                .rev()
+                .filter(eligible)
+                .take(limit)
+                .map(|entry| entry.message.clone())
+                .collect()
+        } else {
+            room.iter()
+                .filter(eligible)
+                .take(limit)
+                .map(|entry| entry.message.clone())
+                .collect()
+        }
     }
     fn update(&mut self, login: &str, update: &ChannelMessageTranslationUpdate) -> bool {
         let Some(room) = self.logins.get(login).and_then(|id| self.rooms.get_mut(id)) else {

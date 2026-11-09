@@ -3,15 +3,58 @@ import type { AppSettings } from '$lib/bindings';
 import { DEFAULT_APP_SETTINGS, gridTemplateColumns, normalizeAppSettings, px } from './settings';
 
 describe('settings helpers', () => {
+	it('defaults retained-history translation off and preserves an explicit opt-in', () => {
+		expect(DEFAULT_APP_SETTINGS.translation.translate_history).toBe(false);
+		const legacy = { ...DEFAULT_APP_SETTINGS, translation: { enabled: true } } as AppSettings;
+		expect(normalizeAppSettings(legacy).translation.translate_history).toBe(false);
+		const enabled = structuredClone(DEFAULT_APP_SETTINGS);
+		enabled.translation.translate_history = true;
+		expect(normalizeAppSettings(enabled).translation.translate_history).toBe(true);
+	});
+	it('fills older translation preferences and normalizes processing bounds', () => {
+		const older = {
+			...DEFAULT_APP_SETTINGS,
+			translation: { enabled: true, target_language: 'rus', layout: 'connector' }
+		} as AppSettings;
+		expect(normalizeAppSettings(older).translation).toEqual({
+			...DEFAULT_APP_SETTINGS.translation,
+			...older.translation
+		});
+		const configured = normalizeAppSettings({
+			...DEFAULT_APP_SETTINGS,
+			translation: {
+				...DEFAULT_APP_SETTINGS.translation,
+				translate_history: true,
+				detection_policy: 'best_guess',
+				queue_policy: 'oldest_first',
+				queue_capacity: 0,
+				max_in_flight: 999
+			}
+		});
+		expect(configured.translation).toMatchObject({
+			translate_history: true,
+			detection_policy: 'best_guess',
+			queue_policy: 'oldest_first',
+			queue_capacity: 1,
+			max_in_flight: 256
+		});
+		for (const invalid of [NaN, Infinity, 1.5, undefined]) {
+			const settings = structuredClone(DEFAULT_APP_SETTINGS);
+			settings.translation.queue_capacity = invalid as number;
+			settings.translation.max_in_flight = invalid as number;
+			expect(normalizeAppSettings(settings).translation).toMatchObject({
+				queue_capacity: 256,
+				max_in_flight: 16
+			});
+		}
+	});
 	it('defaults translation independently of the discarded legacy layout', () => {
 		const legacy = structuredClone(DEFAULT_APP_SETTINGS) as Partial<AppSettings>;
 		delete legacy.translation;
 		Object.assign(legacy.chat!, { translation_layout: 'connector' });
-		expect(normalizeAppSettings(legacy as AppSettings).translation).toEqual({
-			enabled: false,
-			target_language: 'eng',
-			layout: 'message_text'
-		});
+		expect(normalizeAppSettings(legacy as AppSettings).translation).toEqual(
+			DEFAULT_APP_SETTINGS.translation
+		);
 		const invalid = {
 			...DEFAULT_APP_SETTINGS,
 			translation: { enabled: 'yes', target_language: 'deu', layout: 'future' }
@@ -19,7 +62,12 @@ describe('settings helpers', () => {
 		expect(normalizeAppSettings(invalid).translation).toEqual(DEFAULT_APP_SETTINGS.translation);
 		const configured = {
 			...DEFAULT_APP_SETTINGS,
-			translation: { enabled: true, target_language: 'rus', layout: 'connector' as const }
+			translation: {
+				...DEFAULT_APP_SETTINGS.translation,
+				enabled: true,
+				target_language: 'rus',
+				layout: 'connector' as const
+			}
 		};
 		expect(normalizeAppSettings(configured).translation).toEqual(configured.translation);
 	});

@@ -15,6 +15,27 @@ import {
 } from './controls';
 
 describe('settings controls', () => {
+	it('keeps processing controls in Advanced and makes them searchable', () => {
+		for (const field of [
+			'translate_history',
+			'detection_policy',
+			'queue_policy',
+			'queue_capacity',
+			'max_in_flight'
+		]) {
+			const control = SETTINGS_CONTROLS.find((item) => item.id === `translation.${field}`)!;
+			expect(control.more).toBe(true);
+			expect(matchingControls(control.label).map((item) => item.id)).toContain(control.id);
+			if (control.kind === 'number') {
+				for (const value of ['0', '257', '1.5'])
+					expect(validateControlInput(control, value).error).toBeDefined();
+				expect(validateControlInput(control, '256')).toEqual({ value: 256 });
+			}
+		}
+		expect(
+			SETTINGS_CONTROLS.find((item) => item.id === 'translation.layout')?.more
+		).toBeUndefined();
+	});
 	it('does not reapply a failed provider toggle when another provider toggle is queued', async () => {
 		let snapshot!: SettingsSnapshot;
 		const requests: ((saved: boolean) => void)[] = [];
@@ -116,7 +137,12 @@ describe('settings controls', () => {
 		settings.appearance.theme = 'light';
 		settings.diagnostics.capture_window_errors = false;
 		settings.chat.message_limit = 900;
-		settings.translation = { enabled: true, target_language: 'rus', layout: 'connector' };
+		settings.translation = {
+			...settings.translation,
+			enabled: true,
+			target_language: 'rus',
+			layout: 'connector'
+		};
 		settings.channel_cache.poll_interval_secs = 99;
 		const chat = applySettingsPatch(settings, resetSettingsPatch('chat'));
 		expect(chat.chat.message_limit).toBe(500);

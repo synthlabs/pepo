@@ -372,6 +372,22 @@ try {
 			sessionId,
 			"document.querySelectorAll('[data-chat-message-index]').length === 5 && document.body.textContent.includes('translated-live')"
 		);
+		for (const layout of ['language_tag', 'message_text', 'timestamp_end', 'connector']) {
+			await evaluate(
+				sessionId,
+				`chatNative.settings.obj.translation.layout = '${layout}'; chatNative.settings.sync()`
+			);
+			await waitFor(sessionId, "document.body.textContent.includes('translated-live')");
+			assert.equal(
+				await evaluate(sessionId, "document.body.textContent.includes('visible-new')"),
+				true
+			);
+			assert.equal(
+				await evaluate(sessionId, "!!document.querySelector('[data-translation-connector]')"),
+				layout === 'connector'
+			);
+			assertStable(beforeTranslation, await readRows(sessionId));
+		}
 		const liveRows = await readRows(sessionId);
 		assertStable(beforeTranslation, liveRows);
 		assertAlternating(liveRows);
@@ -425,6 +441,10 @@ try {
 		await evaluate(sessionId, 'chatNative.go(null)');
 		await waitFor(sessionId, "!!document.querySelector('[data-settings-page]')");
 		assert.equal(await evaluate(sessionId, 'chatNative.feeds.size'), 0);
+		await evaluate(
+			sessionId,
+			`document.querySelector('[aria-controls="settings-more-chat"]').click()`
+		);
 		await waitFor(sessionId, "document.body.textContent.includes('2 joined')");
 
 		await evaluate(sessionId, "chatNative.push('rooma','while-settings'); chatNative.go('rooma')");
@@ -492,7 +512,10 @@ try {
 		);
 		await waitFor(sessionId, "document.body.textContent.includes('channel not found')");
 		assert.equal(await evaluate(sessionId, 'chatNative.feeds.size'), 0);
-		assert.equal(await evaluate(sessionId, "document.querySelectorAll('.bg-red-950').length"), 1);
+		assert.equal(
+			await evaluate(sessionId, "document.querySelectorAll('[data-chat-input-error]').length"),
+			1
+		);
 		await evaluate(
 			sessionId,
 			"chatNative.roomFailures.rooma = '403 Forbidden'; chatNative.go('rooma')"
@@ -503,7 +526,10 @@ try {
 		await waitFor(sessionId, "!!document.querySelector('[data-settings-page]')");
 		await evaluate(sessionId, "chatNative.go('rooma')");
 		await waitFor(sessionId, "document.body.textContent.includes('403 Forbidden')");
-		assert.equal(await evaluate(sessionId, "document.querySelectorAll('.bg-red-950').length"), 1);
+		assert.equal(
+			await evaluate(sessionId, "document.querySelectorAll('[data-chat-input-error]').length"),
+			1
+		);
 		assert.deepEqual(exceptions.get(sessionId) ?? [], []);
 		await send('Target.closeTarget', { targetId });
 	}

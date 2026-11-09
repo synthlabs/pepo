@@ -30,7 +30,12 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 	translation: {
 		enabled: false,
 		target_language: 'eng',
-		layout: 'message_text'
+		layout: 'message_text',
+		translate_history: false,
+		detection_policy: 'reliable_only',
+		queue_policy: 'newest_first',
+		queue_capacity: 256,
+		max_in_flight: 16
 	},
 	emotes: {
 		providers: [
@@ -166,6 +171,15 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 		translation: {
 			enabled: typeof translation.enabled === 'boolean' ? translation.enabled : false,
 			target_language: translation.target_language === 'rus' ? 'rus' : 'eng',
+			translate_history:
+				typeof translation.translate_history === 'boolean'
+					? translation.translate_history
+					: DEFAULT_APP_SETTINGS.translation.translate_history,
+			detection_policy:
+				translation.detection_policy === 'best_guess' ? 'best_guess' : 'reliable_only',
+			queue_policy: translation.queue_policy === 'oldest_first' ? 'oldest_first' : 'newest_first',
+			queue_capacity: translationLimit(translation.queue_capacity, 256),
+			max_in_flight: translationLimit(translation.max_in_flight, 16),
 			layout:
 				translation.layout === 'language_tag' ||
 				translation.layout === 'message_text' ||
@@ -345,4 +359,8 @@ export function px(value: number): string {
 
 function positive(value: number, fallback: number): number {
 	return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
+
+function translationLimit(value: number, fallback: number): number {
+	return Number.isSafeInteger(value) ? Math.min(256, Math.max(1, value)) : fallback;
 }

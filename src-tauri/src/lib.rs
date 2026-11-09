@@ -1089,6 +1089,7 @@ async fn login(
     let chat_engine = app_handle
         .state::<ChatRuntime>()
         .activate(&app_handle, app_settings(state_syncer.inner()).chat);
+    chat_engine.configure_translation(app_settings(state_syncer.inner()).translation);
     {
         let auth_state_ref = state_syncer.get::<AuthState>("auth_state");
         let mut auth_state = auth_state_ref.lock().unwrap();
@@ -1238,11 +1239,7 @@ async fn login(
                                 if let Some(message_type) = notification.message_type_override {
                                     channel_msg.message_type = message_type;
                                 }
-                                internal::ingest_chat_message(
-                                    &chat_engine_ref,
-                                    channel_msg,
-                                    |translation| translation.dispatch(app_ref.clone()),
-                                );
+                                internal::ingest_chat_message(&chat_engine_ref, channel_msg);
                             }
                             _ => debug!("event notification: {:?}", notification.event),
                         }
@@ -1797,7 +1794,9 @@ pub fn run() {
                         settings_app.state::<ChatRuntime>().current(),
                         serde_json::from_str::<AppSettings>(event.payload()),
                     ) {
-                        engine.configure(settings.normalized().chat);
+                        let settings = settings.normalized();
+                        engine.configure_translation(settings.translation);
+                        engine.configure(settings.chat);
                     }
                 });
             }

@@ -328,6 +328,7 @@ export type ChannelMessageType =
  */
 "power_ups_message_effect"
 export type ChannelStatus = { broadcaster_id: string; login: string; display_name: string; profile_image_url: string; is_live: boolean; is_partner?: boolean; stream: Stream | null }
+export type ChatDetectionPolicy = "reliable_only" | "best_guess"
 export type ChatFeedContext = { epoch: string }
 export type ChatFeedRequest = { epoch: string; revision: number }
 export type ChatJoinMode = "all" | "live" | "single"
@@ -455,7 +456,8 @@ user_login: string;
 viewer_count: number }
 export type TextFragment = { index: number; text: string }
 export type TimestampStyle = "short" | "medium" | "long" | "full"
-export type TranslationSettings = { enabled: boolean; target_language: string; layout: ChatTranslationLayout }
+export type TranslationQueuePolicy = "newest_first" | "oldest_first"
+export type TranslationSettings = { enabled: boolean; target_language: string; layout: ChatTranslationLayout; translate_history: boolean; detection_policy: ChatDetectionPolicy; queue_policy: TranslationQueuePolicy; queue_capacity: number; max_in_flight: number }
 export type UserToken = { 
 /**
  * The access token used to authenticate requests with

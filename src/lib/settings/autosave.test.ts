@@ -31,6 +31,31 @@ function fixture() {
 }
 
 describe('settings autosave', () => {
+	it('persists translation processing preferences without replacing neighboring preferences', async () => {
+		const test = fixture();
+		test.initialize();
+		const change = test.writer.update({
+			translation: {
+				translate_history: true,
+				detection_policy: 'best_guess',
+				queue_policy: 'oldest_first',
+				queue_capacity: 32,
+				max_in_flight: 8
+			}
+		});
+		test.requests[0].resolve(true);
+		expect(await change).toBe(true);
+		expect(test.requests[0].value.translation).toEqual({
+			...DEFAULT_APP_SETTINGS.translation,
+			translate_history: true,
+			detection_policy: 'best_guess',
+			queue_policy: 'oldest_first',
+			queue_capacity: 32,
+			max_in_flight: 8
+		});
+		expect(test.requests[0].value.network).toEqual(DEFAULT_APP_SETTINGS.network);
+		expect(test.state.value.translation).toEqual(test.requests[0].value.translation);
+	});
 	it('does not write before initial state is available', async () => {
 		const test = fixture();
 		expect(await test.writer.update({ appearance: { theme: 'light' } })).toBe(false);

@@ -10,6 +10,7 @@ use crate::{app_settings, SharedBadgeManager, SharedEmoteManager, SharedEventSub
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use synth_translate::plugin::TranslationExt;
 use tauri::{AppHandle, Emitter, Listener, Manager};
 
 #[derive(Default)]
@@ -332,6 +333,8 @@ pub(super) fn admission_action(
 
 pub fn start(app: AppHandle, engine: Arc<ChatEngine>) {
     let registry_app = app.clone();
+    let translation_task =
+        tauri::async_runtime::spawn(super::translation::run(engine.clone(), app.translation()));
     let metrics_task = tauri::async_runtime::spawn(run_diagnostics(engine.clone()));
     let membership_task = tauri::async_runtime::spawn(async move {
         let manager = app.state::<SharedEventSubManager>().lock().await.clone();
@@ -548,7 +551,7 @@ pub fn start(app: AppHandle, engine: Arc<ChatEngine>) {
         .tasks
         .lock()
         .unwrap()
-        .extend([metrics_task, membership_task]);
+        .extend([translation_task, metrics_task, membership_task]);
 }
 
 #[cfg(test)]

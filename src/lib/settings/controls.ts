@@ -34,6 +34,7 @@ export interface SettingControl {
 const U32_MAX = 4_294_967_295;
 const chatMore = { category: 'chat', more: true } as const;
 const emoteMore = { category: 'emotes', more: true } as const;
+const translationMore = { category: 'translation', more: true } as const;
 
 export const SETTINGS_CONTROLS: SettingControl[] = [
 	{
@@ -156,6 +157,60 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 			{ value: 'timestamp_end', label: 'After timestamp' },
 			{ value: 'connector', label: 'Connector' }
 		]
+	},
+	{
+		...translationMore,
+		id: 'translation.translate_history',
+		path: 'translation.translate_history',
+		label: 'Translate retained history',
+		description: 'Also translate untranslated messages already in the open chat’s history.',
+		kind: 'toggle'
+	},
+	{
+		...translationMore,
+		id: 'translation.detection_policy',
+		path: 'translation.detection_policy',
+		label: 'Language detection',
+		description: 'Skip uncertain language detection or use the detector’s best guess.',
+		kind: 'select',
+		options: [
+			{ value: 'reliable_only', label: 'Reliable only' },
+			{ value: 'best_guess', label: 'Best guess' }
+		]
+	},
+	{
+		...translationMore,
+		id: 'translation.queue_policy',
+		path: 'translation.queue_policy',
+		label: 'Translation order',
+		description:
+			'Newest first favors live messages and drops the oldest waiting request when full. Oldest first keeps arrival order and skips new requests when full.',
+		kind: 'select',
+		options: [
+			{ value: 'newest_first', label: 'Newest first' },
+			{ value: 'oldest_first', label: 'Oldest first' }
+		]
+	},
+	{
+		...translationMore,
+		id: 'translation.queue_capacity',
+		path: 'translation.queue_capacity',
+		label: 'Translation queue capacity',
+		description:
+			'Maximum unfinished requests across open chats, including requests being translated.',
+		kind: 'number',
+		unit: 'requests',
+		max: 256
+	},
+	{
+		...translationMore,
+		id: 'translation.max_in_flight',
+		path: 'translation.max_in_flight',
+		label: 'Concurrent translations',
+		description: 'Maximum requests submitted together across open chats, up to the queue capacity.',
+		kind: 'number',
+		unit: 'requests',
+		max: 256
 	},
 	{
 		...chatMore,

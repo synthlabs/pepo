@@ -2,6 +2,7 @@ pub mod admission;
 pub mod membership;
 pub mod runtime;
 pub mod store;
+pub mod translation;
 
 use crate::types::{ChannelMessage, ChannelMessageTranslationUpdate, ChatRoomInfo, ChatSettings};
 use admission::{retry_delay, RoomFailure};
@@ -109,6 +110,7 @@ pub struct EngineState {
     next_feed: u64,
     pub settings: ChatSettings,
     pub status: EngineStatus,
+    translations: translation::Coordinator,
 }
 
 pub struct ChatEngine {
@@ -133,6 +135,7 @@ impl ChatEngine {
                 next_feed: 0,
                 settings,
                 status: EngineStatus::default(),
+                translations: translation::Coordinator::default(),
             }),
             changed,
         })
@@ -155,6 +158,7 @@ impl ChatEngine {
             return false;
         };
         s.cursor += 1;
+        s.translations.admit(&message, true);
         s.publish(&login, FeedEvent::Message { message });
         drop(s);
         self.wake();
@@ -165,10 +169,7 @@ impl ChatEngine {
         if !s.active {
             return;
         }
-        // Relay late results to a paused UI even if backend retention already evicted the message.
-        s.repository.update(login, &update);
-        s.cursor += 1;
-        s.publish(login, FeedEvent::Translation { update });
+        s.apply_translation(login, update);
         drop(s);
         self.wake();
     }
@@ -266,6 +267,8 @@ impl ChatEngine {
             return false;
         }
         s.owners.get_mut(owner).unwrap().pending = false;
+        let cursor = s.cursor;
+        s.translations.open(&login, cursor);
         s.membership.foreground.insert(login.clone());
         s.membership.lingering.insert(login.clone());
         if let Some(failure) = s.failures.get_mut(&login) {
@@ -342,6 +345,7 @@ impl ChatEngine {
     pub fn shutdown(&self) {
         let mut s = self.state.lock().unwrap();
         s.active = false;
+        s.translations.shutdown();
         s.repository.clear();
         s.subscribers.clear();
         s.leases.clear();
@@ -355,11 +359,19 @@ impl ChatEngine {
 }
 
 impl EngineState {
+    fn apply_translation(&mut self, login: &str, update: ChannelMessageTranslationUpdate) {
+        // A paused UI can retain messages already evicted by backend retention.
+        self.repository.update(login, &update);
+        self.cursor += 1;
+        self.publish(login, FeedEvent::Translation { update });
+    }
+
     fn detach_owner(&mut self, owner: &str) {
         if let Some(lease) = self.leases.remove(owner) {
             self.subscribers.remove(&lease.feed_id);
             if !self.leases.values().any(|other| other.login == lease.login) {
                 self.membership.foreground.remove(&lease.login);
+                self.translations.close(&lease.login);
             }
         }
     }
