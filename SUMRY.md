@@ -1,24 +1,22 @@
-[commit]: # '2b2aa31b394383bf6c08a5b91eb5a7df53c8f831'
+[commit]: # '1cd0b480fc4696b31bca0ff2b57d19a75de2316c'
 
 Features:
 
-- (chat): add shared multi-channel message engine (#31)
+- (build): add ci make command
+- (translation): support automatically translating chat messages
+- (nav): add home button to sidebar
+- (translation): initial translation settings and downloads
 
 Fixes:
 
+- (core): improve experience when using with slow network
+- (chat): adjust chat error message styling
+- (translation): adjust settings page
+- (ci): macos makefile test
 - (emotes): handle null 7tv channel emote sets
-- (auth): properly refresh token after sleep
 
 Misc:
 
-- fix: tolerate unsupported eventsub fragments
-- (misc): properly handle channel refresh cancellation
-- chore: add eventsub parse failure debugging
-- chore: move some settings around
-- (deps): update utils to f629065
-- (deps): update utils to 2d77d37
-- (deps): update utils to b8857d8
-- (deps): update utils to e7a9ff6
-- (deps): update utils to c3b8057
-- fix: linting
-- (updater): version bump 0.2.30
+- (deps): update utils to e82401c
+- (deps): update utils to 6dcf692
+- (updater): version bump 0.2.31

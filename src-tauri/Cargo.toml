@@ -3,8 +3,6 @@ name = "pepo"
 path = "src/main.rs"
 
 [build-dependencies]
-[build-dependencies.translate-build]
-path = "../utils/rust/translate-build"
 [build-dependencies.inbound-build]
 path = "../utils/rust/inbound-build"
 [build-dependencies.pepo-internal]
@@ -13,10 +11,8 @@ path = "../internal/rust"
 [build-dependencies.tauri-build]
 features = []
 version = "2"
-
-[dependencies.synth-translate]
-path = "../utils/rust/translate"
-features = ["tauri-plugin"]
+[build-dependencies.translate-build]
+path = "../utils/rust/translate-build"
 
 [dependencies]
 color-eyre = "0.6.3"
@@ -44,6 +40,9 @@ version = "0.12.28"
 [dependencies.serde]
 features = ["derive"]
 version = "1"
+[dependencies.synth-translate]
+features = ["tauri-plugin"]
+path = "../utils/rust/translate"
 [dependencies.tauri]
 features = []
 version = "2"
@@ -92,7 +91,7 @@ default-run = "pepo"
 description = "A Tauri App"
 edition = "2021"
 name = "pepo"
-version = "0.2.31"
+version = "0.2.32"
 
 [profile]
 [profile.dev]
