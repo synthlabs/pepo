@@ -110,6 +110,14 @@ Tauri bundles are written under `target/release/bundle/`; Arch packages are writ
 Run the local checks with:
 
 ```bash
+make ci
+```
+
+This installs dependencies with the frozen lockfile, runs frontend and script tests, lint, Rust
+tests, and a Tauri build without bundling. Steps run in the following order and stop at the first
+failure, including when Make is invoked with parallel jobs:
+
+```bash
 pnpm install --frozen-lockfile
 pnpm test:run
 pnpm lint

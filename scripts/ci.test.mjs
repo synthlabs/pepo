@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { ESLint } from 'eslint';
 import { parse } from 'yaml';
 import { collectArtifacts } from './ci-artifacts.mjs';
 
@@ -29,6 +30,144 @@ function fixture(t) {
 	});
 	return directory;
 }
+
+const makeVersion = spawnSync('make', ['--version'], { encoding: 'utf8' });
+const makeOptions = {
+	skip: /GNU Make/.test(makeVersion.stdout ?? '') ? false : 'GNU Make is not available'
+};
+const ciSteps = [
+	['-v', 'ci-pnpm', 'install', '--frozen-lockfile'],
+	['-v', 'ci-pnpm', 'test:run'],
+	['-v', 'ci-pnpm', 'lint'],
+	['-v', 'cargo', 'test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked'],
+	['-v', 'ci-pnpm', 'tauri', 'build', '--no-bundle', '--', '--locked']
+];
+
+function runLocalCi(t, args = [], failStep = 0) {
+	const directory = path.join(fixture(t), 'project (ci)');
+	mkdirSync(path.join(directory, 'utils/packaging/tauri'), { recursive: true });
+	writeFileSync(path.join(directory, 'Makefile'), readFileSync(path.join(root, 'Makefile')));
+	writeFileSync(path.join(directory, 'utils/packaging/tauri/tauri.mk'), '');
+	writeFileSync(
+		path.join(directory, 'record.mjs'),
+		`
+import { appendFileSync, readFileSync } from 'node:fs';
+appendFileSync('steps.jsonl', JSON.stringify(process.argv.slice(2)) + '\\n');
+const count = readFileSync('steps.jsonl', 'utf8').trim().split('\\n').length;
+process.exitCode = count === Number(process.env.CI_FAIL_STEP) ? 23 : 0;
+`
+	);
+	const result = spawnSync(
+		'make',
+		[
+			'--no-print-directory',
+			...args,
+			'ci',
+			`TOKE="${process.execPath.replaceAll('\\', '/')}" record.mjs`,
+			'PNPM=ci-pnpm'
+		],
+		{
+			cwd: directory,
+			encoding: 'utf8',
+			timeout: 30000,
+			env: { ...process.env, MAKEFLAGS: '', MFLAGS: '', CI_FAIL_STEP: String(failStep) }
+		}
+	);
+	const logPath = path.join(directory, 'steps.jsonl');
+	const steps = existsSync(logPath)
+		? readFileSync(logPath, 'utf8')
+				.trim()
+				.split('\n')
+				.map((line) => JSON.parse(line))
+		: [];
+	assert.ifError(result.error);
+	return { result, steps };
+}
+
+for (const args of [[], ['-j4']]) {
+	test(`make ci runs the README sequence with args ${JSON.stringify(args)}`, makeOptions, (t) => {
+		const { result, steps } = runLocalCi(t, args);
+		assert.equal(result.status, 0, result.stdout + result.stderr);
+		assert.deepEqual(steps, ciSteps);
+	});
+}
+
+for (let index = 0; index < ciSteps.length; index++) {
+	test(`make ci stops when step ${index + 1} fails`, makeOptions, (t) => {
+		const { result, steps } = runLocalCi(t, ['-j4'], index + 1);
+		assert.notEqual(result.status, 0, result.stdout + result.stderr);
+		assert.deepEqual(steps, ciSteps.slice(0, index + 1));
+	});
+}
+
+const eslint = new ESLint({ cwd: root });
+
+test('ESLint includes app source, shared frontend utilities, scripts, and root configs', async () => {
+	for (const file of [
+		'src/lib/ci-scope.ts',
+		'src/lib/ci-scope.js',
+		'src/lib/ci-scope.svelte',
+		'src/lib/ci-scope.svelte.ts',
+		'src/lib/ci-scope.svelte.js',
+		'utils/js/ci-scope.ts',
+		'scripts/ci-scope.mjs',
+		'eslint.config.js',
+		'vite.config.js',
+		'vitest.config.ts'
+	]) {
+		assert.equal(await eslint.isPathIgnored(file), false, file);
+	}
+});
+
+test('ESLint excludes skill directories, dependencies, generated output, and other files', async () => {
+	for (const file of [
+		'.github/skills/ci-scope.mjs',
+		'.claude/skills/ci-scope.js',
+		'.agents/skills/ci-scope.ts',
+		'.codex/skills/ci-scope.js',
+		'.impeccable/ci-scope.js',
+		'src/.agents/skills/ci-scope.ts',
+		'scripts/.claude/skills/ci-scope.js',
+		'utils/.github/skills/ci-scope.js',
+		'utils/js/.claude/skills/ci-scope.js',
+		'utils/js/node_modules/ci-scope/index.js',
+		'utils/js/translate/node_modules/ci-scope/index.js',
+		'utils/scripts/ci-scope.mjs',
+		'src/lib/config/config.ts',
+		'src-tauri/target/ci-scope.js',
+		'src-tauri/gen/schemas/ci-scope.js',
+		'target/ci-scope.js',
+		'build/ci-scope.js',
+		'docs/ci-scope.js',
+		'ci-scope.js'
+	]) {
+		assert.equal(await eslint.isPathIgnored(file), true, file);
+	}
+});
+
+test('ESLint still reports app and tooling errors and parses Svelte TypeScript', async () => {
+	for (const file of [
+		'src/lib/ci-scope.ts',
+		'utils/js/ci-scope.ts',
+		'scripts/ci-scope.mjs',
+		'vite.config.js'
+	]) {
+		const [result] = await eslint.lintText('const unused = 1;', { filePath: file });
+		assert.ok(
+			result.messages.some((message) => message.ruleId === '@typescript-eslint/no-unused-vars'),
+			file
+		);
+	}
+	const filePath = 'src/lib/ci-scope.svelte';
+	const config = await eslint.calculateConfigForFile(filePath);
+	assert.match(config.languageOptions.parser.meta.name, /svelte/);
+	assert.deepEqual(config.rules['svelte/valid-compile'], [2, { ignoreWarnings: true }]);
+	const [result] = await eslint.lintText(
+		'<script lang="ts">const value: number = 1;</script><p>{value}</p>',
+		{ filePath }
+	);
+	assert.equal(result.errorCount, 0, JSON.stringify(result.messages));
+});
 
 test('pull requests share validation without packaging or secrets', () => {
 	const pullRequest = workflow('test.yml');

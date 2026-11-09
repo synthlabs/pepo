@@ -8,6 +8,21 @@ import ts from 'typescript-eslint';
 const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url));
 
 export default ts.config(
+	{
+		ignores: [
+			'**/*',
+			'!src/',
+			'!src/**',
+			'!scripts/',
+			'!scripts/**',
+			'!utils/',
+			'!utils/js/',
+			'!utils/js/**',
+			'!*.config.{js,mjs,cjs,ts,mts,cts}',
+			'**/.*/',
+			'**/node_modules/'
+		]
+	},
 	includeIgnoreFile(gitignorePath),
 	{ ignores: ['src-tauri/target/**', 'src-tauri/gen/schemas/**'] },
 	js.configs.recommended,

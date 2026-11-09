@@ -39,6 +39,14 @@ format:
 lint:
 	$(TOKE) -v $(PNPM) run lint
 
+.PHONY: ci
+ci:
+	$(TOKE) -v $(PNPM) install --frozen-lockfile
+	$(TOKE) -v $(PNPM) test:run
+	$(TOKE) -v $(PNPM) lint
+	$(TOKE) -v cargo test --manifest-path src-tauri/Cargo.toml --locked
+	$(TOKE) -v $(PNPM) tauri build --no-bundle -- --locked
+
 .PHONY: patch
 patch:
 	$(PATCH_CMD)
