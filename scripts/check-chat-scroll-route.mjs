@@ -104,6 +104,8 @@ async function createRouteFixture(native, tick) {
 		first: rows()[0]?.dataset.chatMessageIndex,
 		last: rows().at(-1)?.dataset.chatMessageIndex,
 		spacer: spacer(),
+		listHeight: feed.firstElementChild.getBoundingClientRect().height,
+		viewportWidth: feed.clientWidth,
 		distance: feed.scrollHeight - feed.clientHeight - feed.scrollTop,
 		paused: !!document.querySelector('button[aria-label^="Jump to"]'),
 		error: document.querySelector('[data-chat-input-error]')?.textContent.trim() ?? null
@@ -120,6 +122,46 @@ async function createRouteFixture(native, tick) {
 	const clip = { x: box.left + 8, y: box.top + 35, width: 300, height: 120, scale: 1 };
 	window.routeFixture = {
 		metadata,
+		resize: async (width, arrivals = 0) => {
+			document.body.style.width = document.body.getBoundingClientRect().width + 'px';
+			document.body.style.transition = 'width 200ms linear';
+			void document.body.offsetWidth;
+			document.body.style.width = width + 'px';
+			await new Promise((resolve) => setTimeout(resolve, 70));
+			emit(arrivals);
+			await new Promise((resolve) => setTimeout(resolve, 210));
+			await frames();
+			return metadata();
+		},
+		translate: async (key) => {
+			native.feed.onmessage({
+				cursor: next,
+				event: {
+					type: 'translation',
+					update: {
+						message_id: key,
+						translation: {
+							source_language: 'rus',
+							target_language: 'eng',
+							translated_text:
+								'A translated message with enough text to wrap across several lines. '.repeat(12)
+						}
+					}
+				}
+			});
+			await tick();
+			await new Promise((resolve) => setTimeout(resolve, 80));
+			await frames();
+			return metadata();
+		},
+		interruptRestore: async () => {
+			emit(1);
+			feed.dispatchEvent(new WheelEvent('wheel', { deltaY: -150, bubbles: true }));
+			feed.scrollTop -= 150;
+			await new Promise((resolve) => setTimeout(resolve, 80));
+			await frames();
+			return metadata();
+		},
 		showError: async (error) => {
 			native.feed.onmessage({ cursor: next, event: { type: 'unavailable', error } });
 			await frames();
@@ -421,6 +463,62 @@ async function checkNoticeScroll(command, evaluate) {
 	);
 }
 
+async function checkControllerScroll(evaluate) {
+	const width = await evaluate('document.body.getBoundingClientRect().width');
+	for (const target of [width - 208, width]) {
+		const state = await evaluate('window.routeFixture.resize(' + target + ', 1)');
+		assert(Math.abs(state.viewportWidth - target) < 20, 'Fixture did not resize the chat viewport');
+		assert(!state.paused && Math.abs(state.distance) < 1, 'Animated resize lost pinned arrivals');
+	}
+	const pinned = await evaluate('window.routeFixture.metadata()');
+	const translated = await evaluate(
+		'window.routeFixture.translate(' + JSON.stringify(pinned.last) + ')'
+	);
+	assert(translated.listHeight > pinned.listHeight, 'Fixture did not render the translation');
+	assert(!translated.paused && Math.abs(translated.distance) < 1, 'Translation lost pinned bottom');
+	await evaluate('window.routeFixture.pause()');
+	const anchor = await evaluate('window.routeFixture.anchor()');
+	const checkAnchor = async () => {
+		assert((await evaluate('window.routeFixture.metadata()')).paused, 'Reflow resumed paused chat');
+		const top = await evaluate('window.routeFixture.anchorTop(' + JSON.stringify(anchor.key) + ')');
+		assert(Math.abs(top - anchor.top) < 1, 'Resize or translation moved the paused anchor');
+	};
+	const paused = await evaluate('window.routeFixture.metadata()');
+	const translatedAbove = await evaluate(
+		'window.routeFixture.translate(' + JSON.stringify(paused.first) + ')'
+	);
+	assert(
+		translatedAbove.listHeight > paused.listHeight,
+		'Fixture did not grow content above the anchor'
+	);
+	await checkAnchor();
+	let previousHeight = translatedAbove.listHeight;
+	for (const target of [width - 208, width]) {
+		const state = await evaluate('window.routeFixture.resize(' + target + ')');
+		assert(
+			state.listHeight !== previousHeight,
+			'Fixture did not reflow messages during resizing: ' +
+				JSON.stringify({ target, previousHeight, state })
+		);
+		previousHeight = state.listHeight;
+		await checkAnchor();
+	}
+	await evaluate('window.routeFixture.resume()');
+	const interrupted = await evaluate('window.routeFixture.interruptRestore()');
+	assert(interrupted.paused && interrupted.distance > 50, 'Queued restore overrode manual input');
+	await delay(300);
+	assert((await evaluate('window.routeFixture.metadata()')).paused, 'Manual settle resumed chat');
+	await evaluate('window.routeFixture.resume()');
+	await delay(200);
+	const resumed = await evaluate('window.routeFixture.metadata()');
+	assert(
+		!resumed.paused && Math.abs(resumed.distance) < 1,
+		'Resume after interruption lost bottom: ' + JSON.stringify(resumed)
+	);
+	await evaluate('document.body.style.transition = ""');
+	console.log('PASS animated resizing, arrivals, translations, manual interruption and resume');
+}
+
 try {
 	for (const scale of values.scale ? [Number(values.scale)] : [1, 1.1, 1.25, 1.5, 1.75, 2]) {
 		await checkScale(values.browser, scale, fixture.origin, async ({ command, evaluate }) => {
@@ -513,6 +611,7 @@ try {
 			const resumed = await evaluate('window.routeFixture.resume()');
 			assert.equal(resumed.count, 500);
 			assert(Math.abs(resumed.distance) < 1, 'Resume lost bottom');
+			await checkControllerScroll(evaluate);
 			if (scale === 1) await checkNoticeScroll(command, evaluate);
 			await evaluate('window.routeFixture.pause()');
 			const pausedAnchor = await evaluate('window.routeFixture.anchor()');

@@ -30,22 +30,7 @@
 	import { captureChatSendError } from '$lib/chat/send-errors';
 	import { MessageHistoryScheduler } from '$lib/chat/message-history';
 	import { measureHistoryOriginSpacer } from '$lib/chat/history-origin';
-	import {
-		beginManualScrollInteraction,
-		captureScrollSnapshot,
-		getPinnedBatchScrollSnapshot,
-		isAtBottom,
-		isManualScrollInteractionActive,
-		releaseManualScrollInteraction,
-		refreshScrollStateAfterScroll,
-		restoreScrollAfterRender,
-		scrollToBottom as scrollElementToBottom,
-		shouldOwnManualScroll,
-		type ManualScrollInteraction,
-		type ManualScrollSource,
-		type ScrollIntentDirection,
-		type ScrollSnapshot
-	} from '$lib/chat/autoscroll';
+	import { ChatScrollController } from '$lib/chat/scroll-controller';
 	import {
 		applyTranslationUpdate,
 		attachPendingTranslation,
@@ -61,9 +46,6 @@
 	import { getNormalizedAppSettings } from '$lib/stores/settings.svelte';
 
 	const CHAT_MESSAGE_SELECTOR = '[data-chat-message-index]';
-	const MANUAL_SCROLL_SETTLE_MS = 250;
-	const PAUSED_REFLOW_SETTLE_MS = 250;
-	const SCROLL_RESTORE_FALLBACK_MS = 50;
 	const MAX_MESSAGE_LENGTH = 500;
 	const COUNTER_THRESHOLD = 400;
 	const reducedMotion = new MediaQuery('(prefers-reduced-motion: reduce)');
@@ -116,46 +98,34 @@
 
 	const pendingTranslations: PendingTranslations = new SvelteMap();
 	let roomFeed: ReturnType<typeof openRoomFeed> | undefined;
-	let pendingScrollSnapshot: ScrollSnapshot | null = null;
-	let pausedReflowSnapshot: ScrollSnapshot | null = null;
-	let scrollFlushQueued = false;
-	let scrollFrame: number | undefined;
-	let scrollFallbackTimer: ReturnType<typeof setTimeout> | undefined;
-	let pinnedBottomFrame: number | undefined;
-	let pinnedBottomTimer: ReturnType<typeof setTimeout> | undefined;
-	let pausedReflowFrame: number | undefined;
-	let pausedReflowTimer: ReturnType<typeof setTimeout> | undefined;
-	let resizeObserver: ResizeObserver | undefined;
-	let manualScrollInteraction: ManualScrollInteraction | null = null;
-	let manualScrollSnapshot: ScrollSnapshot | null = null;
-	let manualScrollTimer: ReturnType<typeof setTimeout> | undefined;
-	let touchStartY: number | undefined;
 	let destroyed = false;
-	let resumingToBottom = false;
 	const messageHistory = new MessageHistoryScheduler<ChannelMessage>({
 		getState: () => ({
 			...chatSettings,
 			paused: !autoScrollPinned,
-			interacting: manualScrollOwnsViewport(),
+			interacting: scrollController.interacting,
 			message_count: msgs.length
 		}),
 		append: (messages) => appendMessages(messages),
 		trim: (count) => trimMessageHistory(count)
 	});
 
-	onMount(async () => {
-		if (messageListDIV && typeof ResizeObserver !== 'undefined') {
-			resizeObserver = new ResizeObserver(() => {
-				queueResizeScrollRestore();
-			});
-			resizeObserver.observe(messageListDIV);
-			if (chatDIV) resizeObserver.observe(chatDIV);
-		}
+	const scrollController = new ChatScrollController({
+		messageSelector: CHAT_MESSAGE_SELECTOR,
+		afterRender: tick,
+		getThresholdPx: () => chatSettings.autoscroll_threshold_px,
+		onPinnedChange: (pinned) => {
+			autoScrollPinned = pinned;
+		},
+		onClearUnread: () => {
+			unreadMessageCount = 0;
+		},
+		onHistoryUpdate: () => messageHistory.update(),
+		onResume: () => messageHistory.resume()
+	});
 
-		document.addEventListener('visibilitychange', handleViewportWake);
-		window.addEventListener('resize', handleViewportWake);
-		window.addEventListener('pointercancel', handleScrollbarPointerEnd);
-		window.addEventListener('pointerup', handleScrollbarPointerEnd);
+	onMount(async () => {
+		scrollController.attach(chatDIV, messageListDIV);
 
 		roomFeed = openRoomFeed(channel_name, (frame) => {
 			switch (frame.event.type) {
@@ -167,17 +137,9 @@
 						historyBoundary = { cursor: frame.cursor, hasHistory: frame.event.messages.length > 0 };
 						initialHistoryLoaded = true;
 					}
-					const wasPinned = autoScrollPinned;
-					if (chatDIV && !wasPinned) {
-						pendingScrollSnapshot = captureScrollSnapshot(
-							chatDIV,
-							CHAT_MESSAGE_SELECTOR,
-							chatSettings.autoscroll_threshold_px
-						);
-					}
+					const wasPinned = scrollController.beforeReset();
 					msgs = frame.event.messages;
-					if (wasPinned) pinToBottomNowAndAfterRender();
-					else queueScrollRestore();
+					scrollController.afterReset(wasPinned);
 					break;
 				}
 				case 'message':
@@ -203,18 +165,7 @@
 		destroyed = true;
 		clearTimeout(messageErrorTimer);
 		messageHistory.dispose();
-		resizeObserver?.disconnect();
-		document.removeEventListener('visibilitychange', handleViewportWake);
-		window.removeEventListener('resize', handleViewportWake);
-		window.removeEventListener('pointercancel', handleScrollbarPointerEnd);
-		window.removeEventListener('pointerup', handleScrollbarPointerEnd);
-		if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
-		if (scrollFallbackTimer !== undefined) clearTimeout(scrollFallbackTimer);
-		if (pinnedBottomFrame !== undefined) cancelAnimationFrame(pinnedBottomFrame);
-		if (pinnedBottomTimer !== undefined) clearTimeout(pinnedBottomTimer);
-		if (pausedReflowFrame !== undefined) cancelAnimationFrame(pausedReflowFrame);
-		if (pausedReflowTimer !== undefined) clearTimeout(pausedReflowTimer);
-		if (manualScrollTimer !== undefined) clearTimeout(manualScrollTimer);
+		scrollController.dispose();
 
 		roomFeed?.dispose();
 	});
@@ -224,39 +175,20 @@
 	});
 
 	const addMessage = (message: ChannelMessage) => {
-		if (!autoScrollPinned || manualScrollOwnsViewport()) unreadMessageCount += 1;
+		if (!autoScrollPinned || scrollController.interacting) unreadMessageCount += 1;
 		messageHistory.enqueue(message);
 	};
 
 	const appendMessages = (messages: ChannelMessage[]) => {
-		const manualScrollActive = manualScrollOwnsViewport();
-		if (chatDIV && !manualScrollActive && !resumingToBottom) {
-			pendingScrollSnapshot = getPinnedBatchScrollSnapshot(
-				pendingScrollSnapshot,
-				chatDIV,
-				CHAT_MESSAGE_SELECTOR,
-				autoScrollPinned,
-				chatSettings.autoscroll_threshold_px
-			);
-		}
+		const shouldRestore = scrollController.beforeContentChange('append');
 
 		msgs.push(...messages.map((message) => attachPendingTranslation(message, pendingTranslations)));
 
-		if (!manualScrollActive && !resumingToBottom) queueScrollRestore();
+		if (shouldRestore) scrollController.afterContentChange();
 	};
 
 	const trimMessageHistory = (count: number) => {
-		const container = chatDIV;
-		const shouldRestore = container && !manualScrollOwnsViewport() && !resumingToBottom;
-		if (shouldRestore) {
-			pendingScrollSnapshot = getPinnedBatchScrollSnapshot(
-				pendingScrollSnapshot,
-				container,
-				CHAT_MESSAGE_SELECTOR,
-				autoScrollPinned,
-				chatSettings.autoscroll_threshold_px
-			);
-		}
+		const shouldRestore = scrollController.beforeContentChange('trim');
 		historySpacerHeight = measureHistoryOriginSpacer(
 			historySpacerDIV,
 			messageListDIV?.querySelectorAll<HTMLElement>(CHAT_MESSAGE_SELECTOR) ?? [],
@@ -264,463 +196,23 @@
 			window.devicePixelRatio
 		);
 		msgs.splice(0, count);
-		if (shouldRestore) queueScrollRestore();
+		if (shouldRestore) scrollController.afterContentChange();
 	};
 
 	const applyTranslation = (update: ChannelMessageTranslationUpdate) => {
 		const result = applyTranslationUpdate(msgs, update, pendingTranslations);
 		if (!result.changed) return;
 
-		const manualScrollActive = manualScrollOwnsViewport();
-		if (chatDIV && !manualScrollActive) {
-			pendingScrollSnapshot = getPinnedBatchScrollSnapshot(
-				pendingScrollSnapshot,
-				chatDIV,
-				CHAT_MESSAGE_SELECTOR,
-				autoScrollPinned,
-				chatSettings.autoscroll_threshold_px
-			);
-		}
+		const shouldRestore = scrollController.beforeContentChange('translation');
 
 		msgs = result.messages;
-		if (!manualScrollActive) queueScrollRestore();
-	};
-
-	const refreshScrollState = () => {
-		if (!chatDIV) return;
-		if (manualScrollOwnsViewport()) {
-			refreshManualScrollState();
-			return;
-		}
-
-		const wasPinned = autoScrollPinned;
-		const hadQueuedRestore = scrollFlushQueued && pendingScrollSnapshot !== null;
-		const scrollState = refreshScrollStateAfterScroll(
-			chatDIV,
-			pendingScrollSnapshot,
-			scrollFlushQueued,
-			unreadMessageCount,
-			CHAT_MESSAGE_SELECTOR,
-			chatSettings.autoscroll_threshold_px,
-			{ preservePinnedIntent: wasPinned }
-		);
-
-		autoScrollPinned = scrollState.pinned;
-		pendingScrollSnapshot = scrollState.pendingSnapshot;
-		unreadMessageCount = scrollState.unreadMessageCount;
-		if (wasPinned && scrollState.deferred && !hadQueuedRestore) queuePinnedScrollToBottom();
-	};
-
-	const manualScrollOwnsViewport = () => manualScrollInteraction !== null;
-
-	const captureManualScrollSnapshot = () => {
-		if (!chatDIV) return null;
-
-		return {
-			...captureScrollSnapshot(
-				chatDIV,
-				CHAT_MESSAGE_SELECTOR,
-				chatSettings.autoscroll_threshold_px
-			),
-			wasAtBottom: false
-		};
-	};
-
-	const beginUserScrollInteraction = (
-		source: ManualScrollSource,
-		direction: ScrollIntentDirection
-	) => {
-		if (!chatDIV || !shouldOwnManualScroll(autoScrollPinned, source, direction)) return;
-
-		manualScrollInteraction = beginManualScrollInteraction(
-			manualScrollInteraction,
-			source,
-			direction,
-			performance.now(),
-			MANUAL_SCROLL_SETTLE_MS
-		);
-		manualScrollSnapshot ??= captureManualScrollSnapshot();
-		autoScrollPinned = false;
-		pendingScrollSnapshot = null;
-		cancelQueuedScrollRestore();
-		cancelPinnedBottomFlush();
-		clearPausedReflowSnapshot();
-		messageHistory.update();
-		scheduleManualScrollSettle();
-	};
-
-	const refreshManualScrollState = () => {
-		if (!chatDIV || !manualScrollInteraction) return;
-
-		const previousScrollTop = manualScrollSnapshot?.scrollTop ?? chatDIV.scrollTop;
-		const moved = chatDIV.scrollTop !== previousScrollTop;
-		const movedDown = chatDIV.scrollTop > previousScrollTop;
-		if (moved) manualScrollInteraction = { ...manualScrollInteraction, moved: true };
-		if (
-			isAtBottom(chatDIV, 0) &&
-			!manualScrollInteraction.scrollbarHeld &&
-			(manualScrollInteraction.direction === 'down' || movedDown)
-		) {
-			finishManualScrollInteraction(true);
-			return;
-		}
-
-		autoScrollPinned = false;
-		pendingScrollSnapshot = null;
-		manualScrollSnapshot = captureManualScrollSnapshot();
-	};
-
-	const handleScrollbarPointerIntent = (event: PointerEvent) => {
-		if (!chatDIV || !isScrollbarPointerEvent(chatDIV, event)) return;
-
-		beginUserScrollInteraction('scrollbar', 'unknown');
-	};
-
-	const handleScrollbarPointerEnd = () => {
-		if (!manualScrollInteraction?.scrollbarHeld) return;
-		const pinToBottom =
-			chatDIV !== undefined && manualScrollInteraction.moved && isAtBottom(chatDIV, 0);
-
-		manualScrollInteraction = releaseManualScrollInteraction(
-			manualScrollInteraction,
-			performance.now(),
-			MANUAL_SCROLL_SETTLE_MS
-		);
-		if (pinToBottom) {
-			finishManualScrollInteraction(true);
-			return;
-		}
-		scheduleManualScrollSettle();
-	};
-
-	const handleWheelIntent = (event: WheelEvent) => {
-		const direction = scrollDirectionFromWheel(event);
-		if (direction !== 'unknown') beginUserScrollInteraction('wheel', direction);
-	};
-
-	const handleTouchStartIntent = (event: TouchEvent) => {
-		touchStartY = event.touches[0]?.clientY;
-	};
-
-	const handleTouchMoveIntent = (event: TouchEvent) => {
-		if (touchStartY === undefined) return;
-
-		const touchY = event.touches[0]?.clientY;
-		if (touchY === undefined) return;
-
-		const deltaY = touchY - touchStartY;
-		if (Math.abs(deltaY) < 1) return;
-
-		touchStartY = touchY;
-		beginUserScrollInteraction('touch', deltaY > 0 ? 'up' : 'down');
-	};
-
-	const handleTouchEndIntent = () => {
-		touchStartY = undefined;
-	};
-
-	const scrollDirectionFromWheel = (event: WheelEvent): ScrollIntentDirection => {
-		if (event.deltaY < 0) return 'up';
-		if (event.deltaY > 0) return 'down';
-		return 'unknown';
-	};
-
-	const scheduleManualScrollSettle = () => {
-		if (manualScrollTimer !== undefined) clearTimeout(manualScrollTimer);
-		manualScrollTimer = undefined;
-		if (!manualScrollInteraction || manualScrollInteraction.scrollbarHeld) return;
-
-		const remaining = Math.max(0, manualScrollInteraction.activeUntil - performance.now());
-		manualScrollTimer = setTimeout(settleManualScrollInteraction, remaining + 1);
-	};
-
-	const settleManualScrollInteraction = () => {
-		manualScrollTimer = undefined;
-		if (!manualScrollInteraction) return;
-		if (isManualScrollInteractionActive(manualScrollInteraction, performance.now())) {
-			scheduleManualScrollSettle();
-			return;
-		}
-
-		finishManualScrollInteraction(false);
-	};
-
-	const finishManualScrollInteraction = (pinToBottom: boolean) => {
-		if (manualScrollTimer !== undefined) clearTimeout(manualScrollTimer);
-		manualScrollTimer = undefined;
-		manualScrollInteraction = null;
-
-		const snapshot = manualScrollSnapshot;
-		manualScrollSnapshot = null;
-		pendingScrollSnapshot = null;
-		if (!chatDIV) return;
-
-		if (pinToBottom) {
-			pinToBottomNowAndAfterRender();
-			return;
-		}
-
-		if (snapshot) {
-			restoreScrollAfterRender(
-				chatDIV,
-				snapshot,
-				CHAT_MESSAGE_SELECTOR,
-				chatSettings.autoscroll_threshold_px
-			);
-		}
-		autoScrollPinned = false;
-		rememberPausedReflowSnapshot();
-		messageHistory.update();
-	};
-
-	const cancelManualScrollInteraction = () => {
-		if (manualScrollTimer !== undefined) clearTimeout(manualScrollTimer);
-		manualScrollTimer = undefined;
-		manualScrollInteraction = null;
-		manualScrollSnapshot = null;
-	};
-
-	const queueScrollRestore = () => {
-		if (scrollFlushQueued || manualScrollOwnsViewport()) return;
-
-		scrollFlushQueued = true;
-		void restoreQueuedScroll();
-	};
-
-	const restoreQueuedScroll = async () => {
-		await tick();
-		if (destroyed || manualScrollOwnsViewport()) {
-			scrollFlushQueued = false;
-			pendingScrollSnapshot = null;
-			return;
-		}
-
-		scheduleQueuedScrollFlush();
-	};
-
-	const scheduleQueuedScrollFlush = () => {
-		if (manualScrollOwnsViewport()) return;
-		if (scrollFrame === undefined) {
-			scrollFrame = requestAnimationFrame(flushQueuedScrollRestore);
-		}
-		if (scrollFallbackTimer === undefined) {
-			scrollFallbackTimer = setTimeout(flushQueuedScrollRestore, SCROLL_RESTORE_FALLBACK_MS);
-		}
-	};
-
-	const flushQueuedScrollRestore = () => {
-		if (scrollFrame !== undefined) {
-			cancelAnimationFrame(scrollFrame);
-			scrollFrame = undefined;
-		}
-		if (scrollFallbackTimer !== undefined) {
-			clearTimeout(scrollFallbackTimer);
-			scrollFallbackTimer = undefined;
-		}
-
-		if (destroyed || manualScrollOwnsViewport()) {
-			scrollFlushQueued = false;
-			pendingScrollSnapshot = null;
-			return;
-		}
-
-		scrollFlushQueued = false;
-
-		const snapshot = pendingScrollSnapshot;
-		pendingScrollSnapshot = null;
-		if (!chatDIV || !snapshot) return;
-
-		const result = restoreScrollAfterRender(
-			chatDIV,
-			snapshot,
-			CHAT_MESSAGE_SELECTOR,
-			chatSettings.autoscroll_threshold_px
-		);
-		autoScrollPinned = snapshot.wasAtBottom && result.pinned;
-		if (autoScrollPinned) {
-			unreadMessageCount = 0;
-			clearPausedReflowSnapshot();
-		} else {
-			rememberPausedReflowSnapshot();
-		}
-	};
-
-	const cancelQueuedScrollRestore = () => {
-		if (scrollFrame !== undefined) {
-			cancelAnimationFrame(scrollFrame);
-			scrollFrame = undefined;
-		}
-		if (scrollFallbackTimer !== undefined) {
-			clearTimeout(scrollFallbackTimer);
-			scrollFallbackTimer = undefined;
-		}
-
-		scrollFlushQueued = false;
-		pendingScrollSnapshot = null;
-		clearPausedReflowSnapshot();
-	};
-
-	const applyPinnedBottomState = () => {
-		if (!chatDIV) return;
-
-		scrollElementToBottom(chatDIV);
-		autoScrollPinned = true;
-		unreadMessageCount = 0;
-		clearPausedReflowSnapshot();
-	};
-
-	const pinToBottomNowAndAfterRender = () => {
-		cancelManualScrollInteraction();
-		cancelQueuedScrollRestore();
-		cancelPinnedBottomFlush();
-
-		autoScrollPinned = true;
-		resumingToBottom = true;
-		try {
-			messageHistory.resume();
-		} finally {
-			resumingToBottom = false;
-		}
-		applyPinnedBottomState();
-		void queuePinnedBottomAfterRender();
-	};
-
-	const queuePinnedBottomAfterRender = async () => {
-		await tick();
-		if (destroyed || !autoScrollPinned || manualScrollOwnsViewport()) return;
-
-		queuePinnedScrollToBottom();
-	};
-
-	const queuePinnedScrollToBottom = () => {
-		if (!autoScrollPinned || !chatDIV || manualScrollOwnsViewport()) return;
-
-		if (pinnedBottomFrame === undefined) {
-			pinnedBottomFrame = requestAnimationFrame(flushPinnedBottomScroll);
-		}
-		if (pinnedBottomTimer === undefined) {
-			pinnedBottomTimer = setTimeout(flushPinnedBottomScroll, SCROLL_RESTORE_FALLBACK_MS);
-		}
-	};
-
-	const flushPinnedBottomScroll = () => {
-		cancelPinnedBottomFlush();
-		if (destroyed || !autoScrollPinned || !chatDIV || manualScrollOwnsViewport()) return;
-
-		applyPinnedBottomState();
-	};
-
-	const cancelPinnedBottomFlush = () => {
-		if (pinnedBottomFrame !== undefined) {
-			cancelAnimationFrame(pinnedBottomFrame);
-			pinnedBottomFrame = undefined;
-		}
-		if (pinnedBottomTimer !== undefined) {
-			clearTimeout(pinnedBottomTimer);
-			pinnedBottomTimer = undefined;
-		}
-	};
-
-	const handleViewportWake = () => {
-		if (destroyed || !autoScrollPinned || manualScrollOwnsViewport()) return;
-		if (pendingScrollSnapshot) {
-			if (!scrollFlushQueued) queueScrollRestore();
-			return;
-		}
-
-		queuePinnedScrollToBottom();
-	};
-
-	const queueResizeScrollRestore = () => {
-		if (!chatDIV || manualScrollOwnsViewport()) return;
-		if (autoScrollPinned) {
-			queuePinnedScrollToBottom();
-			return;
-		}
-
-		if (pendingScrollSnapshot) {
-			queueScrollRestore();
-			return;
-		}
-
-		queuePausedReflowRestore();
-	};
-
-	const queuePausedReflowRestore = () => {
-		if (
-			!chatDIV ||
-			!pausedReflowSnapshot ||
-			pausedReflowFrame !== undefined ||
-			manualScrollOwnsViewport()
-		)
-			return;
-
-		pausedReflowFrame = requestAnimationFrame(() => {
-			pausedReflowFrame = undefined;
-			if (!chatDIV || !pausedReflowSnapshot || autoScrollPinned || manualScrollOwnsViewport())
-				return;
-
-			const snapshot = pausedReflowSnapshot;
-			const result = restoreScrollAfterRender(
-				chatDIV,
-				snapshot,
-				CHAT_MESSAGE_SELECTOR,
-				chatSettings.autoscroll_threshold_px
-			);
-			autoScrollPinned = snapshot.wasAtBottom && result.pinned;
-			if (autoScrollPinned) {
-				unreadMessageCount = 0;
-				clearPausedReflowSnapshot();
-				return;
-			}
-
-			rememberPausedReflowSnapshot();
-		});
-	};
-
-	const rememberPausedReflowSnapshot = () => {
-		if (!chatDIV) return;
-
-		const snapshot = captureScrollSnapshot(
-			chatDIV,
-			CHAT_MESSAGE_SELECTOR,
-			chatSettings.autoscroll_threshold_px
-		);
-		pausedReflowSnapshot = autoScrollPinned ? snapshot : { ...snapshot, wasAtBottom: false };
-		if (pausedReflowTimer !== undefined) clearTimeout(pausedReflowTimer);
-		pausedReflowTimer = setTimeout(() => {
-			pausedReflowTimer = undefined;
-			pausedReflowSnapshot = null;
-		}, PAUSED_REFLOW_SETTLE_MS);
-	};
-
-	const clearPausedReflowSnapshot = () => {
-		pausedReflowSnapshot = null;
-		if (pausedReflowFrame !== undefined) {
-			cancelAnimationFrame(pausedReflowFrame);
-			pausedReflowFrame = undefined;
-		}
-		if (pausedReflowTimer !== undefined) {
-			clearTimeout(pausedReflowTimer);
-			pausedReflowTimer = undefined;
-		}
-	};
-
-	const isScrollbarPointerEvent = (container: HTMLElement, event: PointerEvent) => {
-		const rect = container.getBoundingClientRect();
-		const verticalScrollbarWidth = container.offsetWidth - container.clientWidth;
-		const horizontalScrollbarHeight = container.offsetHeight - container.clientHeight;
-
-		return (
-			(verticalScrollbarWidth > 0 && event.clientX >= rect.right - verticalScrollbarWidth) ||
-			(horizontalScrollbarHeight > 0 && event.clientY >= rect.bottom - horizontalScrollbarHeight)
-		);
+		if (shouldRestore) scrollController.afterContentChange();
 	};
 
 	const jumpToBottom = () => {
 		if (!chatDIV) return;
 
-		pinToBottomNowAndAfterRender();
+		scrollController.resumeToBottom();
 	};
 
 	const submitForm = async (event: SubmitEvent) => {
@@ -939,14 +431,14 @@
 				class="h-full overflow-x-hidden overflow-y-auto [overflow-anchor:none]"
 				aria-label="Chat messages"
 				bind:this={chatDIV}
-				onpointerdown={handleScrollbarPointerIntent}
+				onpointerdown={scrollController.handleScrollbarPointerIntent}
 				role="region"
-				onscroll={refreshScrollState}
-				ontouchcancel={handleTouchEndIntent}
-				ontouchend={handleTouchEndIntent}
-				ontouchmove={handleTouchMoveIntent}
-				ontouchstart={handleTouchStartIntent}
-				onwheel={handleWheelIntent}
+				onscroll={scrollController.refreshScrollState}
+				ontouchcancel={scrollController.handleTouchEndIntent}
+				ontouchend={scrollController.handleTouchEndIntent}
+				ontouchmove={scrollController.handleTouchMoveIntent}
+				ontouchstart={scrollController.handleTouchStartIntent}
+				onwheel={scrollController.handleWheelIntent}
 			>
 				<div bind:this={messageListDIV}>
 					<div
