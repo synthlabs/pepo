@@ -101,6 +101,8 @@
 	);
 	let normalizedAppSettings = $derived(getNormalizedAppSettings());
 	let chatSettings = $derived(normalizedAppSettings.chat);
+	let timestampLocale = $derived(chatSettings.timestamp_locale);
+	let timestampStyle = $derived(chatSettings.timestamp_style);
 	let emoteSettings = $derived(normalizedAppSettings.emotes);
 
 	// Emote picker state
@@ -883,7 +885,12 @@
 </script>
 
 {#snippet timestampCell(msg: ChannelMessage, invisible = false)}
+	{@const timestamp = msg.ts}
 	{#if chatSettings.show_timestamps}
+		<!-- Keep distinct formatter inputs observable when their text matches. -->
+		{@const formattedTimestamp = {
+			text: formatTimestamp(timestamp, timestampLocale, timestampStyle)
+		}}
 		<span
 			aria-hidden={invisible ? 'true' : undefined}
 			class={cn(
@@ -891,7 +898,7 @@
 				invisible && 'pointer-events-none invisible'
 			)}
 		>
-			{formatTimestamp(msg.ts, normalizedAppSettings)}
+			{formattedTimestamp.text}
 		</span>
 	{/if}
 {/snippet}

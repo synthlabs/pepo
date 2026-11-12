@@ -326,10 +326,12 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 	};
 }
 
-export function formatTimestamp(ts: string, settings: AppSettings): string {
-	return new Date(ts).toLocaleTimeString(settings.chat.timestamp_locale, {
-		timeStyle: settings.chat.timestamp_style as Intl.DateTimeFormatOptions['timeStyle']
-	});
+export function formatTimestamp(
+	ts: string,
+	locale: string,
+	style: AppSettings['chat']['timestamp_style']
+): string {
+	return new Date(ts).toLocaleTimeString(locale, { timeStyle: style });
 }
 
 export function applyThemePreference(theme: AppearanceTheme): () => void {
