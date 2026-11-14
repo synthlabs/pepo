@@ -454,6 +454,7 @@ pub struct ChatSettings {
     pub show_badges: bool,
     pub show_emotes: bool,
     pub alternate_backgrounds: bool,
+    pub center_system_messages: bool,
 }
 
 impl Default for ChatSettings {
@@ -473,6 +474,7 @@ impl Default for ChatSettings {
             show_badges: true,
             show_emotes: true,
             alternate_backgrounds: true,
+            center_system_messages: false,
         }
     }
 }

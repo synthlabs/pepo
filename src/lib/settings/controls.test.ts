@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_APP_SETTINGS } from '$lib/settings';
+import { DEFAULT_APP_SETTINGS, normalizeAppSettings } from '$lib/settings';
 import {
 	applySettingsPatch,
 	applySettingsUpdate,
@@ -15,6 +15,16 @@ import {
 } from './controls';
 
 describe('settings controls', () => {
+	it('keeps notice alignment in Advanced, searchable, and resettable with a legacy default', () => {
+		const control = SETTINGS_CONTROLS.find((item) => item.id === 'chat.center_system_messages')!;
+		expect(control.more).toBe(true);
+		expect(matchingControls('system messages')).toContain(control);
+		expect(controlUpdate(control, true)).toEqual({ chat: { center_system_messages: true } });
+		expect(resetSettingsPatch('chat').chat?.center_system_messages).toBe(false);
+		const legacy = JSON.parse(JSON.stringify(DEFAULT_APP_SETTINGS));
+		delete legacy.chat.center_system_messages;
+		expect(normalizeAppSettings(legacy).chat.center_system_messages).toBe(false);
+	});
 	it('keeps processing controls in Advanced and makes them searchable', () => {
 		for (const field of [
 			'translate_history',

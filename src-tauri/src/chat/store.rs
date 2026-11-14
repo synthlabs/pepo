@@ -1,3 +1,4 @@
+use super::timeline::{ChatTimelineEntry, SystemMessageSegment};
 use crate::types::{ChannelMessage, ChannelMessageTranslationUpdate};
 use std::collections::{HashMap, VecDeque};
 
@@ -10,8 +11,8 @@ pub struct StoreMetrics {
 }
 
 pub trait MessageRepository: Send {
-    fn insert(&mut self, message: ChannelMessage) -> Option<ChannelMessage>;
-    fn history(&self, login: &str) -> Vec<ChannelMessage>;
+    fn insert(&mut self, message: ChatTimelineEntry) -> Option<ChatTimelineEntry>;
+    fn history(&self, login: &str) -> Vec<ChatTimelineEntry>;
     fn translation_candidates(
         &self,
         login: &str,
@@ -27,13 +28,14 @@ pub trait MessageRepository: Send {
 }
 
 struct Entry {
-    message: ChannelMessage,
+    message: ChatTimelineEntry,
     bytes: usize,
 }
 
 pub struct MemoryRepository {
     rooms: HashMap<String, VecDeque<Entry>>,
     logins: HashMap<String, String>,
+    next_chat_sequences: HashMap<String, u64>,
     metrics: StoreMetrics,
 }
 
@@ -42,6 +44,7 @@ impl MemoryRepository {
         Self {
             rooms: HashMap::new(),
             logins: HashMap::new(),
+            next_chat_sequences: HashMap::new(),
             metrics: StoreMetrics {
                 history_limit_per_channel: limit.max(1),
                 ..Default::default()
@@ -60,28 +63,33 @@ impl MemoryRepository {
 }
 
 impl MessageRepository for MemoryRepository {
-    fn insert(&mut self, mut message: ChannelMessage) -> Option<ChannelMessage> {
+    fn insert(&mut self, mut message: ChatTimelineEntry) -> Option<ChatTimelineEntry> {
         let room = self
             .rooms
-            .entry(message.broadcaster_user_id.clone())
+            .entry(message.broadcaster_id().to_owned())
             .or_default();
         if room
             .iter()
-            .any(|entry| entry.message.message_id == message.message_id)
+            .any(|entry| entry.message.same_identity(&message))
         {
             return None;
         }
-        message.channel_sequence = room
-            .back()
-            .map_or(0, |entry| entry.message.channel_sequence + 1);
+        if let ChatTimelineEntry::Chat(chat) = &mut message {
+            let sequence = self
+                .next_chat_sequences
+                .entry(chat.broadcaster_user_id.clone())
+                .or_default();
+            chat.channel_sequence = *sequence;
+            *sequence += 1;
+        }
         if room.is_empty() {
             self.metrics.channels_with_history += 1;
         }
         self.logins.insert(
-            message.broadcaster_user_login.to_lowercase(),
-            message.broadcaster_user_id.clone(),
+            message.login().to_lowercase(),
+            message.broadcaster_id().to_owned(),
         );
-        let bytes = estimated_message_bytes(&message);
+        let bytes = estimated_entry_bytes(&message);
         let accepted = message.clone();
         room.push_back(Entry { message, bytes });
         self.metrics.retained_messages += 1;
@@ -89,7 +97,7 @@ impl MessageRepository for MemoryRepository {
         self.trim();
         Some(accepted)
     }
-    fn history(&self, login: &str) -> Vec<ChannelMessage> {
+    fn history(&self, login: &str) -> Vec<ChatTimelineEntry> {
         self.logins
             .get(login)
             .and_then(|id| self.rooms.get(id))
@@ -107,25 +115,26 @@ impl MessageRepository for MemoryRepository {
         let Some(room) = self.logins.get(login).and_then(|id| self.rooms.get(id)) else {
             return vec![];
         };
-        let eligible = |entry: &&Entry| {
-            entry.message.index > after
-                && entry.message.index < before
-                && entry.message.translation.is_none()
-                && crate::types::translation_input_from_fragments(&entry.message.fragments)
-                    .is_some()
+        let eligible = |message: &&ChannelMessage| {
+            message.index > after
+                && message.index < before
+                && message.translation.is_none()
+                && crate::types::translation_input_from_fragments(&message.fragments).is_some()
         };
         if newest {
             room.iter()
                 .rev()
+                .filter_map(|entry| entry.message.as_chat())
                 .filter(eligible)
                 .take(limit)
-                .map(|entry| entry.message.clone())
+                .cloned()
                 .collect()
         } else {
             room.iter()
+                .filter_map(|entry| entry.message.as_chat())
                 .filter(eligible)
                 .take(limit)
-                .map(|entry| entry.message.clone())
+                .cloned()
                 .collect()
         }
     }
@@ -133,18 +142,22 @@ impl MessageRepository for MemoryRepository {
         let Some(room) = self.logins.get(login).and_then(|id| self.rooms.get_mut(id)) else {
             return false;
         };
-        let Some(entry) = room
-            .iter_mut()
-            .find(|e| e.message.message_id == update.message_id)
-        else {
+        let Some(entry) = room.iter_mut().find(|e| {
+            e.message
+                .as_chat()
+                .is_some_and(|m| m.message_id == update.message_id)
+        }) else {
             return false;
         };
-        if entry.message.translation.as_ref() == Some(&update.translation) {
+        let ChatTimelineEntry::Chat(message) = &mut entry.message else {
+            return false;
+        };
+        if message.translation.as_ref() == Some(&update.translation) {
             return false;
         }
         self.metrics.estimated_history_bytes -= entry.bytes;
-        entry.message.translation = Some(update.translation.clone());
-        entry.bytes = estimated_message_bytes(&entry.message);
+        message.translation = Some(update.translation.clone());
+        entry.bytes = estimated_entry_bytes(&entry.message);
         self.metrics.estimated_history_bytes += entry.bytes;
         true
     }
@@ -158,11 +171,43 @@ impl MessageRepository for MemoryRepository {
     fn clear(&mut self) {
         self.rooms.clear();
         self.logins.clear();
+        self.next_chat_sequences.clear();
         self.metrics = StoreMetrics {
             history_limit_per_channel: self.metrics.history_limit_per_channel,
             ..Default::default()
         };
     }
+}
+
+pub fn estimated_entry_bytes(entry: &ChatTimelineEntry) -> usize {
+    let ChatTimelineEntry::System(m) = entry else {
+        return estimated_message_bytes(entry.as_chat().unwrap())
+            + std::mem::size_of::<ChatTimelineEntry>()
+            - std::mem::size_of::<ChannelMessage>();
+    };
+    std::mem::size_of::<ChatTimelineEntry>()
+        + strings(&[
+            &m.ts,
+            &m.message_id,
+            &m.broadcaster_user_id,
+            &m.broadcaster_user_login,
+            &m.broadcaster_user_name,
+        ])
+        + m.segments.capacity() * std::mem::size_of::<SystemMessageSegment>()
+        + m.segments
+            .iter()
+            .map(|segment| match segment {
+                SystemMessageSegment::Text { text } | SystemMessageSegment::Emphasis { text } => {
+                    text.capacity()
+                }
+                SystemMessageSegment::User {
+                    user_id,
+                    login,
+                    display_name,
+                } => strings(&[user_id, login, display_name]),
+                SystemMessageSegment::Link { text, url } => strings(&[text, url]),
+            })
+            .sum::<usize>()
 }
 
 fn strings(values: &[&String]) -> usize {

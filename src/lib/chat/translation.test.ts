@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type {
 	ChannelMessage,
+	ChatTimelineEntry,
 	ChannelMessageTranslation,
 	ChannelMessageTranslationUpdate
 } from '$lib/bindings';
@@ -8,6 +9,7 @@ import {
 	applyTranslationUpdate,
 	attachPendingTranslation,
 	HistoryTranslationBuffer,
+	type PendingTranslations,
 	isRowOutsideViewport
 } from './translation';
 
@@ -67,6 +69,51 @@ describe('chat translation helpers', () => {
 });
 
 describe('historical translation presentation', () => {
+	it('preserves mixed notice positions and identity across translation updates and resets', () => {
+		const notice: ChatTimelineEntry = {
+			kind: 'system',
+			index: 2,
+			ts: '2026-11-14T19:00:00Z',
+			message_id: 'one',
+			broadcaster_user_id: '1',
+			broadcaster_user_login: 'room',
+			broadcaster_user_name: 'Room',
+			icon: null,
+			segments: [{ type: 'text', text: 'Notice' }]
+		};
+		const original: ChatTimelineEntry = { ...message('one'), kind: 'chat' };
+		const buffer = new HistoryTranslationBuffer();
+		const rows = buffer.reset<ChatTimelineEntry>([], [original, notice], 2);
+		buffer.defer(original, update('one', 'translated').translation);
+		const reset = buffer.reset(
+			rows,
+			[{ ...original, translation: update('one', 'reset result').translation }, notice],
+			20
+		);
+		expect(reset[1]).toBe(notice);
+		expect(reset[0].kind === 'chat' && reset[0].translation).toBeNull();
+		const flushed = buffer.flush(reset, () => true);
+		expect(flushed.messages[1]).toBe(notice);
+		expect(
+			flushed.messages[0].kind === 'chat' && flushed.messages[0].translation?.translated_text
+		).toBe('reset result');
+		const pending: PendingTranslations = new Map();
+		const translated = applyTranslationUpdate(
+			flushed.messages,
+			update('one', 'new result'),
+			pending
+		);
+		expect(translated.messages[1]).toBe(notice);
+		expect(
+			translated.messages[0].kind === 'chat' && translated.messages[0].translation?.translated_text
+		).toBe('new result');
+		pending.set(notice.message_id, update('one', 'late result').translation);
+		expect(attachPendingTranslation(notice, pending)).toBe(notice);
+		expect(pending.size).toBe(1);
+		buffer.defer(original, update('one', 'deferred').translation);
+		buffer.retain([notice]);
+		expect(buffer.size).toBe(0);
+	});
 	function fixture() {
 		const buffer = new HistoryTranslationBuffer();
 		const messages = [message('one'), { ...message('two'), index: 2 }];

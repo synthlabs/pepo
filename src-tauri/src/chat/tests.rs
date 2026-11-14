@@ -1,3 +1,4 @@
+use super::timeline::ChatTimelineEntry;
 use super::*;
 use serde_json::json;
 use std::collections::HashSet;
@@ -289,7 +290,7 @@ fn retention_is_per_room_and_survives_ui_detach() {
     let r = request(&e, 1);
     assert!(attach(&e, &r, "a", feed.id));
     e.detach("window", &r);
-    assert_eq!(e.history("a")[0].message_id, "a-2");
+    assert_eq!(e.history("a")[0].message_id(), "a-2");
     assert!(e.state.lock().unwrap().membership.lingering.contains("a"));
 }
 #[test]
@@ -311,13 +312,13 @@ fn channel_feed_filters_and_starts_with_snapshot() {
     let frames = feed.poll();
     assert_eq!(frames.len(), 2);
     assert!(
-        matches!(&frames[0].event, FeedEvent::Snapshot { messages } if messages.len() == 1 && messages[0].channel_sequence == 0)
+        matches!(&frames[0].event, FeedEvent::Snapshot { messages } if messages.len() == 1 && messages[0].as_chat().unwrap().channel_sequence == 0)
     );
     let FeedEvent::Message { message } = &frames[1].event else {
         panic!("expected live message");
     };
-    assert_eq!(message.message_id, "a-2");
-    assert_eq!(message.channel_sequence, 1);
+    assert_eq!(message.message_id(), "a-2");
+    assert_eq!(message.as_chat().unwrap().channel_sequence, 1);
     assert_eq!(
         serde_json::to_value(message).unwrap(),
         serde_json::to_value(&e.history("a")[1]).unwrap()
@@ -353,10 +354,12 @@ fn concurrent_snapshot_and_arrivals_are_delivered_exactly_once() {
             match &frame.event {
                 FeedEvent::Snapshot { messages } => {
                     for m in messages {
-                        assert!(ids.insert(m.message_id.clone()));
+                        assert!(ids.insert(m.message_id().to_owned()));
                     }
                 }
-                FeedEvent::Message { message } => assert!(ids.insert(message.message_id.clone())),
+                FeedEvent::Message { message } => {
+                    assert!(ids.insert(message.message_id().to_owned()))
+                }
                 _ => panic!("unexpected recovery"),
             }
             feed.acknowledge(frame.cursor);
@@ -390,11 +393,11 @@ fn lag_resets_room_to_retained_history() {
         panic!("expected recovery snapshot");
     };
     assert_eq!(messages.len(), 20);
-    assert_eq!(messages[0].message_id, "a-1980");
+    assert_eq!(messages[0].message_id(), "a-1980");
     assert_eq!(
         messages
             .iter()
-            .map(|m| m.channel_sequence)
+            .map(|m| m.as_chat().unwrap().channel_sequence)
             .collect::<Vec<_>>(),
         (1980..2000).collect::<Vec<_>>()
     );
@@ -455,7 +458,7 @@ fn translations_update_history_and_memory_metrics() {
         },
     };
     e.translate("a", update);
-    assert!(e.history("a")[0].translation.is_some());
+    assert!(e.history("a")[0].as_chat().unwrap().translation.is_some());
     assert!(e.metrics().estimated_history_bytes > before);
     assert_eq!(e.metrics().retained_messages, 1);
     e.shutdown();
@@ -633,29 +636,32 @@ fn channel_sequences_ignore_other_rooms_translations_errors_and_duplicates() {
     assert_eq!(
         e.history("a")
             .iter()
-            .map(|m| m.channel_sequence)
+            .map(|m| m.as_chat().unwrap().channel_sequence)
             .collect::<Vec<_>>(),
         vec![0, 1, 2]
     );
     assert_eq!(
         e.history("b")
             .iter()
-            .map(|m| m.channel_sequence)
+            .map(|m| m.as_chat().unwrap().channel_sequence)
             .collect::<Vec<_>>(),
         vec![0, 1]
     );
     let a = e.history("a");
-    assert_eq!(a[0].index, 1);
-    assert!(a[1].index > a[0].index + 1);
+    assert_eq!(a[0].index(), 1);
+    assert!(a[1].index() > a[0].index() + 1);
     for frame in feed.poll() {
         if let FeedEvent::Message { message } = &frame.event {
             let stored = e
-                .history(&message.broadcaster_user_login)
+                .history(message.login())
                 .into_iter()
-                .find(|m| m.message_id == message.message_id)
+                .find(|m| m.message_id() == message.message_id())
                 .unwrap();
-            assert_eq!(message.channel_sequence, stored.channel_sequence);
-            assert_eq!(message.index, frame.cursor);
+            assert_eq!(
+                message.as_chat().unwrap().channel_sequence,
+                stored.as_chat().unwrap().channel_sequence
+            );
+            assert_eq!(message.index(), frame.cursor);
         }
     }
 }
@@ -665,22 +671,46 @@ fn repository_returns_canonical_sequence_keyed_by_broadcaster_and_resets_on_clea
     let mut repository = MemoryRepository::new(1);
     let mut original = message("a", 0);
     original.channel_sequence = 999;
-    let accepted = repository.insert(original.clone()).unwrap();
-    assert_eq!(accepted.channel_sequence, 0);
+    let accepted = repository
+        .insert(ChatTimelineEntry::Chat(original.clone()))
+        .unwrap();
+    assert_eq!(accepted.as_chat().unwrap().channel_sequence, 0);
     assert_eq!(
-        repository.history("a")[0].channel_sequence,
-        accepted.channel_sequence
+        repository.history("a")[0]
+            .as_chat()
+            .unwrap()
+            .channel_sequence,
+        accepted.as_chat().unwrap().channel_sequence
     );
-    assert!(repository.insert(original).is_none());
+    assert!(repository
+        .insert(ChatTimelineEntry::Chat(original))
+        .is_none());
     let mut renamed = message("a", 1);
     renamed.broadcaster_user_login = "renamed".into();
-    let accepted = repository.insert(renamed).unwrap();
-    assert_eq!(accepted.channel_sequence, 1);
-    assert_eq!(repository.history("renamed")[0].channel_sequence, 1);
-    assert_eq!(repository.history("a")[0].channel_sequence, 1);
+    let accepted = repository.insert(ChatTimelineEntry::Chat(renamed)).unwrap();
+    assert_eq!(accepted.as_chat().unwrap().channel_sequence, 1);
+    assert_eq!(
+        repository.history("renamed")[0]
+            .as_chat()
+            .unwrap()
+            .channel_sequence,
+        1
+    );
+    assert_eq!(
+        repository.history("a")[0]
+            .as_chat()
+            .unwrap()
+            .channel_sequence,
+        1
+    );
     repository.clear();
     assert_eq!(
-        repository.insert(message("a", 2)).unwrap().channel_sequence,
+        repository
+            .insert(ChatTimelineEntry::Chat(message("a", 2)))
+            .unwrap()
+            .as_chat()
+            .unwrap()
+            .channel_sequence,
         0
     );
 }
@@ -697,7 +727,7 @@ fn channel_sequences_survive_odd_even_trims_limit_changes_and_room_reopening() {
         assert_eq!(
             e.history("a")
                 .iter()
-                .map(|m| m.channel_sequence)
+                .map(|m| m.as_chat().unwrap().channel_sequence)
                 .collect::<Vec<_>>(),
             expected
         );
@@ -713,7 +743,7 @@ fn channel_sequences_survive_odd_even_trims_limit_changes_and_room_reopening() {
         assert_eq!(
             messages
                 .iter()
-                .map(|m| m.channel_sequence)
+                .map(|m| m.as_chat().unwrap().channel_sequence)
                 .collect::<Vec<_>>(),
             expected
         );
@@ -721,7 +751,7 @@ fn channel_sequences_survive_odd_even_trims_limit_changes_and_room_reopening() {
             message_limit: 1,
             ..Default::default()
         });
-        assert_eq!(e.history("a")[0].channel_sequence, 6);
+        assert_eq!(e.history("a")[0].as_chat().unwrap().channel_sequence, 6);
         e.configure(ChatSettings {
             message_limit: 4,
             ..Default::default()
@@ -730,7 +760,7 @@ fn channel_sequences_survive_odd_even_trims_limit_changes_and_room_reopening() {
         assert_eq!(
             e.history("a")
                 .iter()
-                .map(|m| m.channel_sequence)
+                .map(|m| m.as_chat().unwrap().channel_sequence)
                 .collect::<Vec<_>>(),
             vec![6, 7]
         );
@@ -771,7 +801,7 @@ fn subscription_eviction_preserves_channel_sequence_on_rejoin() {
     assert_eq!(
         messages
             .iter()
-            .map(|m| m.channel_sequence)
+            .map(|m| m.as_chat().unwrap().channel_sequence)
             .collect::<Vec<_>>(),
         vec![0, 1]
     );
@@ -779,7 +809,7 @@ fn subscription_eviction_preserves_channel_sequence_on_rejoin() {
     assert_eq!(
         e.history("visitor")
             .iter()
-            .map(|m| m.channel_sequence)
+            .map(|m| m.as_chat().unwrap().channel_sequence)
             .collect::<Vec<_>>(),
         vec![1, 2]
     );

@@ -2,6 +2,7 @@
 	import { fade, slide } from 'svelte/transition';
 	import { quadInOut } from 'svelte/easing';
 	import HistoryDivider from '$lib/components/chat/history-divider.svelte';
+	import SystemMessageRow from '$lib/components/chat/system-message.svelte';
 	import { openRoomFeed } from '$lib/chat/feed';
 	import { showDividerAfter, type HistoryBoundary } from '$lib/chat/history-boundary';
 	import { onDestroy, onMount, tick } from 'svelte';
@@ -10,6 +11,7 @@
 		commands,
 		type ChatRoomInfo,
 		type ChannelMessage,
+		type ChatTimelineEntry,
 		type ChatTranslationLayout,
 		type ChannelMessageTranslationUpdate
 	} from '$lib/bindings.ts';
@@ -72,7 +74,7 @@
 	let historyBoundary: HistoryBoundary | null = $state(null);
 	let initialHistoryLoaded = false;
 	let channel_name: string = $derived(page.params.id ?? '');
-	let msgs: ChannelMessage[] = $state([]);
+	let msgs: ChatTimelineEntry[] = $state([]);
 	let chatInput = $state('');
 	let hasInput = $derived(chatInput.length > 0);
 	let showCounter = $derived(chatInput.length >= COUNTER_THRESHOLD);
@@ -107,7 +109,7 @@
 	let historyTranslationTimer: ReturnType<typeof setTimeout> | undefined;
 	let roomFeed: ReturnType<typeof openRoomFeed> | undefined;
 	let destroyed = false;
-	const messageHistory = new MessageHistoryScheduler<ChannelMessage>({
+	const messageHistory = new MessageHistoryScheduler<ChatTimelineEntry>({
 		getState: () => ({
 			...chatSettings,
 			paused: !autoScrollPinned,
@@ -199,12 +201,12 @@
 		messageHistory.update();
 	});
 
-	const addMessage = (message: ChannelMessage) => {
+	const addMessage = (message: ChatTimelineEntry) => {
 		if (!autoScrollPinned || scrollController.interacting) unreadMessageCount += 1;
 		messageHistory.enqueue(message);
 	};
 
-	const appendMessages = (messages: ChannelMessage[]) => {
+	const appendMessages = (messages: ChatTimelineEntry[]) => {
 		const shouldRestore = scrollController.beforeContentChange('append');
 
 		msgs.push(...messages.map((message) => attachPendingTranslation(message, pendingTranslations)));
@@ -228,8 +230,10 @@
 	};
 
 	const applyTranslation = (update: ChannelMessageTranslationUpdate) => {
-		const message = msgs.find((message) => message.message_id === update.message_id);
-		if (message && historyTranslations.isHistorical(message)) {
+		const message = msgs.find(
+			(message) => message.kind === 'chat' && message.message_id === update.message_id
+		);
+		if (message?.kind === 'chat' && historyTranslations.isHistorical(message)) {
 			historyTranslations.defer(message, update.translation);
 			scheduleHistoryTranslations();
 			return;
@@ -246,7 +250,7 @@
 	const observeHistoryTranslations = (rows: HTMLElement[]) => {
 		const pendingIndexes = new Set(
 			msgs
-				.filter((message) => historyTranslations.has(message.message_id))
+				.filter((message) => message.kind === 'chat' && historyTranslations.has(message.message_id))
 				.map((message) => String(message.index))
 		);
 		const pendingRows = new Set(
@@ -486,7 +490,7 @@
 	};
 </script>
 
-{#snippet timestampCell(msg: ChannelMessage, invisible = false)}
+{#snippet timestampCell(msg: Pick<ChannelMessage, 'ts'>, invisible = false, system = false)}
 	{@const timestamp = msg.ts}
 	{#if chatSettings.show_timestamps}
 		<!-- Keep distinct formatter inputs observable when their text matches. -->
@@ -496,7 +500,8 @@
 		<span
 			aria-hidden={invisible ? 'true' : undefined}
 			class={cn(
-				'text-xs whitespace-nowrap text-gray-500',
+				'text-xs whitespace-nowrap',
+				system ? 'text-inherit' : 'text-gray-500',
 				invisible && 'pointer-events-none invisible'
 			)}
 		>
@@ -558,57 +563,70 @@
 						style="height: {historySpacerHeight}px;"
 					></div>
 					{#each msgs as msg, messagePosition (msg.index)}
-						<div
-							data-chat-message-index={msg.index}
-							class={cn(
-								'block w-full px-2 py-1 text-sm',
-								chatSettings.alternate_backgrounds &&
-									(msg.channel_sequence % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary')
-							)}
-						>
-							<div class="min-w-0 text-wrap wrap-anywhere">
-								{@render timestampCell(msg)}
-								{#if chatSettings.show_timestamps}
-									<span aria-hidden="true"> </span>
-								{/if}
-								{@render badgeCell(msg)}
-								{#if chatSettings.show_badges && msg.badges.length > 0}
-									<span aria-hidden="true"> </span>
-								{/if}
-								<span class="whitespace-nowrap">
-									<span style="color: {msg.color}; font-weight: 700;">{msg.chatter_user_name}</span
-									>:&#32;
-								</span>
-								{#each msg.fragments as fragment, i (i)}
-									{#if 'Text' in fragment}
-										{fragment.Text.text}
-									{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
-										{#if chatSettings.show_emotes}
-											<Emote emote={fragment.Emote.emote} sizePx={emoteSettings.inline_emote_px} />
-										{:else}
-											{fragment.Emote.emote.name}
-										{/if}
+						{#if msg.kind === 'system'}
+							<SystemMessageRow message={msg} centered={chatSettings.center_system_messages}>
+								{#snippet timestamp()}
+									{@render timestampCell(msg, false, true)}
+									{#if chatSettings.show_timestamps}<span aria-hidden="true"> </span>{/if}
+								{/snippet}
+							</SystemMessageRow>
+						{:else}
+							<div
+								data-chat-message-index={msg.index}
+								class={cn(
+									'block w-full px-2 py-1 text-sm',
+									chatSettings.alternate_backgrounds &&
+										(msg.channel_sequence % 2 === 0 ? 'bg-content-primary' : 'bg-content-secondary')
+								)}
+							>
+								<div class="min-w-0 text-wrap wrap-anywhere">
+									{@render timestampCell(msg)}
+									{#if chatSettings.show_timestamps}
+										<span aria-hidden="true"> </span>
 									{/if}
-								{/each}
-							</div>
-							{#if msg.translation}
-								<div
-									data-chat-translation
-									transition:slide={{
-										easing: quadInOut,
-										duration: historyTranslations.isHistorical(msg) ? 0 : 40
-									}}
-									class="min-w-0 text-wrap wrap-anywhere"
-								>
-									{@render translationPrefix(msg, normalizedAppSettings.translation.layout)}
-									<Translation
-										translation={msg.translation}
-										authorName={msg.chatter_user_name}
-										layout={normalizedAppSettings.translation.layout}
-									/>
+									{@render badgeCell(msg)}
+									{#if chatSettings.show_badges && msg.badges.length > 0}
+										<span aria-hidden="true"> </span>
+									{/if}
+									<span class="whitespace-nowrap">
+										<span style="color: {msg.color}; font-weight: 700;"
+											>{msg.chatter_user_name}</span
+										>:&#32;
+									</span>
+									{#each msg.fragments as fragment, i (i)}
+										{#if 'Text' in fragment}
+											{fragment.Text.text}
+										{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
+											{#if chatSettings.show_emotes}
+												<Emote
+													emote={fragment.Emote.emote}
+													sizePx={emoteSettings.inline_emote_px}
+												/>
+											{:else}
+												{fragment.Emote.emote.name}
+											{/if}
+										{/if}
+									{/each}
 								</div>
-							{/if}
-						</div>
+								{#if msg.translation}
+									<div
+										data-chat-translation
+										transition:slide={{
+											easing: quadInOut,
+											duration: historyTranslations.isHistorical(msg) ? 0 : 40
+										}}
+										class="min-w-0 text-wrap wrap-anywhere"
+									>
+										{@render translationPrefix(msg, normalizedAppSettings.translation.layout)}
+										<Translation
+											translation={msg.translation}
+											authorName={msg.chatter_user_name}
+											layout={normalizedAppSettings.translation.layout}
+										/>
+									</div>
+								{/if}
+							</div>
+						{/if}
 						{#if showDividerAfter(msgs, messagePosition, historyBoundary, chatSettings.show_history_divider)}
 							<HistoryDivider />
 						{/if}

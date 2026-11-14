@@ -27,7 +27,9 @@ await mkdir(output, { recursive: true });
 async function checkHistoricalTranslations() {
 	const native = window.chatNative;
 	const viewport = document.querySelector('[aria-label="Chat messages"]');
-	const rows = () => [...viewport.querySelectorAll('[data-chat-message-index]')];
+	const rows = () => [
+		...viewport.querySelectorAll('[data-chat-message-index]:not([data-chat-system-message])')
+	];
 	const visibleRows = () => {
 		const box = viewport.getBoundingClientRect();
 		return rows().filter((row) => {
@@ -189,6 +191,200 @@ async function checkHistoricalTranslations() {
 	};
 }
 
+async function checkSystemMessages() {
+	const native = window.chatNative;
+	const wait = (ms = 180) => new Promise((resolve) => setTimeout(resolve, ms));
+	const require = (condition, message) => {
+		if (!condition) throw new Error(message);
+	};
+	await native.go(null);
+	await wait();
+	Object.assign(native.settings.obj.chat, {
+		message_limit: 1000,
+		alternate_backgrounds: true,
+		show_timestamps: true,
+		center_system_messages: false
+	});
+	await native.settings.sync();
+	native.seed('notices', 80);
+	await native.go('notices');
+	await wait();
+	const viewport = document.querySelector('[aria-label="Chat messages"]');
+	const rows = () => [...viewport.querySelectorAll('[data-chat-message-index]')];
+	const notices = () => [...viewport.querySelectorAll('[data-chat-system-message]')];
+	const gap = () => Math.abs(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop);
+	const previous = rows().at(-1);
+	const previousBackground = getComputedStyle(previous).backgroundColor;
+	for (const icon of ['info', 'shield', 'clock', 'success', 'warning', 'error']) {
+		native.system('notices', {
+			icon,
+			segments: [{ type: 'text', text: 'Synthetic ' + icon + ' notice' }]
+		});
+	}
+	native.push('notices', 'chat-after-notices');
+	await wait();
+	require(notices().length === 6, 'Missing system icons');
+	require(notices().every((row) =>
+		row.querySelector('svg[aria-hidden="true"]')
+	), 'System icon is not decorative');
+	require(getComputedStyle(rows().at(-1)).backgroundColor !==
+		previousBackground, 'Notices consumed ordinary row alternation');
+	const backgrounds = new Set([
+		previousBackground,
+		getComputedStyle(rows().at(-1)).backgroundColor
+	]);
+	require(!backgrounds.has(
+		getComputedStyle(notices()[0]).backgroundColor
+	), 'System background matches a chat shade');
+	native.system('notices', {
+		icon: 'shield',
+		segments: [
+			{ type: 'user', user_id: 'viewer', login: 'viewer', display_name: 'Viewer' },
+			{ type: 'text', text: ' was timed out. ' },
+			{ type: 'emphasis', text: 'Synthetic wrapping notice. ' },
+			{ type: 'text', text: 'LongNotice'.repeat(45) },
+			{ type: 'link', text: ' Details', url: 'https://example.com/notice' }
+		]
+	});
+	await wait();
+	const notice = notices().at(-1);
+	const style = getComputedStyle(notice);
+	const canvas = document.createElement('canvas');
+	canvas.width = canvas.height = 1;
+	const context = canvas.getContext('2d', { willReadFrequently: true });
+	const luminance = (value) => {
+		context.clearRect(0, 0, 1, 1);
+		context.fillStyle = style.backgroundColor;
+		context.fillRect(0, 0, 1, 1);
+		context.fillStyle = value;
+		context.fillRect(0, 0, 1, 1);
+		return [...context.getImageData(0, 0, 1, 1).data]
+			.slice(0, 3)
+			.map((v) => v / 255)
+			.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+			.reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+	};
+	const contrast =
+		(Math.max(luminance(style.color), luminance(style.backgroundColor)) + 0.05) /
+		(Math.min(luminance(style.color), luminance(style.backgroundColor)) + 0.05);
+	require(contrast >= 4.5, 'System text contrast below 4.5');
+	require(Math.abs(luminance(style.color) - luminance(style.backgroundColor)) <
+		Math.abs(luminance(getComputedStyle(document.body).color) -
+			luminance(style.backgroundColor)), 'System text is not muted');
+	const link = notice.querySelector('a');
+	link.focus();
+	const focusStyle = getComputedStyle(link);
+	const focusContrast =
+		(Math.max(luminance(focusStyle.outlineColor), luminance(style.backgroundColor)) + 0.05) /
+		(Math.min(luminance(focusStyle.outlineColor), luminance(style.backgroundColor)) + 0.05);
+	require(link.matches(':focus-visible') &&
+		parseFloat(focusStyle.outlineWidth) >= 2 &&
+		focusContrast >= 3, 'System link keyboard focus is not sufficiently visible');
+	let maxIconCenterOffset = 0;
+	const checkNoticeLayout = () => {
+		for (const row of notices()) {
+			const rowStyle = getComputedStyle(row);
+			const timestamp = row.querySelector('span.text-xs');
+			require(!!timestamp === native.settings.obj.chat.show_timestamps,
+				'System timestamp ignored visibility setting');
+			for (const element of row.querySelectorAll('svg, span.text-xs, strong, a')) {
+				require(getComputedStyle(element).color === rowStyle.color,
+					'System icon, timestamp, or text did not inherit the muted color');
+			}
+			const icon = row.querySelector('svg');
+			if (!icon) continue;
+			const slot = icon.parentElement.getBoundingClientRect();
+			const rect = icon.getBoundingClientRect();
+			const offset = Math.max(
+				Math.abs(rect.left + rect.width / 2 - (slot.left + slot.width / 2)),
+				Math.abs(rect.top + rect.height / 2 - (slot.top + slot.height / 2))
+			);
+			maxIconCenterOffset = Math.max(maxIconCenterOffset, offset);
+			require(offset <= 0.5, 'System icon is not centered within its slot');
+			require(Math.abs(slot.height - parseFloat(rowStyle.lineHeight)) <= 0.5 &&
+				Math.abs(slot.top - row.getBoundingClientRect().top -
+					parseFloat(rowStyle.paddingTop)) <= 0.5,
+				'System icon slot is not aligned with the first text line');
+		}
+	};
+	for (const fontSize of [16, 32]) {
+		document.documentElement.style.fontSize = fontSize + 'px';
+		for (const centered of [false, true]) {
+			for (const timestamps of [true, false]) {
+				Object.assign(native.settings.obj.chat, {
+					center_system_messages: centered,
+					show_timestamps: timestamps
+				});
+				await native.settings.sync();
+				await wait();
+				checkNoticeLayout();
+				require(getComputedStyle(notice).textAlign ===
+					(centered ? 'center' : 'start'), 'System alignment did not update');
+				require(notice.scrollWidth <= notice.clientWidth + 1, 'System content overflows');
+				require(gap() < 1, 'Notice reflow lost pinned bottom');
+			}
+		}
+	}
+	document.documentElement.style.fontSize = '16px';
+	native.settings.obj.chat.alternate_backgrounds = false;
+	native.settings.obj.chat.show_timestamps = false;
+	await native.settings.sync();
+	await wait();
+	require(getComputedStyle(notice).backgroundColor ===
+		style.backgroundColor, 'Disabling striping removed the system background');
+	require(!notice.querySelector('span.text-xs'), 'System timestamp ignored visibility setting');
+	native.settings.obj.chat.alternate_backgrounds = true;
+	native.settings.obj.chat.show_timestamps = true;
+	await native.settings.sync();
+	await wait();
+	viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true }));
+	viewport.scrollTop = viewport.scrollHeight / 2;
+	viewport.dispatchEvent(new Event('scroll'));
+	await wait();
+	const box = viewport.getBoundingClientRect();
+	const anchor = rows().find((row) => row.getBoundingClientRect().top >= box.top);
+	const top = anchor.getBoundingClientRect().top;
+	native.system('notices', { segments: [{ type: 'text', text: 'Synthetic paused notice' }] });
+	native.push('notices', 'paused-chat');
+	await wait();
+	require(Math.abs(anchor.getBoundingClientRect().top - top) <
+		1, 'Mixed arrivals moved paused anchor');
+	const paused = [...document.querySelectorAll('button')].find((button) =>
+		button.textContent.includes('chat paused')
+	);
+	require(paused?.textContent.includes('2 new messages'), 'System notice not counted as unread');
+	paused.click();
+	await wait();
+	require(gap() < 1, 'Jump did not reach mixed timeline bottom');
+	native.reset();
+	await wait();
+	require(notices().length === 8, 'Reset lost notices');
+	await native.go(null);
+	await wait();
+	await native.go('notices');
+	await wait();
+	require(document.querySelectorAll('[data-chat-system-message]').length ===
+		8, 'Channel return lost notices');
+	const originalFrame = window.requestAnimationFrame;
+	let callbacks = 0;
+	window.requestAnimationFrame = (callback) =>
+		originalFrame((time) => {
+			callbacks++;
+			callback(time);
+		});
+	try {
+		native.system('notices', { segments: [{ type: 'text', text: 'Synthetic final notice' }] });
+		native.push('notices', 'final-chat');
+		await wait(300);
+		const settled = callbacks;
+		await wait(180);
+		require(callbacks === settled, 'Mixed arrivals left an animation frame loop running');
+	} finally {
+		window.requestAnimationFrame = originalFrame;
+	}
+	return { contrast, focusContrast, maxIconCenterOffset, count: 9, idleFrames: callbacks };
+}
+
 await writeFile(
 	path.join(output, 'native.svelte.js'),
 	`
@@ -214,7 +410,7 @@ const message = (channel, text) => {
   return { ts: '2026-10-25T00:00:00Z', broadcaster_user_id: channel,
     broadcaster_user_login: channel, broadcaster_user_name: channel, chatter_user_id: 'user', chatter_user_name: 'User',
     message_id: String(++sequence), index: sequence, channel_sequence, text, fragments: [{ Text: { index: 0, text } }],
-    message_type: 'text', badges: [], color: '#ffffff', translation: null };
+    kind: 'chat', message_type: 'text', badges: [], color: '#ffffff', translation: null };
 };
 for (const channel of ['rooma', 'roomb']) histories.set(channel, []);
 for (const i of [1,2,3]) for (const channel of ['rooma', 'roomb']) histories.get(channel).push(message(channel, channel + '-history-' + i));
@@ -223,10 +419,23 @@ native.push = (channel, text) => {
   history.push(msg); histories.set(channel, history.slice(-(native.settings?.obj.chat.message_limit ?? 500)));
   for (const feed of native.feeds.values()) if (feed.channel === channel) feed.onmessage({ cursor: sequence, event: { type: 'message', message: msg } });
 };
-native.seed = (channel, count) => histories.set(channel, Array.from({length: count}, (_, i) => message(channel, 'backlog-original-' + i)));
+const system = (channel, input) => ({ kind: 'system', index: ++sequence, ts: input.ts ?? '2026-11-14T19:00:00Z', message_id: input.message_id ?? 'system-' + sequence, broadcaster_user_id: channel, broadcaster_user_login: channel, broadcaster_user_name: channel, icon: input.icon ?? null, segments: input.segments });
+native.system = (channel, input) => {
+  const msg = system(channel, input); const history = histories.get(channel) ?? [];
+  history.push(msg); histories.set(channel, history.slice(-(native.settings?.obj.chat.message_limit ?? 500)));
+  for (const feed of native.feeds.values()) if (feed.channel === channel) feed.onmessage({ cursor: sequence, event: { type: 'message', message: msg } });
+};
+native.seed = (channel, count, mixed = false) => {
+  const rows = [];
+  for (let i = 0; i < count; i++) {
+    rows.push(message(channel, 'backlog-original-' + i));
+    if (mixed && i % 125 === 0) rows.push(system(channel, { segments: [{ type: 'text', text: 'Synthetic retained notice' }] }));
+  }
+  histories.set(channel, rows);
+};
 native.translate = (channel, text, id) => {
   const history = histories.get(channel);
-  const msg = id === undefined ? history.at(-1) : history.find(message => message.message_id === id);
+  const msg = id === undefined ? history.findLast(message => message.kind === 'chat') : history.find(message => message.kind === 'chat' && message.message_id === id);
   const update = { message_id: msg.message_id, translation: { source_language: 'ru', target_language: 'en', translated_text: text } };
   msg.translation = update.translation;
   const cursor = ++sequence;
@@ -698,6 +907,33 @@ try {
 			1
 		);
 		assert.deepEqual(exceptions.get(sessionId) ?? [], []);
+		console.log(
+			JSON.stringify({
+				width,
+				theme,
+				systems: await evaluate(sessionId, '(' + checkSystemMessages.toString() + ')()')
+			})
+		);
+		for (const centered of [false, true]) {
+			await evaluate(
+				sessionId,
+				`chatNative.settings.obj.chat.center_system_messages = ${centered}; chatNative.settings.sync()`
+			);
+			await waitFor(
+				sessionId,
+				`getComputedStyle(document.querySelector('[data-chat-system-message]')).textAlign === '${centered ? 'center' : 'start'}'`
+			);
+			await evaluate(sessionId, "document.querySelector('[data-chat-system-message] a').focus()");
+			const systemShot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+			await writeFile(
+				path.join(
+					output,
+					'systems-' + width + '-' + theme + '-' + (centered ? 'center' : 'left') + '.png'
+				),
+				Buffer.from(systemShot.data, 'base64')
+			);
+		}
+		assert.deepEqual(exceptions.get(sessionId) ?? [], []);
 		await send('Target.closeTarget', { targetId });
 	}
 	const backlogResults = [];
@@ -721,11 +957,11 @@ try {
 				await waitFor(sessionId, 'chatNative.feeds.size === 0');
 				await evaluate(
 					sessionId,
-					`chatNative.settings.obj.chat.message_limit = 1000; chatNative.settings.obj.translation.layout = '${layout}'; chatNative.settings.sync(); chatNative.seed('backlog', 500); chatNative.go('backlog')`
+					`chatNative.settings.obj.chat.message_limit = 1000; chatNative.settings.obj.translation.layout = '${layout}'; chatNative.settings.sync(); chatNative.seed('backlog', 500, true); chatNative.go('backlog')`
 				);
 				await waitFor(
 					sessionId,
-					"document.querySelectorAll('[data-chat-message-index]').length === 500"
+					"document.querySelectorAll('[data-chat-message-index]').length === 504"
 				);
 				const result = await evaluate(
 					sessionId,

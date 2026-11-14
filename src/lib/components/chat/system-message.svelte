@@ -1,0 +1,71 @@
+<script lang="ts">
+	import type { Snippet } from 'svelte';
+	import type { SystemMessage } from '$lib/bindings';
+	import Info from '@lucide/svelte/icons/info';
+	import Shield from '@lucide/svelte/icons/shield';
+	import Clock from '@lucide/svelte/icons/clock';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import CircleX from '@lucide/svelte/icons/circle-x';
+	import { openUrl } from '@tauri-apps/plugin-opener';
+	import Logger from '$utils/log';
+	import { systemMessageLink } from '$lib/chat/system-messages';
+	import { cn } from '$lib/utils';
+
+	let {
+		message,
+		centered = false,
+		timestamp
+	}: {
+		message: SystemMessage;
+		centered?: boolean;
+		timestamp?: Snippet;
+	} = $props();
+	const icons = {
+		info: Info,
+		shield: Shield,
+		clock: Clock,
+		success: CircleCheck,
+		warning: TriangleAlert,
+		error: CircleX
+	};
+
+	function openLink(event: MouseEvent, url: string) {
+		event.preventDefault();
+		void openUrl(url).catch((error) => Logger.error('Could not open system message link', error));
+	}
+</script>
+
+<div
+	class={cn(
+		'bg-content-system text-foreground/75 block w-full px-2 py-1 text-sm text-wrap wrap-anywhere',
+		centered && 'text-center'
+	)}
+	data-chat-message-index={message.index}
+	data-chat-system-message
+	role="group"
+	aria-label="System message"
+>
+	{@render timestamp?.()}
+	{#if message.icon}
+		{@const Icon = icons[message.icon]}
+		<span class="inline-grid h-[1lh] w-5 place-items-center align-top">
+			<Icon class="size-4" aria-hidden="true" />
+		</span>
+	{/if}
+	{#each message.segments as segment, i (i)}
+		{#if segment.type === 'text'}{segment.text}{:else if segment.type === 'emphasis'}<strong
+				>{segment.text}</strong
+			>{:else if segment.type === 'user'}<strong data-system-user-id={segment.user_id}
+				>{segment.display_name}</strong
+			>{:else if segment.type === 'link'}
+			{@const url = systemMessageLink(segment.url)}
+			{#if url}<a
+					href={url}
+					rel="external"
+					class="focus-visible:outline-foreground underline underline-offset-2 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2"
+					onclick={(event) => openLink(event, url)}>{segment.text}</a
+				>{:else}{segment.text}{/if}
+		{/if}
+	{/each}
+</div>

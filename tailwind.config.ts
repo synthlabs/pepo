@@ -60,7 +60,8 @@ const config: Config = {
 				},
 				content: {
 					primary: 'hsl(var(--content-primary))',
-					secondary: 'hsl(var(--content-secondary))'
+					secondary: 'hsl(var(--content-secondary))',
+					system: 'hsl(var(--content-system))'
 				}
 			},
 			borderRadius: {

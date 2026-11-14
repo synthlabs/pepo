@@ -77,7 +77,11 @@ fn enabled_defaults_translate_new_arrivals_without_retained_history() {
     engine.finish_translation(job.id, result("new arrival"));
     engine.state.lock().unwrap().refill_translations();
     assert_eq!(engine.state.lock().unwrap().translations.unfinished(), 0);
-    assert!(engine.history("a")[0].translation.is_none());
+    assert!(engine.history("a")[0]
+        .as_chat()
+        .unwrap()
+        .translation
+        .is_none());
 }
 
 #[test]
@@ -97,7 +101,7 @@ fn only_open_rooms_schedule_unique_accepted_messages_without_delaying_originals(
     engine.insert(message("background", 1));
     let frames = feed.poll();
     assert!(
-        matches!(&frames[0].event, FeedEvent::Message { message } if message.translation.is_none())
+        matches!(&frames[0].event, FeedEvent::Message { message } if message.as_chat().unwrap().translation.is_none())
     );
     assert_eq!(engine.state.lock().unwrap().translations.unfinished(), 1);
     let (job, _) = take(&engine);
@@ -109,6 +113,8 @@ fn only_open_rooms_schedule_unique_accepted_messages_without_delaying_originals(
     );
     assert_eq!(
         engine.history("a")[0]
+            .as_chat()
+            .unwrap()
             .translation
             .as_ref()
             .unwrap()
@@ -144,6 +150,8 @@ fn history_is_optional_and_completed_translations_keep_their_language() {
         engine.state.lock().unwrap().refill_translations();
         assert_eq!(engine.state.lock().unwrap().translations.unfinished(), 0);
         assert!(engine.history("a").iter().any(|m| m
+            .as_chat()
+            .unwrap()
             .translation
             .as_ref()
             .is_some_and(|t| t.target_language == "eng")));
@@ -288,7 +296,11 @@ fn last_lease_and_session_end_cancel_work_and_reject_late_results() {
     assert!(*cancel.borrow());
     open(&engine, "one", "a", 2);
     engine.finish_translation(job.id, result("stale"));
-    assert!(engine.history("a")[0].translation.is_none());
+    assert!(engine.history("a")[0]
+        .as_chat()
+        .unwrap()
+        .translation
+        .is_none());
     let (job, cancel) = take(&engine);
     engine.shutdown();
     assert!(*cancel.borrow());
@@ -320,7 +332,11 @@ fn processing_changes_cancel_atomically_but_layout_changes_preserve_work() {
         engine.configure_translation(settings.clone());
         assert!(*cancel.borrow());
         engine.finish_translation(job.id, result("stale"));
-        assert!(engine.history("a")[0].translation.is_none());
+        assert!(engine.history("a")[0]
+            .as_chat()
+            .unwrap()
+            .translation
+            .is_none());
         engine.state.lock().unwrap().refill_translations();
         assert_eq!(
             engine.state.lock().unwrap().translations.unfinished(),
@@ -464,7 +480,11 @@ async fn installed_models_retry_retained_work_once_without_retranslating_success
             .await
             .is_err()
     );
-    assert!(engine.history("a")[0].translation.is_some());
+    assert!(engine.history("a")[0]
+        .as_chat()
+        .unwrap()
+        .translation
+        .is_some());
     engine.shutdown();
     worker.await.unwrap();
 }

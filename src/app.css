@@ -55,6 +55,7 @@
 
 		--content-primary: 220 34% 97.2%;
 		--content-secondary: 220 38% 93.6%;
+		--content-system: 220 12% 88%;
 	}
 	.dark {
 		--background: 221.1 71.4% 5.5%;
@@ -89,6 +90,7 @@
 
 		--content-primary: 221.1 52% 7.2%;
 		--content-secondary: 221.1 42% 11.4%;
+		--content-system: 220 18% 18%;
 	}
 }
 

@@ -67,11 +67,13 @@ import { DEFAULT_APP_SETTINGS, formatTimestamp } from '$lib/settings';
 import { settingsState, updateAppSettings } from '$lib/stores/settings.svelte';
 
 let component: ReturnType<typeof mount> | undefined;
-let messages: ChannelMessage[];
+type ChatEntry = ChannelMessage & { kind: 'chat' };
+let messages: ChatEntry[];
 let sequence = 0;
 
-function message(index: number): ChannelMessage {
+function message(index: number): ChatEntry {
 	return {
+		kind: 'chat',
 		index,
 		channel_sequence: index,
 		ts: '2026-10-25T16:15:00Z',
@@ -171,6 +173,38 @@ afterEach(async () => {
 });
 
 describe('chat timestamp formatting volume', () => {
+	it('formats notice timestamps once and applies alignment without reformatting retained rows', async () => {
+		const notice = {
+			kind: 'system' as const,
+			index: 501,
+			ts: messages[0].ts,
+			message_id: 'notice',
+			broadcaster_user_id: '1',
+			broadcaster_user_login: 'timestamps',
+			broadcaster_user_name: 'Timestamps',
+			icon: null,
+			segments: [{ type: 'text' as const, text: 'A notice' }]
+		};
+		native.receive!({ cursor: 501, event: { type: 'message', message: notice } });
+		await flushUi();
+		expectCalls(1);
+		const row = document.querySelector('[data-chat-system-message]')!;
+		expect(row.classList.contains('text-center')).toBe(false);
+		expect(row.querySelector('span')?.textContent).toBe(expectedText());
+		const center = updateAppSettings({ chat: { center_system_messages: true } });
+		await flushUi();
+		expectCalls(0);
+		expect(row.classList.contains('text-center')).toBe(true);
+		await acknowledge(0);
+		expect(await center).toBe(true);
+		expectCalls(0);
+		const hide = updateAppSettings({ chat: { show_timestamps: false } });
+		await flushUi();
+		expectCalls(0);
+		expect(row.querySelector('span.text-xs')).toBeNull();
+		await acknowledge(1);
+		expect(await hide).toBe(true);
+	});
 	it('does not reformat for sidebar edits, acknowledgements, or layout rollback', async () => {
 		const originalCells = cells();
 		const collapse = updateAppSettings({ layout: { sidebar_open: false } });

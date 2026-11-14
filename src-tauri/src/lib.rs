@@ -28,8 +28,8 @@ mod badgemanager;
 mod badgepersist;
 pub mod chat;
 use chat::runtime::{
-    acknowledge_chat, get_chat_engine_status, get_chat_feed_context, subscribe_chat,
-    unsubscribe_chat, ChatRuntime,
+    acknowledge_chat, get_chat_engine_status, get_chat_feed_context, post_system_message,
+    subscribe_chat, unsubscribe_chat, ChatRuntime,
 };
 #[cfg(test)]
 mod channel_cache_poll_tests;
@@ -245,6 +245,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             get_followed_channels,
             get_channel_info,
             subscribe_chat,
+            post_system_message,
             unsubscribe_chat,
             acknowledge_chat,
             get_chat_engine_status,

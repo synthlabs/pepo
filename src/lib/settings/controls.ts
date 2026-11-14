@@ -38,6 +38,14 @@ const translationMore = { category: 'translation', more: true } as const;
 
 export const SETTINGS_CONTROLS: SettingControl[] = [
 	{
+		...chatMore,
+		id: 'chat.center_system_messages',
+		path: 'chat.center_system_messages',
+		label: 'Center system messages',
+		description: 'Center inline notices instead of aligning them to the left.',
+		kind: 'toggle'
+	},
+	{
 		id: 'chat.show_history_divider',
 		path: 'chat.show_history_divider',
 		category: 'chat',

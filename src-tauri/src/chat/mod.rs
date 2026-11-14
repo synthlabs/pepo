@@ -2,6 +2,7 @@ pub mod admission;
 pub mod membership;
 pub mod runtime;
 pub mod store;
+pub mod timeline;
 pub mod translation;
 
 use crate::types::{ChannelMessage, ChannelMessageTranslationUpdate, ChatRoomInfo, ChatSettings};
@@ -13,6 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Instant;
 use store::{MemoryRepository, MessageRepository, StoreMetrics};
+use timeline::{ChatTimelineEntry, SystemMessage, SystemMessageInput};
 use tokio::sync::watch;
 
 pub const FEED_CAPACITY: usize = 1024;
@@ -40,16 +42,16 @@ struct FeedOwner {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FeedEvent {
     Snapshot {
-        messages: Vec<ChannelMessage>,
+        messages: Vec<ChatTimelineEntry>,
     },
     Message {
-        message: ChannelMessage,
+        message: ChatTimelineEntry,
     },
     Translation {
         update: ChannelMessageTranslationUpdate,
     },
     Reset {
-        messages: Vec<ChannelMessage>,
+        messages: Vec<ChatTimelineEntry>,
     },
     Gap {
         after: u64,
@@ -147,18 +149,36 @@ impl ChatEngine {
     pub fn active(&self) -> bool {
         self.state.lock().unwrap().active
     }
-    pub fn insert(&self, mut message: ChannelMessage) -> bool {
+    pub fn insert(&self, message: ChannelMessage) -> bool {
+        self.insert_entry(ChatTimelineEntry::Chat(message))
+    }
+
+    pub fn insert_system(
+        &self,
+        room: ChatRoomInfo,
+        input: SystemMessageInput,
+    ) -> Result<bool, String> {
+        let message = SystemMessage::new(room, input)?;
+        if !self.active() {
+            return Err("chat engine is not running".into());
+        }
+        Ok(self.insert_entry(ChatTimelineEntry::System(message)))
+    }
+
+    fn insert_entry(&self, mut message: ChatTimelineEntry) -> bool {
         let mut s = self.state.lock().unwrap();
         if !s.active {
             return false;
         }
-        let login = message.broadcaster_user_login.to_lowercase();
-        message.index = s.cursor + 1;
+        let login = message.login().to_lowercase();
+        message.set_index(s.cursor + 1);
         let Some(message) = s.repository.insert(message) else {
             return false;
         };
         s.cursor += 1;
-        s.translations.admit(&message, true);
+        if let Some(chat) = message.as_chat() {
+            s.translations.admit(chat, true);
+        }
         s.publish(&login, FeedEvent::Message { message });
         drop(s);
         self.wake();
@@ -336,7 +356,7 @@ impl ChatEngine {
         drop(s);
         self.wake();
     }
-    pub fn history(&self, login: &str) -> Vec<ChannelMessage> {
+    pub fn history(&self, login: &str) -> Vec<ChatTimelineEntry> {
         self.state.lock().unwrap().repository.history(login)
     }
     pub fn metrics(&self) -> StoreMetrics {

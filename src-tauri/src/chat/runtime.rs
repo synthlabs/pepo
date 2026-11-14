@@ -1,3 +1,4 @@
+use super::timeline::SystemMessageInput;
 use super::{
     admission::{AdmissionAction, AdmissionCoordinator},
     membership::STEADY_ROOMS,
@@ -109,6 +110,18 @@ pub fn get_chat_feed_context(
         .state::<ChatRuntime>()
         .current()?
         .feed_context(window.label()))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn post_system_message(
+    room: ChatRoomInfo,
+    input: SystemMessageInput,
+    app: AppHandle,
+) -> Result<bool, String> {
+    app.state::<ChatRuntime>()
+        .current()?
+        .insert_system(room, input)
 }
 
 pub(super) async fn prepare_feed(

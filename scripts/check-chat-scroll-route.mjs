@@ -96,6 +96,7 @@ async function createRouteFixture(native, tick, geometry) {
 			chatter_user_name: 'User' + index,
 			message_id: String(index),
 			text: 'fixed text to inspect vertical movement',
+			kind: 'chat',
 			message_type: 'text',
 			color: '#70c7ff',
 			translation: null,

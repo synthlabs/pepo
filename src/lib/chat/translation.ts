@@ -1,13 +1,20 @@
 import type {
 	ChannelMessage,
+	ChatTimelineEntry,
 	ChannelMessageTranslation,
 	ChannelMessageTranslationUpdate
 } from '$lib/bindings';
 
 export type PendingTranslations = Map<string, ChannelMessageTranslation>;
 
-export interface TranslationApplyResult {
-	messages: ChannelMessage[];
+type TranslationEntry = ChannelMessage | ChatTimelineEntry;
+
+export function isChatMessage(message: TranslationEntry): message is ChannelMessage {
+	return !('kind' in message) || message.kind === 'chat';
+}
+
+export interface TranslationApplyResult<T = ChannelMessage> {
+	messages: T[];
 	changed: boolean;
 }
 
@@ -34,12 +41,15 @@ export class HistoryTranslationBuffer {
 		else this.pending.set(message.message_id, translation);
 	}
 
-	reset(current: ChannelMessage[], incoming: ChannelMessage[], cursor: number): ChannelMessage[] {
+	reset<T extends TranslationEntry>(current: T[], incoming: T[], cursor: number): T[] {
 		this.cursor ??= cursor;
-		const previous = new Map(current.map((message) => [message.message_id, message]));
+		const previous = new Map(
+			current.filter(isChatMessage).map((message) => [message.message_id, message])
+		);
 		const messages = incoming.map((message) => {
+			if (!isChatMessage(message)) return message;
 			const displayed = previous.get(message.message_id);
-			if (!displayed || !this.isHistorical(message)) return message;
+			if (!displayed || !isChatMessage(displayed) || !this.isHistorical(message)) return message;
 
 			if (message.translation) this.defer(displayed, message.translation);
 			return { ...message, translation: displayed.translation };
@@ -48,12 +58,13 @@ export class HistoryTranslationBuffer {
 		return messages;
 	}
 
-	flush(
-		messages: ChannelMessage[],
+	flush<T extends TranslationEntry>(
+		messages: T[],
 		canPresent: (message: ChannelMessage) => boolean
-	): TranslationApplyResult {
+	): TranslationApplyResult<T> {
 		let next = messages;
 		for (const [index, message] of messages.entries()) {
+			if (!isChatMessage(message)) continue;
 			const translation = this.pending.get(message.message_id);
 			if (!translation || !canPresent(message)) continue;
 			this.pending.delete(message.message_id);
@@ -64,8 +75,8 @@ export class HistoryTranslationBuffer {
 		return { messages: next, changed: next !== messages };
 	}
 
-	retain(messages: ChannelMessage[]): void {
-		const retained = new Set(messages.map((message) => message.message_id));
+	retain(messages: TranslationEntry[]): void {
+		const retained = new Set(messages.filter(isChatMessage).map((message) => message.message_id));
 		for (const id of this.pending.keys()) {
 			if (!retained.has(id)) this.pending.delete(id);
 		}
@@ -88,10 +99,11 @@ export function isRowOutsideViewport(
 	);
 }
 
-export function attachPendingTranslation(
-	message: ChannelMessage,
+export function attachPendingTranslation<T extends TranslationEntry>(
+	message: T,
 	pendingTranslations: PendingTranslations
-): ChannelMessage {
+): T {
+	if (!isChatMessage(message)) return message;
 	const pendingTranslation = pendingTranslations.get(message.message_id);
 	if (pendingTranslation) {
 		pendingTranslations.delete(message.message_id);
@@ -102,21 +114,24 @@ export function attachPendingTranslation(
 	return translation ? { ...message, translation } : { ...message, translation: null };
 }
 
-export function applyTranslationUpdate(
-	messages: ChannelMessage[],
+export function applyTranslationUpdate<T extends TranslationEntry>(
+	messages: T[],
 	update: ChannelMessageTranslationUpdate,
 	pendingTranslations: PendingTranslations
-): TranslationApplyResult {
+): TranslationApplyResult<T> {
 	const translation = normalizeTranslation(update.translation);
 	if (!translation) return { messages, changed: false };
 
-	const index = messages.findIndex((message) => message.message_id === update.message_id);
+	const index = messages.findIndex(
+		(message) => isChatMessage(message) && message.message_id === update.message_id
+	);
 	if (index === -1) {
 		pendingTranslations.set(update.message_id, translation);
 		return { messages, changed: false };
 	}
 
 	const current = messages[index];
+	if (!isChatMessage(current)) return { messages, changed: false };
 	if (sameTranslation(current.translation, translation)) {
 		return { messages, changed: false };
 	}
