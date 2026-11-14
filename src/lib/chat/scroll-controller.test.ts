@@ -59,7 +59,8 @@ function rect(top: number, height: number): DOMRect {
 	};
 }
 
-function fixture() {
+function fixture({ observeResize = true } = {}) {
+	if (!observeResize) vi.stubGlobal('ResizeObserver', undefined);
 	const viewport = document.createElement('div');
 	const content = document.createElement('div');
 	viewport.append(content);
@@ -70,6 +71,11 @@ function fixture() {
 	let releaseRender: (() => void) | undefined;
 	const writes: number[] = [];
 	const rows = new Map<string, { node: HTMLElement; top: number }>();
+	const geometry = {
+		scrollHeight: vi.fn(() => Math.round(height)),
+		clientHeight: vi.fn(() => 400),
+		viewportRect: vi.fn(() => rect(0, 400))
+	};
 	Object.defineProperties(viewport, {
 		scrollTop: {
 			get: () => position,
@@ -78,13 +84,13 @@ function fixture() {
 				writes.push(position);
 			}
 		},
-		scrollHeight: { get: () => Math.round(height) },
-		clientHeight: { value: 400 },
+		scrollHeight: { get: geometry.scrollHeight },
+		clientHeight: { get: geometry.clientHeight },
 		clientWidth: { value: 100 },
 		offsetWidth: { value: 115 },
 		offsetHeight: { value: 400 }
 	});
-	viewport.getBoundingClientRect = () => rect(0, 400);
+	viewport.getBoundingClientRect = geometry.viewportRect;
 	for (let index = 0; index < 10; index++) {
 		const node = document.createElement('div');
 		node.dataset.chatMessageIndex = String(index);
@@ -99,9 +105,10 @@ function fixture() {
 		onHistoryUpdate: vi.fn(),
 		onResume: vi.fn()
 	};
+	const afterRender = vi.fn(() => render);
 	const controller = new ChatScrollController({
 		messageSelector: '[data-chat-message-index]',
-		afterRender: () => render,
+		afterRender,
 		getThresholdPx: () => threshold,
 		...callbacks
 	});
@@ -112,6 +119,8 @@ function fixture() {
 		viewport,
 		content,
 		callbacks,
+		geometry,
+		afterRender,
 		rows,
 		writes,
 		observer: TestResizeObserver.instances.at(-1)!,
@@ -128,6 +137,7 @@ function fixture() {
 			render = new Promise((resolve) => {
 				releaseRender = resolve;
 			});
+			return releaseRender!;
 		},
 		render: async () => {
 			releaseRender?.();
@@ -151,10 +161,123 @@ describe('ChatScrollController', () => {
 		f.controller.afterContentChange();
 		expect(frames.size).toBe(0);
 		await f.render();
-		flushFrame();
+		f.observer.resize();
 		expect(f.viewport.scrollTop).toBeCloseTo(800.4, 8);
 		expect(f.controller.pinned).toBe(true);
 		expect(f.callbacks.onClearUnread).toHaveBeenCalledOnce();
+	});
+
+	it.each(['append', 'trim', 'translation'] as const)(
+		'prepares pinned %s without measuring the viewport or searching message rows',
+		(kind) => {
+			const f = fixture();
+			const query = vi.spyOn(f.viewport, 'querySelectorAll');
+			expect(f.controller.beforeContentChange(kind)).toBe(true);
+			for (const getter of Object.values(f.geometry)) expect(getter).not.toHaveBeenCalled();
+			expect(query).not.toHaveBeenCalled();
+		}
+	);
+
+	it('coalesces pinned changes behind rendering and cancels the fallback on observation', async () => {
+		const f = fixture();
+		f.holdRender();
+		for (const kind of ['append', 'trim', 'translation'] as const) {
+			f.controller.beforeContentChange(kind);
+			f.controller.afterContentChange();
+		}
+		f.setHeight(1200);
+		window.dispatchEvent(new Event('resize'));
+		expect(f.afterRender).toHaveBeenCalledOnce();
+		expect(vi.getTimerCount()).toBe(0);
+		await f.render();
+		expect(frames.size).toBe(0);
+		expect(vi.getTimerCount()).toBe(1);
+		f.observer.resize();
+		expect(f.writes).toEqual([800]);
+		expect(vi.getTimerCount()).toBe(0);
+		await vi.advanceTimersByTimeAsync(50);
+		flushFrame();
+		expect(f.writes).toEqual([800]);
+	});
+
+	it('pins each observed resize during the callback without queuing geometry work', () => {
+		const f = fixture();
+		for (const height of [1100, 1200, 1300]) {
+			f.setHeight(height);
+			f.observer.resize();
+			expect(f.viewport.scrollTop).toBe(height - 400);
+			expect(frames.size).toBe(0);
+			expect(vi.getTimerCount()).toBe(0);
+		}
+		expect(f.geometry.scrollHeight).toHaveBeenCalledTimes(3);
+		expect(f.geometry.clientHeight).not.toHaveBeenCalled();
+		expect(f.geometry.viewportRect).not.toHaveBeenCalled();
+	});
+
+	it('coalesces wake and non-user scroll correction into the 50ms fallback', async () => {
+		const f = fixture();
+		f.setPosition(480);
+		for (let index = 0; index < 3; index++) f.controller.refreshScrollState();
+		window.dispatchEvent(new Event('resize'));
+		document.dispatchEvent(new Event('visibilitychange'));
+		expect(frames.size).toBe(0);
+		expect(vi.getTimerCount()).toBe(1);
+		expect(f.geometry.scrollHeight).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(49);
+		expect(f.viewport.scrollTop).toBe(480);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(f.writes).toEqual([600]);
+		expect(f.geometry.scrollHeight).toHaveBeenCalledOnce();
+	});
+
+	it('waits for rendering before starting an unobserved content fallback', async () => {
+		const f = fixture();
+		f.holdRender();
+		f.controller.beforeContentChange('append');
+		f.setHeight(1200);
+		f.controller.afterContentChange();
+		await vi.advanceTimersByTimeAsync(100);
+		expect(f.writes).toEqual([]);
+		await f.render();
+		await vi.advanceTimersByTimeAsync(49);
+		expect(f.writes).toEqual([]);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(f.writes).toEqual([800]);
+	});
+
+	it('retains the render barrier when an observation arrives before rendering finishes', async () => {
+		const f = fixture();
+		f.holdRender();
+		f.controller.beforeContentChange('append');
+		f.setHeight(1100);
+		f.controller.afterContentChange();
+		f.observer.resize();
+		expect(f.writes).toEqual([700]);
+		f.setHeight(1300);
+		await f.render();
+		await vi.advanceTimersByTimeAsync(50);
+		expect(f.writes).toEqual([700, 900]);
+	});
+
+	it('ignores a pre-reset render continuation while a newer render is pending', async () => {
+		const f = fixture();
+		const releaseOldRender = f.holdRender();
+		f.controller.beforeContentChange('append');
+		f.controller.afterContentChange();
+		const wasPinned = f.controller.beforeReset();
+		f.holdRender();
+		f.setHeight(1300);
+		f.controller.afterReset(wasPinned);
+		f.writes.length = 0;
+		releaseOldRender();
+		await Promise.resolve();
+		f.controller.beforeContentChange('translation');
+		f.controller.afterContentChange();
+		expect(f.afterRender).toHaveBeenCalledTimes(2);
+		expect(vi.getTimerCount()).toBe(0);
+		await f.render();
+		await vi.advanceTimersByTimeAsync(50);
+		expect(f.writes).toEqual([900]);
 	});
 
 	it.each(['append', 'trim', 'translation'] as const)(
@@ -235,7 +358,7 @@ describe('ChatScrollController', () => {
 
 	it('cancels an already scheduled pinned restore when manual scrolling begins', async () => {
 		const f = fixture();
-		f.observer.resize();
+		window.dispatchEvent(new Event('resize'));
 		f.controller.handleWheelIntent(new WheelEvent('wheel', { deltaY: -1 }));
 		expect(frames.size).toBe(0);
 		f.setPosition(500);
@@ -292,9 +415,9 @@ describe('ChatScrollController', () => {
 	});
 
 	it.each(['frame', 'timer'])(
-		'flushes once when the %s wins the restoration race',
+		'flushes once without a resize observer when the %s wins the restoration race',
 		async (winner) => {
-			const f = fixture();
+			const f = fixture({ observeResize: false });
 			f.controller.beforeContentChange('append');
 			f.setHeight(1200);
 			f.controller.afterContentChange();
@@ -363,6 +486,7 @@ describe('ChatScrollController', () => {
 		const f = fixture();
 		f.setHeight(1200);
 		document.dispatchEvent(new Event('visibilitychange'));
+		await vi.advanceTimersByTimeAsync(50);
 		flushFrame();
 		expect(f.viewport.scrollTop).toBe(800);
 		await f.pause();
@@ -379,6 +503,7 @@ describe('ChatScrollController', () => {
 		f.controller.afterContentChange();
 		f.observer.resize();
 		f.controller.handleWheelIntent(new WheelEvent('wheel', { deltaY: -1 }));
+		f.writes.length = 0;
 		f.controller.dispose();
 		f.controller.dispose();
 		for (const callback of Object.values(f.callbacks)) callback.mockClear();

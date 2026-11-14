@@ -34,6 +34,8 @@ export class ChatScrollController {
 	private isPinned = true;
 	private disposed = false;
 	private resumingToBottom = false;
+	private restoreGeneration = 0;
+	private pinnedRenderPending = false;
 	private pendingScrollSnapshot: ScrollSnapshot | null = null;
 	private pausedReflowSnapshot: ScrollSnapshot | null = null;
 	private scrollFlushQueued = false;
@@ -79,12 +81,12 @@ export class ChatScrollController {
 			!this.interacting &&
 			(kind === 'translation' || !this.resumingToBottom) &&
 			(kind !== 'trim' || this.viewport !== undefined);
-		if (shouldRestore && this.viewport) {
+		if (shouldRestore && this.viewport && !this.pinned) {
 			this.pendingScrollSnapshot = getPinnedBatchScrollSnapshot(
 				this.pendingScrollSnapshot,
 				this.viewport,
 				this.options.messageSelector,
-				this.pinned,
+				false,
 				this.options.getThresholdPx()
 			);
 		}
@@ -92,10 +94,13 @@ export class ChatScrollController {
 	}
 
 	afterContentChange(): void {
-		this.queueScrollRestore();
+		if (this.pinned) void this.queuePinnedBottomAfterRender();
+		else this.queueScrollRestore();
 	}
 
 	beforeReset(): boolean {
+		this.cancelQueuedScrollRestore();
+		this.cancelPinnedBottomFlush();
 		if (!this.disposed && this.viewport && !this.pinned) {
 			this.pendingScrollSnapshot = captureScrollSnapshot(
 				this.viewport,
@@ -333,7 +338,9 @@ export class ChatScrollController {
 	};
 
 	private restoreQueuedScroll = async () => {
+		const generation = this.restoreGeneration;
 		await this.options.afterRender();
+		if (generation !== this.restoreGeneration) return;
 		if (this.disposed || this.interacting) {
 			this.scrollFlushQueued = false;
 			this.pendingScrollSnapshot = null;
@@ -394,6 +401,8 @@ export class ChatScrollController {
 	};
 
 	private cancelQueuedScrollRestore = () => {
+		this.restoreGeneration += 1;
+		this.pinnedRenderPending = false;
 		if (this.scrollFrame !== undefined) {
 			cancelAnimationFrame(this.scrollFrame);
 			this.scrollFrame = undefined;
@@ -435,16 +444,29 @@ export class ChatScrollController {
 	};
 
 	private queuePinnedBottomAfterRender = async () => {
+		if (this.disposed || !this.pinned || this.interacting || this.pinnedRenderPending) return;
+		this.cancelPinnedBottomFlush();
+		this.pinnedRenderPending = true;
+		const generation = this.restoreGeneration;
 		await this.options.afterRender();
+		if (generation !== this.restoreGeneration) return;
+		this.pinnedRenderPending = false;
 		if (this.disposed || !this.pinned || this.interacting) return;
 
 		this.queuePinnedScrollToBottom();
 	};
 
 	private queuePinnedScrollToBottom = () => {
-		if (!this.pinned || !this.viewport || this.interacting) return;
+		if (
+			this.disposed ||
+			!this.pinned ||
+			!this.viewport ||
+			this.interacting ||
+			this.pinnedRenderPending
+		)
+			return;
 
-		if (this.pinnedBottomFrame === undefined) {
+		if (!this.resizeObserver && this.pinnedBottomFrame === undefined) {
 			this.pinnedBottomFrame = requestAnimationFrame(this.flushPinnedBottomScroll);
 		}
 		if (this.pinnedBottomTimer === undefined) {
@@ -481,9 +503,10 @@ export class ChatScrollController {
 	};
 
 	private queueResizeScrollRestore = () => {
-		if (!this.viewport || this.interacting) return;
+		if (this.disposed || !this.viewport || this.interacting) return;
 		if (this.pinned) {
-			this.queuePinnedScrollToBottom();
+			// Resize observations arrive after layout.
+			this.flushPinnedBottomScroll();
 			return;
 		}
 

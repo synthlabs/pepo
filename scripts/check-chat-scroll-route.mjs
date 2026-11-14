@@ -14,7 +14,47 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const output = path.join(root, 'target/chat-scroll-route-check');
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function createRouteFixture(native, tick) {
+function trackResizeGeometry() {
+	const NativeResizeObserver = window.ResizeObserver;
+	const height = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
+	let observerDepth = 0;
+	let reads = null;
+	window.ResizeObserver = class extends NativeResizeObserver {
+		constructor(callback) {
+			super((entries, observer) => {
+				observerDepth += 1;
+				try {
+					callback(entries, observer);
+				} finally {
+					observerDepth -= 1;
+				}
+			});
+		}
+	};
+	Object.defineProperty(Element.prototype, 'scrollHeight', {
+		...height,
+		get() {
+			if (reads && this.getAttribute('aria-label') === 'Chat messages') {
+				reads[observerDepth > 0 ? 'observer' : 'outsideObserver'] += 1;
+			}
+			return Reflect.apply(height.get, this, []);
+		}
+	});
+	return {
+		NativeResizeObserver,
+		readHeight: (element) => Reflect.apply(height.get, element, []),
+		start: () => {
+			reads = { observer: 0, outsideObserver: 0 };
+		},
+		stop: () => {
+			const result = reads;
+			reads = null;
+			return result;
+		}
+	};
+}
+
+async function createRouteFixture(native, tick, geometry) {
 	while (!native.feed) await new Promise((resolve) => setTimeout(resolve, 5));
 	const feed = document.querySelector('[aria-label="Chat messages"]');
 	const rows = () => [...feed.querySelectorAll('[data-chat-message-index]')];
@@ -122,6 +162,52 @@ async function createRouteFixture(native, tick) {
 	const clip = { x: box.left + 8, y: box.top + 35, width: 300, height: 120, scale: 1 };
 	window.routeFixture = {
 		metadata,
+		measurePinnedResize: async () => {
+			await waitCount(500);
+			await frames();
+			const originalWidth = document.body.style.width;
+			const originalTransition = document.body.style.transition;
+			const width = document.body.getBoundingClientRect().width;
+			const trials = [];
+			let samples = null;
+			const observer = new geometry.NativeResizeObserver(() => {
+				if (!samples) return;
+				samples.push({
+					distance: geometry.readHeight(feed) - feed.clientHeight - feed.scrollTop,
+					width: feed.clientWidth,
+					height: feed.firstElementChild.getBoundingClientRect().height
+				});
+			});
+			observer.observe(feed);
+			observer.observe(feed.firstElementChild);
+			try {
+				await new Promise((resolve) => setTimeout(resolve, 80));
+				document.body.style.transition = 'width 200ms linear';
+				for (const target of [width - 208, width]) {
+					samples = [];
+					geometry.start();
+					document.body.style.width = target + 'px';
+					await new Promise((resolve) => setTimeout(resolve, 280));
+					const captured = samples;
+					samples = null;
+					trials.push({
+						reads: geometry.stop(),
+						samples: captured.length,
+						widths: new Set(captured.map((sample) => sample.width)).size,
+						heights: new Set(captured.map((sample) => sample.height)).size,
+						maxDistance: Math.max(...captured.map((sample) => Math.abs(sample.distance))),
+						...metadata()
+					});
+				}
+				return trials;
+			} finally {
+				samples = null;
+				geometry.stop();
+				observer.disconnect();
+				document.body.style.transition = originalTransition;
+				document.body.style.width = originalWidth;
+			}
+		},
 		resize: async (width, arrivals = 0) => {
 			document.body.style.width = document.body.getBoundingClientRect().width + 'px';
 			document.body.style.transition = 'width 200ms linear';
@@ -319,8 +405,9 @@ import Route from '../../src/routes/app/chat/[id]/+page.svelte';
 import { native } from './native.svelte.js';
 import '../../src/app.css';
 document.body.style.height = '100vh';
+const geometry = (${trackResizeGeometry.toString()})();
 mount(Route, { target: document.body });
-window.fixtureReady = (${createRouteFixture.toString()})(native, tick);
+window.fixtureReady = (${createRouteFixture.toString()})(native, tick, geometry);
 `
 	);
 	await writeFile(
@@ -519,6 +606,21 @@ async function checkControllerScroll(evaluate) {
 	console.log('PASS animated resizing, arrivals, translations, manual interruption and resume');
 }
 
+async function checkPinnedResizeGeometry(evaluate) {
+	const trials = await evaluate('window.routeFixture.measurePinnedResize()');
+	for (const trial of trials) {
+		const details = JSON.stringify(trial);
+		assert.equal(trial.count, 500, 'Geometry trial requires 500 retained messages: ' + details);
+		assert(trial.widths >= 3 && trial.heights >= 2, 'Trial did not animate and reflow: ' + details);
+		assert(trial.reads.observer >= 3, 'Pinning did not read post-layout geometry: ' + details);
+		// One trailing timeout may correct the final non-user scroll event.
+		assert(trial.reads.outsideObserver <= 1, 'Resize queued repeated geometry reads: ' + details);
+		assert(trial.maxDistance < 1, 'A sampled resize lost the pinned bottom: ' + details);
+		assert(!trial.paused && Math.abs(trial.distance) < 1, 'Resize lost live following: ' + details);
+	}
+	console.log('PASS pinned resize geometry ' + JSON.stringify(trials));
+}
+
 try {
 	for (const scale of values.scale ? [Number(values.scale)] : [1, 1.1, 1.25, 1.5, 1.75, 2]) {
 		await checkScale(values.browser, scale, fixture.origin, async ({ command, evaluate }) => {
@@ -612,6 +714,7 @@ try {
 			assert.equal(resumed.count, 500);
 			assert(Math.abs(resumed.distance) < 1, 'Resume lost bottom');
 			await checkControllerScroll(evaluate);
+			await checkPinnedResizeGeometry(evaluate);
 			if (scale === 1) await checkNoticeScroll(command, evaluate);
 			await evaluate('window.routeFixture.pause()');
 			const pausedAnchor = await evaluate('window.routeFixture.anchor()');
