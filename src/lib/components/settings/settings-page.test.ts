@@ -137,6 +137,24 @@ afterEach(async () => {
 });
 
 describe('settings page', () => {
+	it('exposes the notice toggle in advanced Chat settings, saves opt-out, and finds it by search', async () => {
+		expect(document.querySelector('#setting-chat-moderation_notices_enabled')).toBeNull();
+		await click('[aria-controls="settings-more-chat"]');
+		expect(element('#setting-chat-moderation_notices_enabled').getAttribute('aria-checked')).toBe(
+			'true'
+		);
+		expect(document.body.textContent).toContain(
+			'Add ban, timeout, and chat-clear notices to open chats.'
+		);
+		await click('#setting-chat-moderation_notices_enabled');
+		expect(getNormalizedAppSettings().chat.moderation_notices_enabled).toBe(false);
+		await click('[aria-controls="settings-more-chat"]');
+		await search('moderation notices');
+		expect(element('#setting-chat-moderation_notices_enabled').getAttribute('aria-checked')).toBe(
+			'false'
+		);
+		expect(native.writes.at(-1)?.chat.moderation_notices_enabled).toBe(false);
+	});
 	it('shows three translation preferences and asks consent before downloading or enabling', async () => {
 		const f = await translationPage();
 		expect(

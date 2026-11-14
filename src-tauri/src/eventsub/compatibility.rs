@@ -101,6 +101,18 @@ pub(super) fn decode(frame: &str) -> Result<DecodedFrame<'_>, ParseFailure> {
             "invalid type: expected an event object",
         ));
     }
+    let removal = version == "1"
+        && matches!(
+            event_type,
+            "channel.chat.message_delete"
+                | "channel.chat.clear_user_messages"
+                | "channel.chat.clear"
+        );
+    if removal {
+        return Event::parse_websocket(frame)
+            .map(DecodedFrame::Parsed)
+            .map_err(|error| ParseFailure::new(frame, &error));
+    }
     if event_type != ChannelChatMessageV1::EVENT_TYPE.to_str()
         || version != ChannelChatMessageV1::VERSION
     {
@@ -220,6 +232,7 @@ fn recover_chat<'a>(
         "EventSub unsupported chat content handled as text"
     );
     Ok(DecodedFrame::Recovered(EventNotification {
+        id: metadata.message_id.to_string(),
         ts: metadata.message_timestamp.into_owned(),
         event: payload,
         message_type_override: unknown_message_type.map(|_| ChannelMessageType::Unknown),

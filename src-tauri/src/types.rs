@@ -417,10 +417,12 @@ impl Default for LayoutSettings {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ChatJoinMode {
-    All,
     #[default]
-    Live,
-    Single,
+    All,
+    #[serde(alias = "live")]
+    Recent,
+    #[serde(alias = "single")]
+    Open,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -455,12 +457,13 @@ pub struct ChatSettings {
     pub show_emotes: bool,
     pub alternate_backgrounds: bool,
     pub center_system_messages: bool,
+    pub moderation_notices_enabled: bool,
 }
 
 impl Default for ChatSettings {
     fn default() -> Self {
         Self {
-            join_mode: ChatJoinMode::Live,
+            join_mode: ChatJoinMode::All,
             show_history_divider: true,
             message_limit: 500,
             pause_message_gc_while_paused: true,
@@ -475,6 +478,7 @@ impl Default for ChatSettings {
             show_emotes: true,
             alternate_backgrounds: true,
             center_system_messages: false,
+            moderation_notices_enabled: true,
         }
     }
 }
@@ -945,7 +949,7 @@ impl From<twitch_api::helix::users::User> for Broadcaster {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, Type)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, Type, PartialEq, Eq)]
 pub struct ChatRoomInfo {
     pub broadcaster_id: String,
     pub broadcaster_login: String,
@@ -1236,6 +1240,30 @@ pub(crate) fn translation_input_from_fragments(fragments: &[message::Fragment]) 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_chat_modes_migrate_and_moderation_notices_default_enabled() {
+        use super::{ChatJoinMode, ChatSettings};
+        for (saved, expected, canonical) in [
+            ("live", ChatJoinMode::Recent, "recent"),
+            ("single", ChatJoinMode::Open, "open"),
+            ("all", ChatJoinMode::All, "all"),
+            ("recent", ChatJoinMode::Recent, "recent"),
+            ("open", ChatJoinMode::Open, "open"),
+        ] {
+            let settings: ChatSettings =
+                serde_json::from_value(serde_json::json!({"join_mode":saved})).unwrap();
+            assert_eq!(settings.join_mode, expected);
+            assert!(settings.moderation_notices_enabled);
+            assert_eq!(
+                serde_json::to_value(settings).unwrap()["join_mode"],
+                canonical
+            );
+        }
+        assert_eq!(ChatSettings::default().join_mode, ChatJoinMode::All);
+        let disabled: ChatSettings =
+            serde_json::from_str(r#"{"moderation_notices_enabled":false}"#).unwrap();
+        assert!(!disabled.moderation_notices_enabled);
+    }
     use super::*;
 
     #[test]

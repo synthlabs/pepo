@@ -15,6 +15,19 @@ import {
 } from './controls';
 
 describe('settings controls', () => {
+	it('keeps moderation notices in advanced Chat settings and resets to enabled', () => {
+		const control = SETTINGS_CONTROLS.find(
+			(item) => item.id === 'chat.moderation_notices_enabled'
+		)!;
+		expect(control).toMatchObject({
+			more: true,
+			category: 'chat',
+			kind: 'toggle',
+			label: 'Receive moderation notices'
+		});
+		expect(matchingControls('ban timeout').map((item) => item.id)).toContain(control.id);
+		expect(resetSettingsPatch('chat').chat?.moderation_notices_enabled).toBe(true);
+	});
 	it('keeps notice alignment in Advanced, searchable, and resettable with a legacy default', () => {
 		const control = SETTINGS_CONTROLS.find((item) => item.id === 'chat.center_system_messages')!;
 		expect(control.more).toBe(true);

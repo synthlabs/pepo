@@ -1224,6 +1224,12 @@ async fn login(
                         break;
                     }
                     eventsub::EventSubMessage::Notification(notification) => {
+                        if let Some(event) =
+                            chat::moderation::ModerationEvent::from_notification(&notification)
+                        {
+                            chat_engine_ref.moderate(event);
+                            continue;
+                        }
                         match notification.event {
                             twitch_api::eventsub::Event::ChannelChatMessageV1(P {
                                 message: M::Notification(chat_message),

@@ -178,6 +178,57 @@ fn reported_watch_streak_and_other_unhandled_categories_are_ignored() {
 }
 
 #[test]
+fn all_reader_removal_streams_reach_the_feed_with_independent_notification_ids() {
+    use crate::chat::{moderation::ModerationEvent, ChatEngine, FeedEvent, FeedScope};
+    use crate::types::ChatSettings;
+    let engine = ChatEngine::new(ChatSettings::default());
+    let feed = engine.subscribe(FeedScope::Channel("room".into()));
+    let other = engine.subscribe(FeedScope::Channel("other".into()));
+    for (index, kind) in [
+        "channel.chat.message_delete",
+        "channel.chat.clear_user_messages",
+        "channel.chat.clear",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut frame = chat_frame();
+        frame["metadata"]["subscription_type"] = json!(kind);
+        frame["metadata"]["message_id"] = json!(format!("notification-{index}"));
+        frame["payload"]["subscription"]["type"] = json!(kind);
+        frame["payload"]["event"] = json!({
+            "broadcaster_user_id": "123", "broadcaster_user_login": "room", "broadcaster_user_name": "Room",
+            "target_user_id": "456", "target_user_login": "viewer", "target_user_name": "Viewer", "message_id": "deleted-message-id"
+        });
+        let notification = deliver(&frame);
+        let event = ModerationEvent::from_notification(&notification).unwrap();
+        assert_eq!(event.notification_id, format!("notification-{index}"));
+        assert_eq!(event.ts, notification.ts.to_string());
+        let serialized = serde_json::to_value(&event).unwrap();
+        if index == 0 {
+            assert_eq!(serialized["action"]["message_id"], "deleted-message-id");
+        }
+        if index < 2 {
+            assert_eq!(serialized["action"]["target"]["user_id"], "456");
+        }
+        if index == 1 {
+            assert_eq!(serialized["action"]["type"], "user_messages_cleared");
+            assert!(serialized["action"].get("duration_secs").is_none());
+        }
+        assert!(engine.moderate(event.clone()));
+        assert!(!engine.moderate(event));
+    }
+    let frames = feed.poll();
+    assert_eq!(frames.len(), 4);
+    assert!(frames[1..]
+        .iter()
+        .all(|frame| matches!(frame.event, FeedEvent::Moderation { .. })));
+    assert!(engine.history("room").is_empty());
+    assert_eq!(other.poll().len(), 1);
+    engine.shutdown();
+}
+
+#[test]
 fn invalid_notification_envelopes_are_errors_even_for_unhandled_content() {
     let valid = unhandled_frame("channel.future.event", "1", "future_notice");
     for pointer in [

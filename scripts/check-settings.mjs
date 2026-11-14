@@ -805,6 +805,47 @@ try {
 			'opening settings does not verify models'
 		);
 		await click(sessionId, '[aria-label="Settings categories"] button:first-child');
+		await click(sessionId, '[aria-controls="settings-more-chat"]');
+		assert.equal(
+			await evaluate(
+				sessionId,
+				`document.querySelector('#setting-chat-moderation_notices_enabled').getAttribute('aria-checked')`
+			),
+			'true'
+		);
+		assert.deepEqual(
+			await evaluate(
+				sessionId,
+				`Array.from(document.querySelector('#setting-chat-join_mode').options, option => option.value)`
+			),
+			['all', 'recent', 'open']
+		);
+		await evaluate(
+			sessionId,
+			`document.querySelector('#settings-more-chat').scrollIntoView({ block: 'start' })`
+		);
+		await delay(100);
+		assert.equal(
+			await evaluate(sessionId, `document.documentElement.scrollWidth > innerWidth`),
+			false,
+			test.name + ' moderation settings overflow'
+		);
+		const notices = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+		await writeFile(
+			path.join(output, `moderation-notices-${test.name}.png`),
+			Buffer.from(notices.data, 'base64')
+		);
+		await click(sessionId, '#setting-chat-moderation_notices_enabled');
+		await waitFor(
+			sessionId,
+			`window.settingsNative.writes.at(-1)?.chat.moderation_notices_enabled === false`
+		);
+		await click(sessionId, '#setting-chat-moderation_notices_enabled');
+		await waitFor(
+			sessionId,
+			`window.settingsNative.writes.at(-1)?.chat.moderation_notices_enabled === true`
+		);
+		await click(sessionId, '[aria-controls="settings-more-chat"]');
 		if (test.name === 'expanded-dark') {
 			await evaluate(sessionId, `window.settingsNative.delay = 180`);
 			await click(sessionId, '#setting-chat-show_badges');

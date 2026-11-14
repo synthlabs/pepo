@@ -82,6 +82,13 @@ impl AdmissionCoordinator {
         let intended = membership.intended(mode);
         let ranked = membership.ranked(mode);
         let targets: HashSet<_> = ranked.iter().take(STEADY_ROOMS).cloned().collect();
+        let mut eligible_membership = membership.clone();
+        eligible_membership.unavailable.clear();
+        let eligible_targets: HashSet<_> = eligible_membership
+            .ranked(mode)
+            .into_iter()
+            .take(STEADY_ROOMS)
+            .collect();
         let retained: Vec<_> = self
             .displacements
             .iter()
@@ -92,7 +99,9 @@ impl AdmissionCoordinator {
             self.cleanup_succeeded(&login);
         }
         for login in desired {
-            if !intended.contains(login) {
+            if !intended.contains(login)
+                || (!complete.contains(login) && !eligible_targets.contains(login))
+            {
                 self.require_cleanup(login);
                 self.displacements.insert(login.clone());
             }
@@ -125,13 +134,13 @@ impl AdmissionCoordinator {
                 });
             }
         }
-        if physical.len() >= MAX_ROOMS {
-            return None;
-        }
         ranked
             .into_iter()
             .take(STEADY_ROOMS)
-            .find(|login| !complete.contains(login))
+            .find(|login| {
+                !complete.contains(login)
+                    && (physical.contains(login) || physical.len() < MAX_ROOMS)
+            })
             .map(AdmissionAction::Join)
     }
 
@@ -174,7 +183,7 @@ mod tests {
             let desired: Vec<_> = self.physical.iter().cloned().collect();
             coordinator.next_action(
                 &self.membership,
-                ChatJoinMode::Live,
+                ChatJoinMode::All,
                 &desired,
                 &self.physical,
                 &self.complete,
@@ -194,7 +203,10 @@ mod tests {
         );
         rooms.physical.insert("visitor".into());
         assert_eq!(rooms.physical.len(), MAX_ROOMS);
-        assert_eq!(rooms.next(&mut coordinator, now), None);
+        assert_eq!(
+            rooms.next(&mut coordinator, now),
+            Some(AdmissionAction::Join("visitor".into()))
+        );
         rooms.complete.insert("visitor".into());
         let Some(AdmissionAction::Leave {
             login,
@@ -308,7 +320,7 @@ mod tests {
         );
         rooms.membership.foreground.remove("aaa");
         rooms.membership.lingering.insert("aaa".into());
-        assert!(!rooms.membership.would_admit("aaa", ChatJoinMode::Live));
+        assert!(!rooms.membership.would_admit("aaa", ChatJoinMode::All));
         rooms.physical.insert("aaa".into());
         rooms.complete.insert("aaa".into());
         assert_eq!(

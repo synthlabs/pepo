@@ -3387,6 +3387,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "tauri-specta",
  "tauri-svelte-synced-store",
+ "time",
  "tokio",
  "tokio-tungstenite",
  "tracing",

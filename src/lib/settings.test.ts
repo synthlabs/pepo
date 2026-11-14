@@ -224,11 +224,29 @@ describe('chat engine settings', () => {
 		const old = structuredClone(DEFAULT_APP_SETTINGS);
 		delete (old.chat as Partial<typeof old.chat>).join_mode;
 		delete (old.chat as Partial<typeof old.chat>).show_history_divider;
-		expect(normalizeAppSettings(old).chat.join_mode).toBe('live');
+		expect(normalizeAppSettings(old).chat.join_mode).toBe('all');
 		expect(normalizeAppSettings(old).chat.show_history_divider).toBe(true);
-		old.chat.join_mode = 'single';
+		Object.assign(old.chat, { join_mode: 'single' });
 		old.chat.show_history_divider = false;
-		expect(normalizeAppSettings(old).chat.join_mode).toBe('single');
+		expect(normalizeAppSettings(old).chat.join_mode).toBe('open');
 		expect(normalizeAppSettings(old).chat.show_history_divider).toBe(false);
+	});
+	it('migrates legacy policies and defaults moderation notices while preserving opt-out', () => {
+		for (const [saved, expected] of [
+			['live', 'recent'],
+			['single', 'open'],
+			['all', 'all'],
+			['recent', 'recent'],
+			['open', 'open']
+		]) {
+			const value = structuredClone(DEFAULT_APP_SETTINGS);
+			Object.assign(value.chat, { join_mode: saved });
+			expect(normalizeAppSettings(value).chat.join_mode).toBe(expected);
+		}
+		const old = structuredClone(DEFAULT_APP_SETTINGS);
+		delete (old.chat as Partial<typeof old.chat>).moderation_notices_enabled;
+		expect(normalizeAppSettings(old).chat.moderation_notices_enabled).toBe(true);
+		old.chat.moderation_notices_enabled = false;
+		expect(normalizeAppSettings(old).chat.moderation_notices_enabled).toBe(false);
 	});
 });

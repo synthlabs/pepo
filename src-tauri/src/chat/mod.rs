@@ -1,5 +1,7 @@
 pub mod admission;
 pub mod membership;
+pub mod moderation;
+pub mod notices;
 pub mod runtime;
 pub mod store;
 pub mod timeline;
@@ -41,6 +43,9 @@ struct FeedOwner {
 #[derive(Clone, Debug, Serialize, specta::Type)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FeedEvent {
+    Moderation {
+        event: moderation::ModerationEvent,
+    },
     Snapshot {
         messages: Vec<ChatTimelineEntry>,
     },
@@ -113,6 +118,9 @@ pub struct EngineState {
     pub settings: ChatSettings,
     pub status: EngineStatus,
     translations: translation::Coordinator,
+    notices: notices::Subscriptions,
+    notice_ids: notices::RecentIds,
+    moderation_ids: notices::RecentIds,
 }
 
 pub struct ChatEngine {
@@ -138,6 +146,9 @@ impl ChatEngine {
                 settings,
                 status: EngineStatus::default(),
                 translations: translation::Coordinator::default(),
+                notices: notices::Subscriptions::default(),
+                notice_ids: notices::RecentIds::default(),
+                moderation_ids: notices::RecentIds::default(),
             }),
             changed,
         })
@@ -153,6 +164,46 @@ impl ChatEngine {
         self.insert_entry(ChatTimelineEntry::Chat(message))
     }
 
+    pub fn notice_roster(&self) -> watch::Receiver<notices::Roster> {
+        self.state.lock().unwrap().notices.roster.subscribe()
+    }
+
+    pub fn insert_notice(&self, event: notices::NoticeEvent) -> bool {
+        let mut s = self.state.lock().unwrap();
+        if !s.active {
+            return false;
+        }
+        let Some(room) = s.notices.accepts(&event) else {
+            return false;
+        };
+        let id = event.id.clone();
+        let Ok(message) = SystemMessage::new(room, notices::format_notice(event)) else {
+            return false;
+        };
+        if !s.notice_ids.admit(&id) {
+            return false;
+        }
+        let inserted = s.insert_entry(ChatTimelineEntry::System(message));
+        drop(s);
+        if inserted {
+            self.wake();
+        }
+        inserted
+    }
+
+    pub fn moderate(&self, event: moderation::ModerationEvent) -> bool {
+        let mut s = self.state.lock().unwrap();
+        if !s.active || !s.moderation_ids.admit(&event.notification_id) {
+            return false;
+        }
+        let login = event.broadcaster_user_login.to_lowercase();
+        s.cursor += 1;
+        s.publish(&login, FeedEvent::Moderation { event });
+        drop(s);
+        self.wake();
+        true
+    }
+
     pub fn insert_system(
         &self,
         room: ChatRoomInfo,
@@ -165,24 +216,14 @@ impl ChatEngine {
         Ok(self.insert_entry(ChatTimelineEntry::System(message)))
     }
 
-    fn insert_entry(&self, mut message: ChatTimelineEntry) -> bool {
+    fn insert_entry(&self, message: ChatTimelineEntry) -> bool {
         let mut s = self.state.lock().unwrap();
-        if !s.active {
-            return false;
-        }
-        let login = message.login().to_lowercase();
-        message.set_index(s.cursor + 1);
-        let Some(message) = s.repository.insert(message) else {
-            return false;
-        };
-        s.cursor += 1;
-        if let Some(chat) = message.as_chat() {
-            s.translations.admit(chat, true);
-        }
-        s.publish(&login, FeedEvent::Message { message });
+        let inserted = s.insert_entry(message);
         drop(s);
-        self.wake();
-        true
+        if inserted {
+            self.wake();
+        }
+        inserted
     }
     pub fn translate(&self, login: &str, update: ChannelMessageTranslationUpdate) {
         let mut s = self.state.lock().unwrap();
@@ -289,8 +330,7 @@ impl ChatEngine {
         s.owners.get_mut(owner).unwrap().pending = false;
         let cursor = s.cursor;
         s.translations.open(&login, cursor);
-        s.membership.foreground.insert(login.clone());
-        s.membership.lingering.insert(login.clone());
+        s.membership.open(&login);
         if let Some(failure) = s.failures.get_mut(&login) {
             failure.retry_at = Instant::now();
         }
@@ -302,6 +342,7 @@ impl ChatEngine {
                 feed_id,
             },
         );
+        s.refresh_notice_roster();
         drop(s);
         self.wake();
         true
@@ -353,6 +394,7 @@ impl ChatEngine {
         let mut s = self.state.lock().unwrap();
         s.repository.set_limit(settings.message_limit);
         s.settings = settings;
+        s.refresh_notice_roster();
         drop(s);
         self.wake();
     }
@@ -373,12 +415,44 @@ impl ChatEngine {
         s.owners.clear();
         s.failures.clear();
         s.membership = Membership::default();
+        s.refresh_notice_roster();
         drop(s);
         self.wake();
     }
 }
 
 impl EngineState {
+    pub(super) fn refresh_notice_roster(&mut self) {
+        let rooms: Vec<_> = if self.active && self.settings.moderation_notices_enabled {
+            self.membership
+                .foreground
+                .iter()
+                .filter(|login| self.membership.selected.contains(*login))
+                .filter_map(|login| self.directory.get(login).cloned())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.notices.reconcile(rooms);
+    }
+
+    fn insert_entry(&mut self, mut message: ChatTimelineEntry) -> bool {
+        if !self.active {
+            return false;
+        }
+        let login = message.login().to_lowercase();
+        message.set_index(self.cursor + 1);
+        let Some(message) = self.repository.insert(message) else {
+            return false;
+        };
+        self.cursor += 1;
+        if let Some(chat) = message.as_chat() {
+            self.translations.admit(chat, true);
+        }
+        self.publish(&login, FeedEvent::Message { message });
+        true
+    }
+
     fn apply_translation(&mut self, login: &str, update: ChannelMessageTranslationUpdate) {
         // A paused UI can retain messages already evicted by backend retention.
         self.repository.update(login, &update);
@@ -390,9 +464,10 @@ impl EngineState {
         if let Some(lease) = self.leases.remove(owner) {
             self.subscribers.remove(&lease.feed_id);
             if !self.leases.values().any(|other| other.login == lease.login) {
-                self.membership.foreground.remove(&lease.login);
+                self.membership.close(&lease.login);
                 self.translations.close(&lease.login);
             }
+            self.refresh_notice_roster();
         }
     }
     pub fn unavailable(&mut self, login: &str, error: String) {

@@ -12,7 +12,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 		capture_window_errors: true
 	},
 	chat: {
-		join_mode: 'live',
+		join_mode: 'all',
 		show_history_divider: true,
 		message_limit: 500,
 		pause_message_gc_while_paused: true,
@@ -26,7 +26,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 		show_badges: true,
 		show_emotes: true,
 		alternate_backgrounds: true,
-		center_system_messages: false
+		center_system_messages: false,
+		moderation_notices_enabled: true
 	},
 	translation: {
 		enabled: false,
@@ -146,7 +147,16 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 			...DEFAULT_APP_SETTINGS.chat,
 			...chat,
 			message_limit: positive(chat.message_limit, DEFAULT_APP_SETTINGS.chat.message_limit),
-			join_mode: chat.join_mode === 'all' || chat.join_mode === 'single' ? chat.join_mode : 'live',
+			join_mode:
+				String(chat.join_mode) === 'live' || chat.join_mode === 'recent'
+					? 'recent'
+					: String(chat.join_mode) === 'single' || chat.join_mode === 'open'
+						? 'open'
+						: 'all',
+			moderation_notices_enabled:
+				typeof chat.moderation_notices_enabled === 'boolean'
+					? chat.moderation_notices_enabled
+					: true,
 			show_history_divider: chat.show_history_divider ?? true,
 			center_system_messages:
 				typeof chat.center_system_messages === 'boolean' ? chat.center_system_messages : false,

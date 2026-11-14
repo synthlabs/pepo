@@ -191,7 +191,7 @@ async fn cancellation_while_resolution_is_pending_cannot_create_a_feed() {
 #[test]
 fn closed_unfollowed_rooms_keep_retry_intent_and_back_off_without_reserving_capacity() {
     let e = ChatEngine::new(ChatSettings {
-        join_mode: crate::types::ChatJoinMode::Single,
+        join_mode: crate::types::ChatJoinMode::Recent,
         ..Default::default()
     });
     let now = Instant::now();
@@ -783,13 +783,13 @@ fn subscription_eviction_preserves_channel_sequence_on_rejoin() {
         }
         let selected: Vec<_> = state
             .membership
-            .ranked(crate::types::ChatJoinMode::Live)
+            .ranked(crate::types::ChatJoinMode::All)
             .into_iter()
             .take(membership::STEADY_ROOMS)
             .collect();
         assert!(!selected.contains(&"visitor".to_owned()));
         state.membership.displaced("visitor");
-        assert!(!state.membership.lingering.contains("visitor"));
+        assert!(state.membership.lingering.contains("visitor"));
     }
     let feed = e.subscribe(FeedScope::Channel("visitor".into()));
     let rejoined = request(&e, 2);

@@ -30,6 +30,35 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 describe('room feed lifetime and backpressure', () => {
+	it('delivers typed removal effects independently of timeline notices and acknowledges them', async () => {
+		vi.useFakeTimers();
+		const f = fixture();
+		const receive = vi.fn();
+		const room = await open(f, 'a', receive);
+		const removal: FeedFrame = {
+			cursor: 1,
+			event: {
+				type: 'moderation',
+				event: {
+					notification_id: 'notification-id',
+					ts: '2026-11-14T21:23:10Z',
+					broadcaster_user_id: '123',
+					broadcaster_user_login: 'a',
+					broadcaster_user_name: 'A',
+					action: {
+						type: 'message_deleted',
+						message_id: 'deleted-message-id',
+						target: { user_id: '456', login: 'viewer', display_name: 'Viewer' }
+					}
+				}
+			}
+		};
+		f.receivers[0](removal);
+		expect(receive).toHaveBeenCalledExactlyOnceWith(removal);
+		await vi.advanceTimersByTimeAsync(16);
+		expect(f.transport.acknowledge).toHaveBeenCalledExactlyOnceWith(requestMatcher, 1);
+		room.dispose();
+	});
 	it('installs its receiver before readiness and acknowledges cumulatively', async () => {
 		vi.useFakeTimers();
 		const f = fixture();

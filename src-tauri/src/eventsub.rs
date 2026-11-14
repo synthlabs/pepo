@@ -41,8 +41,17 @@ type EventSubSocket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 pub type EventSubSettingsReader = Arc<dyn Fn() -> EventSubSettings + Send + Sync>;
 
+const ROOM_SUBSCRIPTIONS: [eventsub::EventType; 5] = [
+    eventsub::EventType::ChannelChatMessage,
+    eventsub::EventType::ChannelChatNotification,
+    eventsub::EventType::ChannelChatMessageDelete,
+    eventsub::EventType::ChannelChatClearUserMessages,
+    eventsub::EventType::ChannelChatClear,
+];
+
 #[derive(Debug)]
 pub struct EventNotification {
+    pub id: String,
     pub ts: twitch_api::types::Timestamp,
     pub event: Event,
     pub message_type_override: Option<ChannelMessageType>,
@@ -275,6 +284,7 @@ fn process_frame<'a>(
     match parsed {
         EventsubWebsocketData::Notification { metadata, payload } => {
             sender.send(EventSubMessage::Notification(EventNotification {
+                id: metadata.message_id.to_string(),
                 ts: metadata.message_timestamp.into_owned(),
                 event: payload,
                 message_type_override: None,
@@ -355,11 +365,9 @@ impl EventSubManager {
     }
     pub fn channel_complete(&self, login: &str) -> bool {
         let subs = self.get_subscriptions(login);
-        subs.iter()
-            .any(|s| s.sub_type == eventsub::EventType::ChannelChatMessage)
-            && subs
-                .iter()
-                .any(|s| s.sub_type == eventsub::EventType::ChannelChatNotification)
+        ROOM_SUBSCRIPTIONS
+            .iter()
+            .all(|kind| subs.iter().any(|sub| &sub.sub_type == kind))
     }
     pub fn joined_channels(&self) -> Vec<String> {
         self.desired_channels_snapshot()
@@ -491,105 +499,88 @@ impl EventSubManager {
         client: &HelixClient<'_, C>,
         token: &UserToken,
     ) -> Result<(), Report> {
-        let transport = eventsub::Transport::websocket(session_id);
-        debug!(
-            "EventSubManager - creating ChannelChatMessageV1: user_id={}, session_id={}",
-            chat_id, session_id
-        );
-        let user_id = token.clone().user_id;
-        let message =
-            eventsub::channel::chat::ChannelChatMessageV1::new(chat_id.clone(), user_id.clone());
-        if !self
-            .get_subscriptions(&chat_name)
-            .iter()
-            .any(|s| s.sub_type == eventsub::EventType::ChannelChatMessage)
-        {
-            match client
-                .create_eventsub_subscription(message.clone(), transport.clone(), token)
-                .await
-            {
-                Ok(resp) => {
-                    if self.session_id().as_deref() != Some(session_id) {
-                        return Err(eyre!("websocket transport session does not exist"));
-                    }
-                    self.add_subscription(
-                        chat_name.clone(),
-                        EventSubSubscription {
-                            channel_name: chat_name.clone(),
-                            id: resp.id.clone(),
-                            sub_type: resp.type_.clone(),
-                        },
-                    );
-                }
-                Err(err) => {
-                    if classify_error_text(&err.to_string())
-                        == EventSubFailure::DuplicateSubscription
-                    {
-                        self.recover_channel_subscriptions(
-                            &chat_name, &chat_id, session_id, client, token,
-                        )
-                        .await?;
-                    } else {
-                        self.handle_create_subscription_error(err)?;
-                    }
-                }
-            }
+        use eventsub::channel::chat::*;
+        macro_rules! ensure {
+            ($condition:ty) => {
+                self.ensure_channel_subscription(
+                    &chat_name,
+                    &chat_id,
+                    session_id,
+                    client,
+                    token,
+                    <$condition>::new(chat_id.clone(), token.user_id.clone()),
+                )
+                .await?;
+            };
         }
-
-        if !self
-            .get_subscriptions(&chat_name)
-            .iter()
-            .any(|s| s.sub_type == eventsub::EventType::ChannelChatMessage)
-        {
-            return Err(eyre!("chat message subscription receipt is missing"));
-        }
-        debug!(
-            "EventSubManager - creating ChannelChatNotificationV1: user_id={}, session_id={}",
-            chat_id, session_id
-        );
-        let condition = eventsub::channel::chat::ChannelChatNotificationV1::new(
-            chat_id.clone(),
-            user_id.clone(),
-        );
-        if !self
-            .get_subscriptions(&chat_name)
-            .iter()
-            .any(|s| s.sub_type == eventsub::EventType::ChannelChatNotification)
-        {
-            match client
-                .create_eventsub_subscription(condition.clone(), transport.clone(), &token.clone())
-                .await
-            {
-                Ok(resp) => {
-                    if self.session_id().as_deref() != Some(session_id) {
-                        return Err(eyre!("websocket transport session does not exist"));
-                    }
-                    self.add_subscription(
-                        chat_name.clone(),
-                        EventSubSubscription {
-                            channel_name: chat_name.clone(),
-                            id: resp.id.clone(),
-                            sub_type: resp.type_.clone(),
-                        },
-                    );
-                }
-                Err(err) => {
-                    if classify_error_text(&err.to_string())
-                        == EventSubFailure::DuplicateSubscription
-                    {
-                        self.recover_channel_subscriptions(
-                            &chat_name, &chat_id, session_id, client, token,
-                        )
-                        .await?;
-                    } else {
-                        self.handle_create_subscription_error(err)?;
-                    }
-                }
-            }
-        }
-
+        ensure!(ChannelChatMessageV1);
+        ensure!(ChannelChatNotificationV1);
+        ensure!(ChannelChatMessageDeleteV1);
+        ensure!(ChannelChatClearUserMessagesV1);
+        ensure!(ChannelChatClearV1);
         if !self.channel_complete(&chat_name) {
             return Err(eyre!("channel subscription receipts are incomplete"));
+        }
+        self.uncertain_rooms.lock().unwrap().remove(&chat_name);
+        Ok(())
+    }
+
+    async fn ensure_channel_subscription<C, E>(
+        &self,
+        login: &str,
+        broadcaster: &UserId,
+        session: &str,
+        client: &HelixClient<'_, C>,
+        token: &UserToken,
+        condition: E,
+    ) -> Result<(), Report>
+    where
+        C: twitch_api::HttpClient,
+        E: eventsub::EventSubscription + Send,
+    {
+        if self
+            .get_subscriptions(login)
+            .iter()
+            .any(|sub| sub.sub_type == E::EVENT_TYPE)
+        {
+            return Ok(());
+        }
+        match client
+            .create_eventsub_subscription(condition, eventsub::Transport::websocket(session), token)
+            .await
+        {
+            Ok(receipt) => {
+                if self.session_id().as_deref() != Some(session) {
+                    return Err(eyre!("websocket transport session does not exist"));
+                }
+                self.add_subscription(
+                    login.to_owned(),
+                    EventSubSubscription {
+                        channel_name: login.to_owned(),
+                        id: receipt.id,
+                        sub_type: receipt.type_,
+                    },
+                );
+            }
+            Err(error) => {
+                if classify_error_text(&error.to_string()) == EventSubFailure::DuplicateSubscription
+                {
+                    self.recover_channel_subscriptions(login, broadcaster, session, client, token)
+                        .await?;
+                } else {
+                    self.handle_create_subscription_error(error)?;
+                }
+            }
+        }
+        if !self
+            .get_subscriptions(login)
+            .iter()
+            .any(|sub| sub.sub_type == E::EVENT_TYPE)
+        {
+            return Err(eyre!(
+                "channel subscription receipt is missing: {}",
+                E::EVENT_TYPE
+            ));
         }
         Ok(())
     }
@@ -616,11 +607,8 @@ impl EventSubManager {
                     && sub.condition["broadcaster_user_id"].as_str() == Some(broadcaster.as_str())
                     && sub.condition["user_id"].as_str() == Some(token.user_id.as_str())
                     && transport["session_id"].as_str() == Some(session)
-                    && matches!(
-                        sub.type_,
-                        eventsub::EventType::ChannelChatMessage
-                            | eventsub::EventType::ChannelChatNotification
-                    )
+                    && sub.version == "1"
+                    && ROOM_SUBSCRIPTIONS.contains(&sub.type_)
                 {
                     self.add_subscription(
                         login.to_owned(),
@@ -1464,6 +1452,147 @@ mod subscription_tests {
             "transport": {"method":"websocket", "session_id":"session", "connected_at":"2026-10-25T00:00:00Z"}
         }], "total":1, "total_cost":0, "max_total_cost":10})
     }
+    const REMOVAL_KINDS: [(&str, &str); 3] = [
+        ("channel.chat.message_delete", "delete"),
+        ("channel.chat.clear_user_messages", "clear-user"),
+        ("channel.chat.clear", "clear"),
+    ];
+
+    #[tokio::test]
+    async fn every_room_stream_retains_partial_receipts_retries_and_cleans_up() {
+        use httpmock::Method::DELETE;
+        let kinds = [
+            ("channel.chat.message", "message"),
+            ("channel.chat.notification", "notification"),
+            REMOVAL_KINDS[0],
+            REMOVAL_KINDS[1],
+            REMOVAL_KINDS[2],
+        ];
+        for missing in 0..kinds.len() {
+            let server = MockServer::start();
+            let mut mocks = Vec::new();
+            for (index, (kind, id)) in kinds.iter().enumerate() {
+                mocks.push(server.mock(|when, then| {
+                    when.method(POST).path("/helix/eventsub/subscriptions")
+                        .json_body_partial(format!(r#"{{"type":"{kind}"}}"#));
+                    if index == missing {
+                        then.status(429).json_body(json!({"error":"Too Many Requests", "status":429, "message":"rate limited"}));
+                    } else { then.status(202).json_body(response(kind, id)); }
+                }));
+                server.mock(|when, then| {
+                    when.method(DELETE)
+                        .path("/helix/eventsub/subscriptions")
+                        .query_param("id", *id);
+                    then.status(204);
+                });
+            }
+            let client = HelixClient::with_client(MockClient {
+                base: server.base_url(),
+                client: reqwest::Client::new(),
+            });
+            let manager = EventSubManager::new();
+            manager.set_session_id("session".into());
+            assert!(manager
+                .clone()
+                .join_chat("123".into(), "room".into(), &client, token())
+                .await
+                .is_err());
+            assert!(!manager.channel_complete("room"));
+            assert_eq!(manager.get_subscriptions("room").len(), missing);
+            mocks[missing].delete();
+            let (kind, id) = kinds[missing];
+            let retry = server.mock(|when, then| {
+                when.method(POST)
+                    .path("/helix/eventsub/subscriptions")
+                    .json_body_partial(format!(r#"{{"type":"{kind}"}}"#));
+                then.status(202).json_body(response(kind, id));
+            });
+            assert_eq!(
+                manager
+                    .clone()
+                    .join_chat("123".into(), "room".into(), &client, token())
+                    .await
+                    .unwrap(),
+                JoinOutcome::Joined
+            );
+            assert!(manager.channel_complete("room"));
+            assert_eq!(manager.get_subscriptions("room").len(), 5);
+            for (index, mock) in mocks.iter().enumerate() {
+                if index != missing {
+                    mock.assert_hits(1);
+                }
+            }
+            retry.assert_hits(1);
+            manager
+                .clone()
+                .leave_chat("room".into(), &client, token())
+                .await
+                .unwrap();
+            assert!(manager.channels_with_subscriptions().is_empty());
+            assert!(manager.desired_channels_snapshot().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn all_five_receipts_survive_handoff_and_fresh_reconnect_discards_them_together() {
+        let manager = EventSubManager::new();
+        manager.set_session_id("session".into());
+        manager.add_desired_channel("room".into(), "123".into());
+        for (index, kind) in ROOM_SUBSCRIPTIONS.into_iter().enumerate() {
+            assert!(!manager.channel_complete("room"));
+            manager.add_subscription(
+                "room".into(),
+                EventSubSubscription {
+                    channel_name: "room".into(),
+                    id: format!("receipt-{index}").into(),
+                    sub_type: kind,
+                },
+            );
+        }
+        assert!(manager.channel_complete("room"));
+        let session: SessionData<'_> = serde_json::from_str(
+            r#"{
+            "id":"handoff-session", "status":"connected", "connected_at":"2026-11-14T21:23:10Z",
+            "keepalive_timeout_seconds":30, "reconnect_url":null
+        }"#,
+        )
+        .unwrap();
+        manager
+            .clone()
+            .process_welcome_message(
+                session,
+                &HelixClient::with_client(reqwest::Client::new()),
+                token(),
+                ConnectionMode::ReconnectHandoff,
+                EventSubSettings::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(manager.session_id().as_deref(), Some("handoff-session"));
+        assert!(manager.channel_complete("room"));
+        assert_eq!(manager.get_subscriptions("room").len(), 5);
+        manager.clear_active_session();
+        assert!(!manager.channel_complete("room"));
+        assert!(manager.channels_with_subscriptions().is_empty());
+        assert_eq!(manager.desired_channels_snapshot().len(), 1);
+    }
+    fn mock_removals(server: &MockServer) {
+        for (kind, id) in REMOVAL_KINDS {
+            server.mock(|when, then| {
+                when.method(POST)
+                    .path("/helix/eventsub/subscriptions")
+                    .json_body_partial(format!(r#"{{"type":"{kind}"}}"#));
+                then.status(202).json_body(response(kind, id));
+            });
+            server.mock(|when, then| {
+                when.method(httpmock::Method::DELETE)
+                    .path("/helix/eventsub/subscriptions")
+                    .query_param("id", id);
+                then.status(204);
+            });
+        }
+    }
+
     #[tokio::test]
     async fn joining_without_a_session_is_pending_without_making_http_requests() {
         let server = MockServer::start();
@@ -1519,6 +1648,7 @@ mod subscription_tests {
     async fn denied_room_can_recover_after_partial_candidate_cleanup() {
         use httpmock::Method::DELETE;
         let server = MockServer::start();
+        mock_removals(&server);
         let message = server.mock(|when, then| {
             when.method(POST)
                 .path("/helix/eventsub/subscriptions")
@@ -1656,6 +1786,7 @@ mod subscription_tests {
     #[tokio::test]
     async fn partial_subscription_failure_retries_only_missing_type() {
         let server = MockServer::start();
+        mock_removals(&server);
         let message = server.mock(|when, then| {
             when.method(POST)
                 .path("/helix/eventsub/subscriptions")
@@ -1721,7 +1852,13 @@ mod subscription_tests {
             .unwrap()
             .push(notification["data"][0].clone());
         listed["data"].as_array_mut().unwrap().push(wrong_session);
-        listed["total"] = json!(3);
+        for (kind, id) in REMOVAL_KINDS {
+            listed["data"]
+                .as_array_mut()
+                .unwrap()
+                .push(response(kind, id)["data"][0].clone());
+        }
+        listed["total"] = json!(6);
         let listing = server.mock(|when, then| {
             when.method(GET).path("/helix/eventsub/subscriptions");
             then.status(200).json_body(listed);
@@ -1737,7 +1874,7 @@ mod subscription_tests {
             .await
             .unwrap();
         assert!(manager.channel_complete("room"));
-        assert_eq!(manager.get_subscriptions("room").len(), 2);
+        assert_eq!(manager.get_subscriptions("room").len(), 5);
         duplicate.assert_hits(1);
         listing.assert_hits(1);
     }
@@ -1746,6 +1883,7 @@ mod subscription_tests {
     async fn failed_leave_keeps_cleanup_pending_without_repeating_successful_deletes() {
         use httpmock::Method::DELETE;
         let server = MockServer::start();
+        mock_removals(&server);
         for (kind, id) in [
             ("channel.chat.message", "message"),
             ("channel.chat.notification", "notification"),

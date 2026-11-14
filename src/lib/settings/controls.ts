@@ -39,6 +39,14 @@ const translationMore = { category: 'translation', more: true } as const;
 export const SETTINGS_CONTROLS: SettingControl[] = [
 	{
 		...chatMore,
+		id: 'chat.moderation_notices_enabled',
+		path: 'chat.moderation_notices_enabled',
+		label: 'Receive moderation notices',
+		description: 'Add ban, timeout, and chat-clear notices to open chats.',
+		kind: 'toggle'
+	},
+	{
+		...chatMore,
 		id: 'chat.center_system_messages',
 		path: 'chat.center_system_messages',
 		label: 'Center system messages',
@@ -102,12 +110,12 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 		path: 'chat.join_mode',
 		label: 'Channel join mode',
 		description:
-			'Collect followed channels, live followed channels, or join rooms as you open them. Opened rooms stay joined until higher-priority rooms need their slots.',
+			'Collect up to 50 chats. Open chats have priority; the newest openings take priority when all slots are in use.',
 		kind: 'select',
 		options: [
-			{ value: 'all', label: 'All followed channels' },
-			{ value: 'live', label: 'Live followed channels' },
-			{ value: 'single', label: 'Single (join on demand)' }
+			{ value: 'all', label: 'All — live followed and open chats' },
+			{ value: 'recent', label: 'Recent — open and recently closed chats' },
+			{ value: 'open', label: 'Open — open chats only' }
 		]
 	},
 	{

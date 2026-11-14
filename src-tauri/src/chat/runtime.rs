@@ -43,6 +43,10 @@ impl ChatRuntime {
         for handle in self.tasks.lock().unwrap().drain(..) {
             handle.abort();
         }
+        app.state::<crate::network::NetworkRuntime>()
+            .recovered(app, "chat.notices.connection");
+        app.state::<crate::network::NetworkRuntime>()
+            .recovered(app, "chat.notices.gap");
         for (_, id) in self.translations.lock().unwrap().drain() {
             app.unlisten(id);
         }
@@ -332,6 +336,7 @@ pub(super) fn admission_action(
         .membership
         .selected
         .retain(|login| complete.contains(login));
+    state.refresh_notice_roster();
     let ranked = state.membership.ranked(mode);
     let eligible = ranked.len();
     let pending = ranked
@@ -346,6 +351,7 @@ pub(super) fn admission_action(
 
 pub fn start(app: AppHandle, engine: Arc<ChatEngine>) {
     let registry_app = app.clone();
+    let notice_tasks = super::notices::runtime::start(&app, engine.clone());
     let translation_task =
         tauri::async_runtime::spawn(super::translation::run(engine.clone(), app.translation()));
     let metrics_task = tauri::async_runtime::spawn(run_diagnostics(engine.clone()));
@@ -400,6 +406,7 @@ pub fn start(app: AppHandle, engine: Arc<ChatEngine>) {
                             if displaced {
                                 state.membership.displaced(&login);
                             }
+                            state.refresh_notice_roster();
                             drop(state);
                             engine.wake();
                         }
@@ -468,6 +475,7 @@ pub fn start(app: AppHandle, engine: Arc<ChatEngine>) {
                                         if wanted {
                                             state.membership.selected.insert(login.clone());
                                         }
+                                        state.refresh_notice_roster();
                                         wanted
                                     };
                                     engine.wake();
@@ -502,7 +510,6 @@ pub fn start(app: AppHandle, engine: Arc<ChatEngine>) {
                                         error.to_string(),
                                         now,
                                     );
-                                    coordinator.require_cleanup(&login);
                                     engine.wake();
                                 }
                             }
@@ -565,6 +572,12 @@ pub fn start(app: AppHandle, engine: Arc<ChatEngine>) {
         .lock()
         .unwrap()
         .extend([translation_task, metrics_task, membership_task]);
+    registry_app
+        .state::<ChatRuntime>()
+        .tasks
+        .lock()
+        .unwrap()
+        .extend(notice_tasks);
 }
 
 #[cfg(test)]
