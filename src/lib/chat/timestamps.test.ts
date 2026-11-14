@@ -318,22 +318,25 @@ describe('chat timestamp formatting volume', () => {
 	});
 
 	it('formats a new translation placeholder once and keeps existing cells stable', async () => {
-		const visible = cells()[0];
+		native.receive!({ cursor: 501, event: { type: 'message', message: message(501) } });
+		await flushUi();
+		expectCalls(1);
+		const visible = cells().at(-1)!;
 		const translation = { source_language: 'rus', target_language: 'eng', translated_text: 'Hi' };
 		const translate = async (translated_text: string) => {
 			native.receive!({
-				cursor: 501,
+				cursor: 502,
 				event: {
 					type: 'translation',
-					update: { message_id: '1', translation: { ...translation, translated_text } }
+					update: { message_id: '501', translation: { ...translation, translated_text } }
 				}
 			});
 			await flushUi();
 		};
 		await translate('Hi');
 		expectCalls(1);
-		const placeholder = cells()[1];
-		expect(cells()[0]).toBe(visible);
+		const placeholder = cells().at(-1)!;
+		expect(cells().at(-2)).toBe(visible);
 		expect(visible.hasAttribute('aria-hidden')).toBe(false);
 		expect(placeholder.getAttribute('aria-hidden')).toBe('true');
 		expect(placeholder.classList.contains('invisible')).toBe(true);
@@ -342,7 +345,7 @@ describe('chat timestamp formatting volume', () => {
 		expectCalls(0);
 		const style = updateAppSettings({ chat: { timestamp_style: 'long' } });
 		await flushUi();
-		expectCalls(501);
+		expectCalls(502);
 		expect(visible.textContent).toBe(expectedText());
 		expect(placeholder.textContent).toBe(visible.textContent);
 		await acknowledge(0);

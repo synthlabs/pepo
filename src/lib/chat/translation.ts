@@ -11,6 +11,83 @@ export interface TranslationApplyResult {
 	changed: boolean;
 }
 
+export class HistoryTranslationBuffer {
+	private cursor: number | undefined;
+	private pending: PendingTranslations = new Map();
+
+	get size(): number {
+		return this.pending.size;
+	}
+
+	isHistorical(message: Pick<ChannelMessage, 'index'>): boolean {
+		return this.cursor !== undefined && message.index <= this.cursor;
+	}
+
+	has(messageId: string): boolean {
+		return this.pending.has(messageId);
+	}
+
+	defer(message: ChannelMessage, value: ChannelMessageTranslation): void {
+		const translation = normalizeTranslation(value);
+		if (!translation) return;
+		if (sameTranslation(message.translation, translation)) this.pending.delete(message.message_id);
+		else this.pending.set(message.message_id, translation);
+	}
+
+	reset(current: ChannelMessage[], incoming: ChannelMessage[], cursor: number): ChannelMessage[] {
+		this.cursor ??= cursor;
+		const previous = new Map(current.map((message) => [message.message_id, message]));
+		const messages = incoming.map((message) => {
+			const displayed = previous.get(message.message_id);
+			if (!displayed || !this.isHistorical(message)) return message;
+
+			if (message.translation) this.defer(displayed, message.translation);
+			return { ...message, translation: displayed.translation };
+		});
+		this.retain(messages);
+		return messages;
+	}
+
+	flush(
+		messages: ChannelMessage[],
+		canPresent: (message: ChannelMessage) => boolean
+	): TranslationApplyResult {
+		let next = messages;
+		for (const [index, message] of messages.entries()) {
+			const translation = this.pending.get(message.message_id);
+			if (!translation || !canPresent(message)) continue;
+			this.pending.delete(message.message_id);
+			if (sameTranslation(message.translation, translation)) continue;
+			if (next === messages) next = messages.slice();
+			next[index] = { ...message, translation };
+		}
+		return { messages: next, changed: next !== messages };
+	}
+
+	retain(messages: ChannelMessage[]): void {
+		const retained = new Set(messages.map((message) => message.message_id));
+		for (const id of this.pending.keys()) {
+			if (!retained.has(id)) this.pending.delete(id);
+		}
+	}
+
+	clear(): void {
+		this.pending.clear();
+		this.cursor = undefined;
+	}
+}
+
+export function isRowOutsideViewport(
+	row: Pick<DOMRect, 'top' | 'bottom'>,
+	viewport: Pick<DOMRect, 'top' | 'bottom'>
+): boolean {
+	return (
+		row.bottom > row.top &&
+		viewport.bottom > viewport.top &&
+		(row.bottom <= viewport.top || row.top >= viewport.bottom)
+	);
+}
+
 export function attachPendingTranslation(
 	message: ChannelMessage,
 	pendingTranslations: PendingTranslations

@@ -24,6 +24,171 @@ const browserPath = [
 assert(browserPath, 'Set BROWSER_BIN to an installed Chromium browser');
 await mkdir(output, { recursive: true });
 
+async function checkHistoricalTranslations() {
+	const native = window.chatNative;
+	const viewport = document.querySelector('[aria-label="Chat messages"]');
+	const rows = () => [...viewport.querySelectorAll('[data-chat-message-index]')];
+	const visibleRows = () => {
+		const box = viewport.getBoundingClientRect();
+		return rows().filter((row) => {
+			const rect = row.getBoundingClientRect();
+			return rect.bottom > box.top && rect.top < box.bottom;
+		});
+	};
+	const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+	const settle = async () => {
+		await wait(100);
+		for (let i = 0; i < 3; i++) await new Promise(requestAnimationFrame);
+	};
+	const require = (condition, message) => {
+		if (!condition) throw new Error(message);
+	};
+	const gap = () => Math.abs(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop);
+	const translated = (row) => !!row.querySelector('[data-chat-translation]');
+	await document.fonts.ready;
+	await settle();
+	require(rows().length === 500 && gap() < 1, 'Restored history did not open at the bottom');
+	const protectedRows = visibleRows();
+	const baseline = protectedRows.map((row) => row.firstElementChild.getBoundingClientRect().top);
+	const above = rows()
+		.filter((row) => row.getBoundingClientRect().bottom < viewport.getBoundingClientRect().top)
+		.slice(-40);
+	let maxMovement = 0;
+	let maxGap = 0;
+	let samples = 0;
+	let sampling = true;
+	const sample = () => {
+		maxMovement = Math.max(
+			maxMovement,
+			...protectedRows.map((row, i) =>
+				Math.abs(row.firstElementChild.getBoundingClientRect().top - baseline[i])
+			)
+		);
+		maxGap = Math.max(maxGap, gap());
+		samples++;
+	};
+	const sampleFrame = () =>
+		requestAnimationFrame(() => {
+			setTimeout(() => {
+				if (sampling) sample();
+			}, 0);
+			if (sampling) sampleFrame();
+		});
+	sampleFrame();
+	try {
+		for (const row of [...protectedRows, ...above]) {
+			const id = row.dataset.chatMessageIndex;
+			native.translate(
+				'backlog',
+				('Translated history ' + id + ' with text that wraps at narrow widths. ').repeat(3),
+				id
+			);
+			await wait(12);
+		}
+		await settle();
+		require(protectedRows.every(
+			(row) => !translated(row)
+		), 'A visible historical translation was revealed');
+		require(above.every(translated), 'Offscreen historical translations were not revealed');
+		native.reset();
+		await settle();
+		require(protectedRows.every(
+			(row) => !translated(row)
+		), 'A feed reset revealed protected translations');
+		sample();
+	} finally {
+		sampling = false;
+	}
+	require(maxMovement < 1 && maxGap < 1, 'Historical catch-up moved visible originals: ' +
+		JSON.stringify({ maxMovement, maxGap }));
+	const protectedRow = protectedRows.at(-1);
+	const protectedId = protectedRow.dataset.chatMessageIndex;
+	viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -500, bubbles: true }));
+	viewport.scrollTop -= viewport.clientHeight * 2;
+	native.translate('backlog', 'translated-during-manual-scroll', protectedId);
+	await wait(80);
+	require(!translated(protectedRow), 'Historical translations changed during manual scrolling');
+	const anchor = visibleRows()[0];
+	const anchorTop = anchor.getBoundingClientRect().top;
+	await wait(300);
+	await settle();
+	require(translated(protectedRow), 'A deferred translation was not revealed after leaving view');
+	require(Math.abs(anchor.getBoundingClientRect().top - anchorTop) <
+		1, 'Offscreen reveal moved the paused anchor');
+	const scrollingPast = visibleRows()[0];
+	const replacement = 'paused-above-translation '.repeat(60).trim();
+	native.translate('backlog', replacement, scrollingPast.dataset.chatMessageIndex);
+	await settle();
+	require(!scrollingPast.textContent.includes(
+		replacement
+	), 'A visible historical replacement was revealed');
+	viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: 500, bubbles: true }));
+	viewport.scrollTop += viewport.clientHeight * 0.8;
+	await wait(80);
+	const pausedAnchor = visibleRows()[0];
+	const pausedTop = pausedAnchor.getBoundingClientRect().top;
+	let pausedMovement = 0;
+	let pausedSampling = true;
+	const samplePausedFrame = () =>
+		requestAnimationFrame(() => {
+			setTimeout(() => {
+				if (pausedSampling)
+					pausedMovement = Math.max(
+						pausedMovement,
+						Math.abs(pausedAnchor.getBoundingClientRect().top - pausedTop)
+					);
+			}, 0);
+			if (pausedSampling) samplePausedFrame();
+		});
+	samplePausedFrame();
+	await wait(350);
+	await settle();
+	pausedSampling = false;
+	require(scrollingPast.textContent.includes(
+		replacement
+	), 'A translation above the paused viewport was not revealed');
+	require(pausedMovement < 1, 'A translation above the paused viewport moved its anchor: ' +
+		pausedMovement);
+	const jump = document.querySelector('button[aria-label^="Jump to"]');
+	require(!!jump, 'Offscreen reveal unexpectedly resumed chat');
+	jump.click();
+	await settle();
+	require(translated(protectedRow) &&
+		gap() < 1, 'Scrolling back did not show the completed translation');
+	native.push('backlog', 'live-after-backlog');
+	await settle();
+	native.translate('backlog', 'live-translation-after-backlog');
+	await settle();
+	require(rows()
+		.at(-1)
+		.textContent.includes('live-translation-after-backlog'), 'Live translation was deferred');
+	require(gap() < 1, 'Live translation lost the bottom');
+	const lastHistorical = rows().at(-2);
+	const revisitId = lastHistorical.dataset.chatMessageIndex;
+	native.translate('backlog', 'completed-before-revisit', revisitId);
+	await settle();
+	require(!lastHistorical.textContent.includes(
+		'completed-before-revisit'
+	), 'A visible replacement was revealed');
+	native.translate('backlog', 'completed-before-revisit', revisitId);
+	native.go(null);
+	await settle();
+	native.go('backlog');
+	await settle();
+	const revisited = document.querySelector('[data-chat-message-index="' + revisitId + '"]');
+	require(revisited?.textContent.includes(
+		'completed-before-revisit'
+	), 'Completed translations were lost on navigation');
+	return {
+		maxMovement,
+		maxGap,
+		pausedMovement,
+		samples,
+		visibleProtected: protectedRows.length,
+		offscreenTranslated: above.length
+	};
+}
+
 await writeFile(
 	path.join(output, 'native.svelte.js'),
 	`
@@ -58,8 +223,10 @@ native.push = (channel, text) => {
   history.push(msg); histories.set(channel, history.slice(-(native.settings?.obj.chat.message_limit ?? 500)));
   for (const feed of native.feeds.values()) if (feed.channel === channel) feed.onmessage({ cursor: sequence, event: { type: 'message', message: msg } });
 };
-native.translate = (channel, text) => {
-  const msg = histories.get(channel).at(-1);
+native.seed = (channel, count) => histories.set(channel, Array.from({length: count}, (_, i) => message(channel, 'backlog-original-' + i)));
+native.translate = (channel, text, id) => {
+  const history = histories.get(channel);
+  const msg = id === undefined ? history.at(-1) : history.find(message => message.message_id === id);
   const update = { message_id: msg.message_id, translation: { source_language: 'ru', target_language: 'en', translated_text: text } };
   msg.translation = update.translation;
   const cursor = ++sequence;
@@ -533,8 +700,65 @@ try {
 		assert.deepEqual(exceptions.get(sessionId) ?? [], []);
 		await send('Target.closeTarget', { targetId });
 	}
+	const backlogResults = [];
+	for (const width of [1200, 375]) {
+		for (const scale of [1, 1.25]) {
+			for (const layout of ['language_tag', 'message_text', 'timestamp_end', 'connector']) {
+				const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
+				const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
+				await send('Runtime.enable', {}, sessionId);
+				await send(
+					'Emulation.setDeviceMetricsOverride',
+					{ width, height: 800, deviceScaleFactor: scale, mobile: false },
+					sessionId
+				);
+				await send('Page.navigate', { url: origin + '/app/chat/rooma' }, sessionId);
+				await waitFor(
+					sessionId,
+					"document.querySelectorAll('[data-chat-message-index]').length === 3"
+				);
+				await evaluate(sessionId, 'chatNative.go(null)');
+				await waitFor(sessionId, 'chatNative.feeds.size === 0');
+				await evaluate(
+					sessionId,
+					`chatNative.settings.obj.chat.message_limit = 1000; chatNative.settings.obj.translation.layout = '${layout}'; chatNative.settings.sync(); chatNative.seed('backlog', 500); chatNative.go('backlog')`
+				);
+				await waitFor(
+					sessionId,
+					"document.querySelectorAll('[data-chat-message-index]').length === 500"
+				);
+				const result = await evaluate(
+					sessionId,
+					'(' + checkHistoricalTranslations.toString() + ')()'
+				);
+				backlogResults.push({ width, scale, layout, ...result });
+				console.log(JSON.stringify(backlogResults.at(-1)));
+				if (scale === 1) {
+					const shot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+					await writeFile(
+						path.join(output, 'backlog-' + width + '-' + layout + '.png'),
+						Buffer.from(shot.data, 'base64')
+					);
+				}
+				await evaluate(
+					sessionId,
+					'chatNative.settings.obj.chat.message_limit = 1; chatNative.settings.sync(); chatNative.reset()'
+				);
+				await waitFor(
+					sessionId,
+					"document.querySelectorAll('[data-chat-message-index]').length === 1"
+				);
+				assert.deepEqual(exceptions.get(sessionId) ?? [], []);
+				await send('Target.closeTarget', { targetId });
+			}
+		}
+	}
+	await writeFile(
+		path.join(output, 'backlog-results.json'),
+		JSON.stringify(backlogResults, null, 2)
+	);
 	console.log(
-		'Passed chat feeds, stable alternating rows, translations, divider/settings toggles, trimming, recovery, and room navigation in dark/light themes at desktop/mobile widths.'
+		'Passed chat feeds, stable alternating rows, translations, history catch-up, divider/settings toggles, trimming, recovery, and room navigation in dark/light themes at desktop/mobile widths.'
 	);
 } finally {
 	if (send) await send('Browser.close').catch(() => browser.kill());

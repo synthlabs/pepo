@@ -5,7 +5,7 @@
 	import { openRoomFeed } from '$lib/chat/feed';
 	import { showDividerAfter, type HistoryBoundary } from '$lib/chat/history-boundary';
 	import { onDestroy, onMount, tick } from 'svelte';
-	import { MediaQuery, SvelteMap } from 'svelte/reactivity';
+	import { MediaQuery, SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import {
 		commands,
 		type ChatRoomInfo,
@@ -34,6 +34,8 @@
 	import {
 		applyTranslationUpdate,
 		attachPendingTranslation,
+		HistoryTranslationBuffer,
+		isRowOutsideViewport,
 		type PendingTranslations
 	} from '$lib/chat/translation';
 	import {
@@ -97,6 +99,12 @@
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const pendingTranslations: PendingTranslations = new SvelteMap();
+	const historyTranslations = new HistoryTranslationBuffer();
+	let historyTranslationObserver: IntersectionObserver | undefined;
+	const observedHistoryRows = new SvelteSet<HTMLElement>();
+	let historyTranslationRenderQueued = false;
+	let historyTranslationFrame: number | undefined;
+	let historyTranslationTimer: ReturnType<typeof setTimeout> | undefined;
 	let roomFeed: ReturnType<typeof openRoomFeed> | undefined;
 	let destroyed = false;
 	const messageHistory = new MessageHistoryScheduler<ChannelMessage>({
@@ -120,12 +128,23 @@
 		onClearUnread: () => {
 			unreadMessageCount = 0;
 		},
-		onHistoryUpdate: () => messageHistory.update(),
-		onResume: () => messageHistory.resume()
+		onHistoryUpdate: () => {
+			messageHistory.update();
+			scheduleHistoryTranslations();
+		},
+		onResume: () => {
+			messageHistory.resume();
+			scheduleHistoryTranslations();
+		}
 	});
 
 	onMount(async () => {
 		scrollController.attach(chatDIV, messageListDIV);
+		if (typeof IntersectionObserver !== 'undefined') {
+			historyTranslationObserver = new IntersectionObserver(scheduleHistoryTranslations, {
+				root: chatDIV
+			});
+		}
 
 		roomFeed = openRoomFeed(channel_name, (frame) => {
 			switch (frame.event.type) {
@@ -138,8 +157,9 @@
 						initialHistoryLoaded = true;
 					}
 					const wasPinned = scrollController.beforeReset();
-					msgs = frame.event.messages;
+					msgs = historyTranslations.reset(msgs, frame.event.messages, frame.cursor);
 					scrollController.afterReset(wasPinned);
+					scheduleHistoryTranslations();
 					break;
 				}
 				case 'message':
@@ -164,6 +184,11 @@
 	onDestroy(() => {
 		destroyed = true;
 		clearTimeout(messageErrorTimer);
+		if (historyTranslationFrame !== undefined) cancelAnimationFrame(historyTranslationFrame);
+		clearTimeout(historyTranslationTimer);
+		historyTranslationObserver?.disconnect();
+		observedHistoryRows.clear();
+		historyTranslations.clear();
 		messageHistory.dispose();
 		scrollController.dispose();
 
@@ -185,6 +210,7 @@
 		msgs.push(...messages.map((message) => attachPendingTranslation(message, pendingTranslations)));
 
 		if (shouldRestore) scrollController.afterContentChange();
+		scheduleHistoryTranslations();
 	};
 
 	const trimMessageHistory = (count: number) => {
@@ -196,10 +222,18 @@
 			window.devicePixelRatio
 		);
 		msgs.splice(0, count);
+		historyTranslations.retain(msgs);
 		if (shouldRestore) scrollController.afterContentChange();
+		scheduleHistoryTranslations();
 	};
 
 	const applyTranslation = (update: ChannelMessageTranslationUpdate) => {
+		const message = msgs.find((message) => message.message_id === update.message_id);
+		if (message && historyTranslations.isHistorical(message)) {
+			historyTranslations.defer(message, update.translation);
+			scheduleHistoryTranslations();
+			return;
+		}
 		const result = applyTranslationUpdate(msgs, update, pendingTranslations);
 		if (!result.changed) return;
 
@@ -207,6 +241,82 @@
 
 		msgs = result.messages;
 		if (shouldRestore) scrollController.afterContentChange();
+	};
+
+	const observeHistoryTranslations = (rows: HTMLElement[]) => {
+		const pendingIndexes = new Set(
+			msgs
+				.filter((message) => historyTranslations.has(message.message_id))
+				.map((message) => String(message.index))
+		);
+		const pendingRows = new Set(
+			rows.filter((row) => pendingIndexes.has(row.dataset.chatMessageIndex ?? ''))
+		);
+		for (const row of observedHistoryRows) {
+			if (pendingRows.has(row)) continue;
+			historyTranslationObserver?.unobserve(row);
+			observedHistoryRows.delete(row);
+		}
+		for (const row of pendingRows) {
+			if (observedHistoryRows.has(row)) continue;
+			historyTranslationObserver?.observe(row);
+			observedHistoryRows.add(row);
+		}
+		return pendingRows;
+	};
+
+	const flushHistoryTranslations = () => {
+		historyTranslationTimer = undefined;
+		if (destroyed || !chatDIV || !messageListDIV) return;
+		const rows = [...messageListDIV.querySelectorAll<HTMLElement>(CHAT_MESSAGE_SELECTOR)];
+		const pendingRows = observeHistoryTranslations(rows);
+		if (scrollController.interacting) return;
+
+		const viewport = chatDIV.getBoundingClientRect();
+		const offscreen = new Set(
+			[...pendingRows]
+				.filter((row) => isRowOutsideViewport(row.getBoundingClientRect(), viewport))
+				.map((row) => row.dataset.chatMessageIndex)
+		);
+		const result = historyTranslations.flush(msgs, (message) =>
+			offscreen.has(String(message.index))
+		);
+		if (result.changed) {
+			const shouldRestore = scrollController.beforeContentChange('translation');
+			msgs = result.messages;
+			if (shouldRestore) scrollController.afterContentChange();
+		}
+		observeHistoryTranslations(rows);
+	};
+
+	const scheduleHistoryTranslations = () => {
+		if (destroyed) return;
+		if (historyTranslations.size === 0) {
+			historyTranslationObserver?.disconnect();
+			observedHistoryRows.clear();
+			return;
+		}
+		if (
+			historyTranslationRenderQueued ||
+			historyTranslationFrame !== undefined ||
+			historyTranslationTimer !== undefined
+		)
+			return;
+		historyTranslationRenderQueued = true;
+		void tick().then(() => {
+			historyTranslationRenderQueued = false;
+			if (destroyed) return;
+			historyTranslationFrame = requestAnimationFrame(() => {
+				historyTranslationFrame = undefined;
+				// Read settled geometry, then let scroll restoration precede the next paint.
+				historyTranslationTimer = setTimeout(flushHistoryTranslations, 0);
+			});
+		});
+	};
+
+	const handleChatScroll = () => {
+		scrollController.refreshScrollState();
+		scheduleHistoryTranslations();
 	};
 
 	const jumpToBottom = () => {
@@ -433,7 +543,7 @@
 				bind:this={chatDIV}
 				onpointerdown={scrollController.handleScrollbarPointerIntent}
 				role="region"
-				onscroll={scrollController.refreshScrollState}
+				onscroll={handleChatScroll}
 				ontouchcancel={scrollController.handleTouchEndIntent}
 				ontouchend={scrollController.handleTouchEndIntent}
 				ontouchmove={scrollController.handleTouchMoveIntent}
@@ -483,7 +593,11 @@
 							</div>
 							{#if msg.translation}
 								<div
-									transition:slide={{ easing: quadInOut, duration: 40 }}
+									data-chat-translation
+									transition:slide={{
+										easing: quadInOut,
+										duration: historyTranslations.isHistorical(msg) ? 0 : 40
+									}}
 									class="min-w-0 text-wrap wrap-anywhere"
 								>
 									{@render translationPrefix(msg, normalizedAppSettings.translation.layout)}
