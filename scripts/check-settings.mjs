@@ -30,8 +30,8 @@ await writeFile(
 const params = new URLSearchParams(location.search);
 export const page = $state({ url: new URL(location.href), params: location.pathname.includes('/chat/') ? { id: 'maya' } : {} });
 export const resolve = value => value;
-export const goto = async value => {
-  history.pushState({}, '', value); page.url = new URL(value, location.origin);
+export const goto = async (value, options = {}) => {
+  history[options.replaceState ? 'replaceState' : 'pushState']({}, '', value); page.url = new URL(value, location.origin);
   page.params = value.includes('/chat/') ? { id: 'maya' } : {};
 };
 document.addEventListener('click', event => {
@@ -274,6 +274,44 @@ try {
 		await evaluate(sessionId, `document.querySelector(${JSON.stringify(selector)}).click()`);
 		await delay(30);
 	};
+	const pressKey = async (sessionId, key, code = key) => {
+		const virtualKeyCode = { Enter: 13, Space: 32, Tab: 9 }[code];
+		for (const type of ['keyDown', 'keyUp']) {
+			await send(
+				'Input.dispatchKeyEvent',
+				{
+					type,
+					key,
+					code,
+					text: type === 'keyDown' ? { Enter: '\r', Space: ' ' }[code] : undefined,
+					windowsVirtualKeyCode: virtualKeyCode,
+					nativeVirtualKeyCode: virtualKeyCode
+				},
+				sessionId
+			);
+		}
+	};
+	const openSettings = async (sessionId) => {
+		await evaluate(
+			sessionId,
+			`document.querySelector('[data-sidebar="footer"] [data-sidebar="menu-button"]').focus()`
+		);
+		await pressKey(sessionId, 'Enter');
+		await waitFor(
+			sessionId,
+			`Array.from(document.querySelectorAll('[role="menuitem"]')).some(item => item.textContent.trim() === 'Settings')`
+		);
+		await evaluate(
+			sessionId,
+			`Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent.trim() === 'Settings').focus()`
+		);
+		await pressKey(sessionId, 'Enter');
+		await waitFor(
+			sessionId,
+			`location.pathname === '/app/settings' && !!document.querySelector('[data-settings-page]')`
+		);
+		await waitFor(sessionId, `getComputedStyle(document.body).pointerEvents !== 'none'`);
+	};
 	const search = async (sessionId, value) => {
 		await evaluate(
 			sessionId,
@@ -328,6 +366,107 @@ try {
 		assert.equal(layout.dark, test.theme === 'dark', test.name + ' theme');
 		if (test.width >= 768)
 			assert.equal(layout.sidebar, test.open ? 256 : 48, test.name + ' retained sidebar width');
+		assert.deepEqual(
+			await evaluate(
+				sessionId,
+				`(() => {
+        const slot = document.querySelector('[data-settings-back-slot]');
+        const button = document.querySelector('[data-settings-back]');
+        const icon = button.querySelector('svg');
+        const header = slot.closest('header');
+        return {
+          slotWidth: slot.getBoundingClientRect().width,
+          slotHeight: slot.getBoundingClientRect().height,
+          headerHeight: header.clientHeight,
+          divider: getComputedStyle(slot).borderRightWidth,
+          buttonWidth: button.getBoundingClientRect().width,
+          iconWidth: icon.getBoundingClientRect().width,
+          label: button.ariaLabel,
+          titleFollows: slot.nextElementSibling.querySelector('h1')?.textContent,
+          saveStatus: !!header.querySelector('[data-settings-status]')
+        };
+      })()`
+			),
+			{
+				slotWidth: 48,
+				slotHeight: 47,
+				headerHeight: 47,
+				divider: '1px',
+				buttonWidth: 32,
+				iconWidth: 20,
+				label: 'Back',
+				titleFollows: 'Settings',
+				saveStatus: true
+			},
+			test.name + ' back button matches video slot'
+		);
+		const backCenter = await evaluate(
+			sessionId,
+			`(() => {
+        const r = document.querySelector('[data-settings-back]').getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      })()`
+		);
+		await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...backCenter }, sessionId);
+		await waitFor(
+			sessionId,
+			`!!document.querySelector('[data-settings-back-tooltip][data-state$="open"]')`
+		);
+		assert.equal(
+			await evaluate(
+				sessionId,
+				`document.querySelector('[data-settings-back-tooltip]').textContent`
+			),
+			'Back',
+			test.name + ' back hover tooltip'
+		);
+		await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 100 }, sessionId);
+		await waitFor(
+			sessionId,
+			`!document.querySelector('[data-settings-back-tooltip][data-state$="open"]')`
+		);
+		await pressKey(sessionId, 'Tab');
+		await evaluate(sessionId, `document.querySelector('[data-settings-back]').focus()`);
+		await waitFor(
+			sessionId,
+			`!!document.querySelector('[data-settings-back-tooltip][data-state$="open"]')`
+		);
+		await send('Page.resetNavigationHistory', {}, sessionId);
+		assert.equal(
+			await evaluate(sessionId, 'history.length'),
+			1,
+			'direct settings entry has no history'
+		);
+		assert.equal(
+			await evaluate(sessionId, 'window.navigation?.canGoBack ?? false'),
+			false,
+			'direct settings entry cannot go back'
+		);
+		if (test.name === 'collapsed-light') {
+			await evaluate(
+				sessionId,
+				`void Object.defineProperty(window, 'navigation', { value: undefined, configurable: true })`
+			);
+		}
+		await pressKey(sessionId, 'Enter');
+		await waitFor(
+			sessionId,
+			`location.pathname === '/app' && !!document.querySelector('img[alt="The project logo"]')`
+		);
+		assert.equal(
+			await evaluate(sessionId, 'history.length'),
+			1,
+			test.name + ' Home fallback replaces Settings'
+		);
+		assert.equal(
+			await evaluate(sessionId, `!!document.querySelector('[data-settings-back]')`),
+			false
+		);
+		await send('Page.navigate', { url: `${origin}/app/settings?${params}` }, sessionId);
+		await waitFor(
+			sessionId,
+			`document.querySelector('#setting-chat-show_badges')?.disabled === false`
+		);
 		await search(sessionId, 'connector');
 		assert.equal(
 			await evaluate(sessionId, `!!document.querySelector('#setting-translation-layout')`),
@@ -754,46 +893,81 @@ try {
 		if (test.name === 'collapsed-dark' || test.name === 'expanded-light') {
 			await send('Page.navigate', { url: `${origin}/app/chat/maya?${params}` }, sessionId);
 			await waitFor(sessionId, `!!document.querySelector('[data-chat-fixture]')`);
-			await evaluate(
-				sessionId,
-				`document.querySelector('[data-sidebar="footer"] [data-sidebar="menu-button"]').focus()`
-			);
-			await send(
-				'Input.dispatchKeyEvent',
-				{ type: 'keyDown', key: 'Enter', code: 'Enter' },
-				sessionId
-			);
-			await send(
-				'Input.dispatchKeyEvent',
-				{ type: 'keyUp', key: 'Enter', code: 'Enter' },
-				sessionId
-			);
 			await waitFor(
 				sessionId,
-				`Array.from(document.querySelectorAll('[role="menuitem"]')).some(item => item.textContent.trim() === 'Settings')`
+				`document.querySelector('[data-sidebar="panel"]').getBoundingClientRect().width === ${test.open ? 256 : 48}`
 			);
-			await evaluate(
+			const chatUrl = await evaluate(sessionId, 'location.href');
+			const videoSlot = await evaluate(
 				sessionId,
-				`Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent.trim() === 'Settings').focus()`
+				`(() => {
+          const r = document.querySelector('[aria-label="Stream video coming soon"]').parentElement.getBoundingClientRect();
+          return { x: r.x, width: r.width };
+        })()`
 			);
-			await send(
-				'Input.dispatchKeyEvent',
-				{ type: 'keyDown', key: 'Enter', code: 'Enter' },
-				sessionId
-			);
-			await send(
-				'Input.dispatchKeyEvent',
-				{ type: 'keyUp', key: 'Enter', code: 'Enter' },
-				sessionId
-			);
-			await waitFor(
-				sessionId,
-				`!!document.querySelector('[data-settings-page]') && document.querySelector('h1')?.textContent === 'Settings'`
-			);
+			await openSettings(sessionId);
 			assert.equal(
 				await evaluate(sessionId, 'location.pathname'),
 				'/app/settings',
 				'profile menu navigation'
+			);
+			assert.deepEqual(
+				await evaluate(
+					sessionId,
+					`(() => {
+            const r = document.querySelector('[data-settings-back-slot]').getBoundingClientRect();
+            return { x: r.x, width: r.width };
+          })()`
+				),
+				videoSlot,
+				test.name + ' back and video slots align'
+			);
+			const historyLength = await evaluate(sessionId, 'history.length');
+			for (const action of ['click', 'Enter', 'Space']) {
+				if (action === 'click') {
+					await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...backCenter }, sessionId);
+					for (const type of ['mousePressed', 'mouseReleased']) {
+						await send(
+							'Input.dispatchMouseEvent',
+							{ type, ...backCenter, button: 'left', clickCount: 1 },
+							sessionId
+						);
+					}
+				} else {
+					await evaluate(sessionId, `document.querySelector('[data-settings-back]').focus()`);
+					await pressKey(sessionId, action === 'Space' ? ' ' : action, action);
+				}
+				await waitFor(
+					sessionId,
+					`location.href === ${JSON.stringify(chatUrl)} && !!document.querySelector('[data-chat-fixture]')`
+				);
+				assert.equal(
+					await evaluate(sessionId, 'history.length'),
+					historyLength,
+					action + ' traverses existing history'
+				);
+				assert.equal(
+					await evaluate(sessionId, `!!document.querySelector('[data-settings-back]')`),
+					false
+				);
+				await evaluate(sessionId, 'history.forward()');
+				await waitFor(
+					sessionId,
+					`location.pathname === '/app/settings' && !!document.querySelector('[data-settings-back]')`
+				);
+			}
+			await send('Page.navigate', { url: `${origin}/app?${params}` }, sessionId);
+			await waitFor(sessionId, `!!document.querySelector('img[alt="The project logo"]')`);
+			await openSettings(sessionId);
+			await click(sessionId, '[data-settings-back]');
+			await waitFor(
+				sessionId,
+				`location.pathname === '/app' && !!document.querySelector('img[alt="The project logo"]')`
+			);
+			await evaluate(sessionId, 'history.forward()');
+			await waitFor(
+				sessionId,
+				`location.pathname === '/app/settings' && !!document.querySelector('[data-settings-back]')`
 			);
 		}
 		assert.deepEqual(exceptions.get(sessionId) ?? [], [], test.name + ' uncaught browser errors');

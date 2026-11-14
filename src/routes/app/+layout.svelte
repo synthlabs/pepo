@@ -10,6 +10,9 @@
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import type { AuthState, ChannelCache } from '$lib/bindings.ts';
 	import ChannelHeader from '$lib/components/chat/channel-header.svelte';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import { Button } from '$lib/components/ui/button';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { hasUsableAuth } from '$lib/auth';
@@ -52,6 +55,12 @@
 	);
 	let header = $derived(channelHeader(page.params.id, channelStatus));
 	let isSettings = $derived(page.url.pathname === resolve('/app/settings'));
+
+	function goBack() {
+		const canGoBack = window.navigation?.canGoBack ?? window.history.length > 1;
+		if (canGoBack) window.history.back();
+		else void goto(resolve('/app'), { replaceState: true });
+	}
 </script>
 
 <Sidebar.Provider
@@ -66,6 +75,30 @@
 		<header class="flex h-12 min-w-0 shrink-0 items-center overflow-hidden border-b">
 			<Sidebar.Trigger class="mx-2 shrink-0 md:hidden" />
 			{#if isSettings}
+				<div
+					class="flex h-full w-12 shrink-0 items-center justify-center border-r"
+					data-settings-back-slot
+				>
+					<Tooltip.Provider delayDuration={0}>
+						<Tooltip.Root>
+							<Tooltip.Trigger onclick={goBack}>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon"
+										class="size-8 [&_svg]:size-5"
+										aria-label="Back"
+										data-settings-back
+									>
+										<ArrowLeft aria-hidden="true" />
+									</Button>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content data-settings-back-tooltip>Back</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
+				</div>
 				<div class="flex items-center gap-2 px-4">
 					<h1 class="text-base font-semibold">Settings</h1>
 					<SettingsStatus />
