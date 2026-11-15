@@ -372,6 +372,23 @@ describe('settings page', () => {
 		expect(f.client.cancelInstall).not.toHaveBeenCalled();
 		expect(f.client.removeModel).not.toHaveBeenCalled();
 	});
+	it.each([true, false])(
+		'opens Advanced at its heading on every visit (translation session: %s)',
+		async (withSession) => {
+			const f = withSession ? await translationPage() : undefined;
+			if (!withSession) await click('[aria-label="Settings categories"] button:nth-child(3)');
+			for (let visit = 0; visit < 2; visit++) {
+				await click('[data-open-translation-models]');
+				expect(document.activeElement).toBe(element('#settings-category-title'));
+				expect(document.activeElement?.textContent?.trim()).toBe('Advanced translation');
+				expect(document.querySelector('#setting-translation-translate_history')).not.toBeNull();
+				if (f) expect(f.client.watchState).toHaveBeenCalledTimes(1);
+				else expect(document.querySelector('#translation-models')).toBeNull();
+				await click('[data-translation-back]');
+				expect(document.activeElement?.hasAttribute('data-open-translation-models')).toBe(true);
+			}
+		}
+	);
 	it('finds model management and saves translation preferences with independent reset and rollback', async () => {
 		await unmount(component!);
 		const f = fixture();

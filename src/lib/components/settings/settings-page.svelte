@@ -69,13 +69,14 @@
 				void translationSession?.connect();
 			});
 	});
-	async function openModels() {
+	async function openTranslationAdvanced(destination: 'top' | 'models') {
 		selected = 'translation';
 		query = '';
 		advanced = true;
 		await tick();
 		document.querySelector('[data-settings-content]')?.scrollTo?.(0, 0);
-		document.getElementById('translation-models')?.focus();
+		if (destination === 'models') document.getElementById('translation-models')?.focus();
+		else document.getElementById('settings-category-title')?.focus({ preventScroll: true });
 	}
 	async function closeModels() {
 		advanced = false;
@@ -154,7 +155,7 @@
 				{/if}
 				<div class="flex flex-wrap items-start justify-between gap-4">
 					<div class="min-w-0">
-						<h2 id="settings-category-title" class="text-lg font-medium">
+						<h2 id="settings-category-title" tabindex="-1" class="text-lg font-medium">
 							{searching
 								? 'Search results'
 								: selected === 'translation' && advanced
@@ -223,7 +224,7 @@
 										<Button
 											variant="outline"
 											size="sm"
-											onclick={openModels}
+											onclick={() => openTranslationAdvanced('models')}
 											data-open-translation-models>Open translation models</Button
 										>
 									</div>{/if}
@@ -233,7 +234,7 @@
 							</p>{/if}
 						{#if translationSession}<TranslationSettings
 								session={translationSession}
-								onadvanced={openModels}
+								onadvanced={() => openTranslationAdvanced('top')}
 								statusOnly
 							/>{/if}
 					{:else if selected === 'translation'}
@@ -246,7 +247,10 @@
 									target={settingsState.value.translation.target_language}
 								/>{/if}
 						{:else}
-							<TranslationSettings session={translationSession} onadvanced={openModels} />
+							<TranslationSettings
+								session={translationSession}
+								onadvanced={() => openTranslationAdvanced('top')}
+							/>
 						{/if}
 					{:else}
 						<div class="divide-y overflow-hidden rounded-lg border">

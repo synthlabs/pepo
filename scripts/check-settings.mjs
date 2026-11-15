@@ -661,6 +661,74 @@ try {
 			test.name + ' preparation flash'
 		);
 		await evaluate(sessionId, `window.preparationObserver.disconnect()`);
+		for (const activation of ['pointer', 'keyboard']) {
+			if (activation === 'pointer') {
+				const point = await evaluate(
+					sessionId,
+					`(() => {
+					const button = document.querySelector('[data-open-translation-models]');
+					button.scrollIntoView({ block: 'nearest' });
+					const rect = button.getBoundingClientRect();
+					return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+				})()`
+				);
+				for (const type of ['mousePressed', 'mouseReleased'])
+					await send(
+						'Input.dispatchMouseEvent',
+						{ type, ...point, button: 'left', clickCount: 1 },
+						sessionId
+					);
+			} else {
+				await evaluate(
+					sessionId,
+					`document.querySelector('[data-open-translation-models]').focus()`
+				);
+				await pressKey(sessionId, 'Enter');
+			}
+			await waitFor(sessionId, `document.querySelectorAll('[data-model-row]').length === 2`);
+			const position = await evaluate(
+				sessionId,
+				`(() => {
+				const content = document.querySelector('[data-settings-content]');
+				const bounds = content.getBoundingClientRect();
+				const visible = selector => {
+					const rect = document.querySelector(selector).getBoundingClientRect();
+					return rect.top >= bounds.top && rect.bottom <= bounds.bottom;
+				};
+				return {
+					scrollTop: content.scrollTop,
+					overflows: content.scrollHeight > content.clientHeight,
+					focus: document.activeElement.id,
+					headingVisible: visible('#settings-category-title'),
+					firstSettingVisible: visible('[data-setting-row="translation.translate_history"]')
+				};
+			})()`
+			);
+			assert.deepEqual(
+				position,
+				{
+					scrollTop: 0,
+					overflows: true,
+					focus: 'settings-category-title',
+					headingVisible: true,
+					firstSettingVisible: true
+				},
+				`${test.name} Advanced opens at the top via ${activation}`
+			);
+			await capture(`advanced-top-${activation}`);
+			await evaluate(
+				sessionId,
+				`document.querySelector('[data-settings-content]').scrollTop = 200`
+			);
+			await click(sessionId, '[data-translation-back]');
+			assert.equal(
+				await evaluate(
+					sessionId,
+					`document.activeElement.hasAttribute('data-open-translation-models')`
+				),
+				true
+			);
+		}
 		await search(sessionId, 'models');
 		await click(sessionId, '[data-open-translation-models]');
 		await waitFor(sessionId, `document.querySelectorAll('[data-model-row]').length === 2`);
