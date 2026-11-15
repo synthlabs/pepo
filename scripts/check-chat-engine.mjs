@@ -227,6 +227,12 @@ async function checkSystemMessages() {
 	require(notices().every((row) =>
 		row.querySelector('svg[aria-hidden="true"]')
 	), 'System icon is not decorative');
+	require(!native.settings.obj.chat.show_system_message_background && notices().every((row) =>
+		getComputedStyle(row).backgroundColor === 'rgba(0, 0, 0, 0)'
+	), 'System backgrounds are not off by default');
+	native.settings.obj.chat.show_system_message_background = true;
+	await native.settings.sync();
+	await wait();
 	require(getComputedStyle(rows().at(-1)).backgroundColor !==
 		previousBackground, 'Notices consumed ordinary row alternation');
 	const backgrounds = new Set([
@@ -236,6 +242,7 @@ async function checkSystemMessages() {
 	require(!backgrounds.has(
 		getComputedStyle(notices()[0]).backgroundColor
 	), 'System background matches a chat shade');
+	const enabledBackground = getComputedStyle(notices()[0]).backgroundColor;
 	native.system('notices', {
 		icon: 'shield',
 		segments: [
@@ -248,14 +255,19 @@ async function checkSystemMessages() {
 	});
 	await wait();
 	const notice = notices().at(-1);
-	const style = getComputedStyle(notice);
 	const canvas = document.createElement('canvas');
 	canvas.width = canvas.height = 1;
 	const context = canvas.getContext('2d', { willReadFrequently: true });
-	const luminance = (value) => {
+	const luminance = (row, value) => {
 		context.clearRect(0, 0, 1, 1);
-		context.fillStyle = style.backgroundColor;
+		context.fillStyle = '#fff';
 		context.fillRect(0, 0, 1, 1);
+		const ancestors = [];
+		for (let element = row; element; element = element.parentElement) ancestors.unshift(element);
+		for (const element of ancestors) {
+			context.fillStyle = getComputedStyle(element).backgroundColor;
+			context.fillRect(0, 0, 1, 1);
+		}
 		context.fillStyle = value;
 		context.fillRect(0, 0, 1, 1);
 		return [...context.getImageData(0, 0, 1, 1).data]
@@ -264,29 +276,62 @@ async function checkSystemMessages() {
 			.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
 			.reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
 	};
-	const contrast =
-		(Math.max(luminance(style.color), luminance(style.backgroundColor)) + 0.05) /
-		(Math.min(luminance(style.color), luminance(style.backgroundColor)) + 0.05);
-	require(contrast >= 4.5, 'System text contrast below 4.5');
-	require(Math.abs(luminance(style.color) - luminance(style.backgroundColor)) <
-		Math.abs(luminance(getComputedStyle(document.body).color) -
-			luminance(style.backgroundColor)), 'System text is not muted');
 	const link = notice.querySelector('a');
 	link.focus();
-	const focusStyle = getComputedStyle(link);
-	const focusContrast =
-		(Math.max(luminance(focusStyle.outlineColor), luminance(style.backgroundColor)) + 0.05) /
-		(Math.min(luminance(focusStyle.outlineColor), luminance(style.backgroundColor)) + 0.05);
-	require(link.matches(':focus-visible') &&
-		parseFloat(focusStyle.outlineWidth) >= 2 &&
-		focusContrast >= 3, 'System link keyboard focus is not sufficiently visible');
+	let contrast = Infinity;
+	let focusContrast = Infinity;
+	const checkNoticeContrast = () => {
+		const style = getComputedStyle(notice);
+		const background = luminance(notice, 'transparent');
+		const foreground = luminance(notice, style.color);
+		const ratio = (value) => (Math.max(value, background) + 0.05) /
+			(Math.min(value, background) + 0.05);
+		const textContrast = ratio(foreground);
+		contrast = Math.min(contrast, textContrast);
+		require(textContrast >= 4.5, 'System text contrast below 4.5');
+		require(Math.abs(foreground - background) <
+			Math.abs(luminance(notice, getComputedStyle(document.body).color) - background),
+			'System text is not muted');
+		const focusStyle = getComputedStyle(link);
+		const outlineContrast = ratio(luminance(notice, focusStyle.outlineColor));
+		focusContrast = Math.min(focusContrast, outlineContrast);
+		require(link.matches(':focus-visible') &&
+			parseFloat(focusStyle.outlineWidth) >= 2 && outlineContrast >= 3,
+			'System link keyboard focus is not sufficiently visible');
+	};
 	let maxIconCenterOffset = 0;
 	const checkNoticeLayout = () => {
+		const settings = native.settings.obj.chat;
+		const divider = document.querySelector('[data-chat-history-divider]');
+		const dividerLine = divider.querySelector('span');
 		for (const row of notices()) {
 			const rowStyle = getComputedStyle(row);
 			const timestamp = row.querySelector('span.text-xs');
-			require(!!timestamp === native.settings.obj.chat.show_timestamps,
+			require(!!timestamp === (settings.show_timestamps && !settings.center_system_messages),
 				'System timestamp ignored visibility setting');
+			require(rowStyle.backgroundColor === (settings.show_system_message_background
+				? enabledBackground : 'rgba(0, 0, 0, 0)'), 'System background ignored its setting');
+			const content = row.querySelector('[data-chat-system-message-content]').getBoundingClientRect();
+			const lines = [...row.querySelectorAll('[data-chat-system-message-line]')];
+			require(lines.length === (settings.center_system_messages ? 2 : 0),
+				'System divider lines ignored alignment');
+			if (settings.center_system_messages) {
+				const rects = lines.map((line) => line.getBoundingClientRect());
+				require(Math.abs(rects[0].width - rects[1].width) <= 0.5,
+					'System divider lines are not equal widths');
+				require(rowStyle.columnGap === getComputedStyle(divider).columnGap,
+					'System divider spacing differs from the history divider');
+				for (const [i, line] of lines.entries()) {
+					const rect = rects[i];
+					require(line.getAttribute('aria-hidden') === 'true', 'System divider is not decorative');
+					require(rect.width >= 1.5 * parseFloat(getComputedStyle(document.documentElement).fontSize) &&
+						rect.height === 1, 'System divider line dimensions are incorrect');
+					require(getComputedStyle(line).backgroundColor === getComputedStyle(dividerLine).backgroundColor,
+						'System divider line color differs from the history divider');
+					require(Math.abs(rect.top + rect.height / 2 - (content.top + content.height / 2)) <= 0.5,
+						'System divider lines are not vertically centered beside the content');
+				}
+			}
 			for (const element of row.querySelectorAll('svg, span.text-xs, strong, a')) {
 				require(getComputedStyle(element).color === rowStyle.color,
 					'System icon, timestamp, or text did not inherit the muted color');
@@ -311,17 +356,28 @@ async function checkSystemMessages() {
 		document.documentElement.style.fontSize = fontSize + 'px';
 		for (const centered of [false, true]) {
 			for (const timestamps of [true, false]) {
-				Object.assign(native.settings.obj.chat, {
-					center_system_messages: centered,
-					show_timestamps: timestamps
-				});
-				await native.settings.sync();
-				await wait();
-				checkNoticeLayout();
-				require(getComputedStyle(notice).textAlign ===
-					(centered ? 'center' : 'start'), 'System alignment did not update');
-				require(notice.scrollWidth <= notice.clientWidth + 1, 'System content overflows');
-				require(gap() < 1, 'Notice reflow lost pinned bottom');
+				for (const background of [false, true]) {
+					for (const striped of [true, false]) {
+						Object.assign(native.settings.obj.chat, {
+							center_system_messages: centered,
+							show_timestamps: timestamps,
+							show_system_message_background: background,
+							alternate_backgrounds: striped
+						});
+						await native.settings.sync();
+						await wait();
+						checkNoticeLayout();
+						checkNoticeContrast();
+						require(getComputedStyle(notice).textAlign ===
+							(centered ? 'center' : 'start'), 'System alignment did not update');
+						require(notices().every((row) => row.scrollWidth <= row.clientWidth + 1),
+							'System content overflows');
+						require(getComputedStyle(previous).backgroundColor ===
+							(striped ? previousBackground : 'rgba(0, 0, 0, 0)'),
+							'System settings changed ordinary message backgrounds');
+						require(gap() < 1, 'Notice reflow lost pinned bottom');
+					}
+				}
 			}
 		}
 	}
@@ -331,7 +387,7 @@ async function checkSystemMessages() {
 	await native.settings.sync();
 	await wait();
 	require(getComputedStyle(notice).backgroundColor ===
-		style.backgroundColor, 'Disabling striping removed the system background');
+		enabledBackground, 'Disabling striping removed the system background');
 	require(!notice.querySelector('span.text-xs'), 'System timestamp ignored visibility setting');
 	native.settings.obj.chat.alternate_backgrounds = true;
 	native.settings.obj.chat.show_timestamps = true;
@@ -915,23 +971,26 @@ try {
 			})
 		);
 		for (const centered of [false, true]) {
-			await evaluate(
-				sessionId,
-				`chatNative.settings.obj.chat.center_system_messages = ${centered}; chatNative.settings.sync()`
-			);
-			await waitFor(
-				sessionId,
-				`getComputedStyle(document.querySelector('[data-chat-system-message]')).textAlign === '${centered ? 'center' : 'start'}'`
-			);
-			await evaluate(sessionId, "document.querySelector('[data-chat-system-message] a').focus()");
-			const systemShot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
-			await writeFile(
-				path.join(
-					output,
-					'systems-' + width + '-' + theme + '-' + (centered ? 'center' : 'left') + '.png'
-				),
-				Buffer.from(systemShot.data, 'base64')
-			);
+			for (const background of [false, true]) {
+				await evaluate(
+					sessionId,
+					`Object.assign(chatNative.settings.obj.chat, { center_system_messages: ${centered}, show_system_message_background: ${background} }); chatNative.settings.sync()`
+				);
+				await waitFor(
+					sessionId,
+					`getComputedStyle(document.querySelector('[data-chat-system-message]')).textAlign === '${centered ? 'center' : 'start'}' && (getComputedStyle(document.querySelector('[data-chat-system-message]')).backgroundColor !== 'rgba(0, 0, 0, 0)') === ${background}`
+				);
+				await evaluate(sessionId, "document.querySelector('[data-chat-system-message] a').focus()");
+				const systemShot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+				await writeFile(
+					path.join(
+						output,
+						'systems-' + width + '-' + theme + '-' + (centered ? 'center' : 'left') +
+						(background ? '-background' : '') + '.png'
+					),
+					Buffer.from(systemShot.data, 'base64')
+				);
+			}
 		}
 		assert.deepEqual(exceptions.get(sessionId) ?? [], []);
 		await send('Target.closeTarget', { targetId });

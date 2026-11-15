@@ -1,4 +1,4 @@
-import { mount, unmount } from 'svelte';
+import { createRawSnippet, mount, unmount } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatRoomInfo, SystemMessage, SystemMessageIcon } from '$lib/bindings';
 import SystemMessageRow from '$lib/components/chat/system-message.svelte';
@@ -85,6 +85,23 @@ describe('system messages', () => {
 			try {
 				expect(target.firstElementChild?.classList.contains('text-center')).toBe(true);
 				expect(target.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+			} finally {
+				await unmount(component);
+			}
+		}
+	);
+	it.each([false, true])(
+		'only renders the timestamp when left-aligned (centered=%s)',
+		async (centered) => {
+			const target = document.createElement('div');
+			const timestamp = createRawSnippet(() => ({ render: () => '<span>11:00 AM </span>' }));
+			const component = mount(SystemMessageRow, {
+				target,
+				props: { message, centered, timestamp }
+			});
+			try {
+				expect(target.textContent?.includes('11:00 AM')).toBe(!centered);
+				expect(target.textContent).toContain('Viewer was timed out. Details');
 			} finally {
 				await unmount(component);
 			}

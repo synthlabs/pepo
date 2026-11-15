@@ -3,6 +3,19 @@ import type { AppSettings } from '$lib/bindings';
 import { DEFAULT_APP_SETTINGS, gridTemplateColumns, normalizeAppSettings, px } from './settings';
 
 describe('settings helpers', () => {
+	it('defaults system backgrounds off for legacy settings and preserves explicit choices', () => {
+		expect(DEFAULT_APP_SETTINGS.chat.show_system_message_background).toBe(false);
+		const legacy = JSON.parse(JSON.stringify(DEFAULT_APP_SETTINGS));
+		delete legacy.chat.show_system_message_background;
+		expect(normalizeAppSettings(legacy).chat.show_system_message_background).toBe(false);
+		for (const enabled of [true, false]) {
+			legacy.chat.show_system_message_background = enabled;
+			expect(normalizeAppSettings(legacy).chat.show_system_message_background).toBe(enabled);
+		}
+		legacy.chat.show_system_message_background = 'yes';
+		expect(normalizeAppSettings(legacy).chat.show_system_message_background).toBe(false);
+	});
+
 	it('discards legacy sidebar settings without mutating the saved object', () => {
 		const legacy = {
 			...structuredClone(DEFAULT_APP_SETTINGS),

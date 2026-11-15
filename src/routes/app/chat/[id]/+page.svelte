@@ -564,7 +564,11 @@
 					></div>
 					{#each msgs as msg, messagePosition (msg.index)}
 						{#if msg.kind === 'system'}
-							<SystemMessageRow message={msg} centered={chatSettings.center_system_messages}>
+							<SystemMessageRow
+								message={msg}
+								centered={chatSettings.center_system_messages}
+								showBackground={chatSettings.show_system_message_background}
+							>
 								{#snippet timestamp()}
 									{@render timestampCell(msg, false, true)}
 									{#if chatSettings.show_timestamps}<span aria-hidden="true"> </span>{/if}

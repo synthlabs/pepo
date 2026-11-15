@@ -443,6 +443,7 @@ pub struct ChatSettings {
     pub show_emotes: bool,
     pub alternate_backgrounds: bool,
     pub center_system_messages: bool,
+    pub show_system_message_background: bool,
     pub moderation_notices_enabled: bool,
 }
 
@@ -464,6 +465,7 @@ impl Default for ChatSettings {
             show_emotes: true,
             alternate_backgrounds: true,
             center_system_messages: false,
+            show_system_message_background: false,
             moderation_notices_enabled: true,
         }
     }
@@ -1337,6 +1339,7 @@ mod tests {
         assert!(matches!(settings.appearance.theme, AppearanceTheme::Dark));
         assert_eq!(settings.chat.message_limit, 500);
         assert_eq!(settings.chat.autoscroll_threshold_px, 32);
+        assert!(!settings.chat.show_system_message_background);
         assert_eq!(
             settings.translation.layout,
             ChatTranslationLayout::MessageText
@@ -1471,6 +1474,7 @@ mod tests {
         assert_eq!(settings.chat.message_batch_interval_ms, 250);
         assert_eq!(settings.chat.message_gc_interval_ms, 250);
         assert!(settings.chat.show_timestamps);
+        assert!(!settings.chat.show_system_message_background);
         assert_eq!(
             settings.translation.layout,
             ChatTranslationLayout::MessageText
@@ -1483,6 +1487,19 @@ mod tests {
             settings.providers.metadata_retention_secs,
             30 * 24 * 60 * 60
         );
+    }
+
+    #[test]
+    fn system_message_background_round_trips_explicit_preferences() {
+        for enabled in [false, true] {
+            let settings: AppSettings = serde_json::from_value(serde_json::json!({
+                "chat": { "show_system_message_background": enabled }
+            }))
+            .unwrap();
+            let saved = serde_json::to_value(settings.normalized()).unwrap();
+            let restored: AppSettings = serde_json::from_value(saved).unwrap();
+            assert_eq!(restored.chat.show_system_message_background, enabled);
+        }
     }
 
     #[test]

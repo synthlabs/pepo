@@ -38,6 +38,49 @@ describe('settings controls', () => {
 		delete legacy.chat.center_system_messages;
 		expect(normalizeAppSettings(legacy).chat.center_system_messages).toBe(false);
 	});
+	it('keeps the system background beside centering, searchable, and resettable to off', () => {
+		const control = SETTINGS_CONTROLS.find(
+			(item) => item.id === 'chat.show_system_message_background'
+		)!;
+		expect(control).toMatchObject({ more: true, category: 'chat', kind: 'toggle' });
+		expect(SETTINGS_CONTROLS[SETTINGS_CONTROLS.indexOf(control) - 1].id).toBe(
+			'chat.center_system_messages'
+		);
+		expect(matchingControls('system background')).toContain(control);
+		expect(controlUpdate(control, true)).toEqual({
+			chat: { show_system_message_background: true }
+		});
+		for (const category of ['chat', 'all'] as const) {
+			expect(resetSettingsPatch(category).chat?.show_system_message_background).toBe(false);
+		}
+	});
+	it('autosaves and restores the system background independently of centering and striping', async () => {
+		let snapshot!: SettingsSnapshot;
+		let saved = structuredClone(DEFAULT_APP_SETTINGS);
+		const writer = new SettingsAutosave(
+			async (settings) => {
+				saved = structuredClone(settings);
+				return true;
+			},
+			(value) => {
+				snapshot = value;
+			}
+		);
+		writer.receive(saved);
+		const control = SETTINGS_CONTROLS.find(
+			(item) => item.id === 'chat.show_system_message_background'
+		)!;
+		for (const enabled of [true, false]) {
+			expect(await writer.update(controlUpdate(control, enabled))).toBe(true);
+			writer.receive(JSON.parse(JSON.stringify(saved)));
+			expect(snapshot.value.chat).toMatchObject({
+				show_system_message_background: enabled,
+				center_system_messages: false,
+				alternate_backgrounds: true
+			});
+			expect(saved.chat.show_system_message_background).toBe(enabled);
+		}
+	});
 	it('keeps processing controls in Advanced and makes them searchable', () => {
 		for (const field of [
 			'translate_history',

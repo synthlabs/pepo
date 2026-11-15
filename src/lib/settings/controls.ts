@@ -50,7 +50,15 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 		id: 'chat.center_system_messages',
 		path: 'chat.center_system_messages',
 		label: 'Center system messages',
-		description: 'Center inline notices instead of aligning them to the left.',
+		description: 'Center system messages between divider lines and hide their timestamps.',
+		kind: 'toggle'
+	},
+	{
+		...chatMore,
+		id: 'chat.show_system_message_background',
+		path: 'chat.show_system_message_background',
+		label: 'System message background',
+		description: 'Use a gray background for system messages.',
 		kind: 'toggle'
 	},
 	{

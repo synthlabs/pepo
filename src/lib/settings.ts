@@ -24,6 +24,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 		show_emotes: true,
 		alternate_backgrounds: true,
 		center_system_messages: false,
+		show_system_message_background: false,
 		moderation_notices_enabled: true
 	},
 	translation: {
@@ -153,6 +154,10 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 			show_history_divider: chat.show_history_divider ?? true,
 			center_system_messages:
 				typeof chat.center_system_messages === 'boolean' ? chat.center_system_messages : false,
+			show_system_message_background:
+				typeof chat.show_system_message_background === 'boolean'
+					? chat.show_system_message_background
+					: false,
 
 			pause_message_gc_while_paused:
 				chat.pause_message_gc_while_paused ??
