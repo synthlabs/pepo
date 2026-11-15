@@ -205,23 +205,23 @@ describe('chat timestamp formatting volume', () => {
 		await acknowledge(1);
 		expect(await hide).toBe(true);
 	});
-	it('does not reformat for sidebar edits, acknowledgements, or layout rollback', async () => {
+	it('does not reformat for theme edits, acknowledgements, or theme rollback', async () => {
 		const originalCells = cells();
-		const collapse = updateAppSettings({ layout: { sidebar_open: false } });
+		const light = updateAppSettings({ appearance: { theme: 'light' } });
 		await flushUi();
 		expectCalls(0);
 		await acknowledge(0);
-		expect(await collapse).toBe(true);
+		expect(await light).toBe(true);
 		expectCalls(0);
 		expect(settingsState).toMatchObject({ saving: false, result: 'saved' });
 
-		const expand = updateAppSettings({ layout: { sidebar_open: true } });
+		const dark = updateAppSettings({ appearance: { theme: 'dark' } });
 		await flushUi();
 		expectCalls(0);
 		await acknowledge(1, false);
-		expect(await expand).toBe(false);
+		expect(await dark).toBe(false);
 		expectCalls(0);
-		expect(settingsState.value.layout.sidebar_open).toBe(false);
+		expect(settingsState.value.appearance.theme).toBe('light');
 		expect(settingsState).toMatchObject({ saving: false, result: 'error' });
 		expect(cells()).toEqual(originalCells);
 	});
@@ -303,17 +303,17 @@ describe('chat timestamp formatting volume', () => {
 		expect(settingsState.value.chat.timestamp_locale).toBe('de-DE');
 	});
 
-	it('does not reformat a queued timestamp edit when the preceding layout save settles', async () => {
-		const layout = updateAppSettings({ layout: { sidebar_open: false } });
+	it('does not reformat a queued timestamp edit when the preceding theme save settles', async () => {
+		const theme = updateAppSettings({ appearance: { theme: 'light' } });
 		await flushUi();
 		expectCalls(0);
 		const locale = updateAppSettings({ chat: { timestamp_locale: 'en-GB' } });
 		await flushUi();
 		expectCalls(500);
 		await acknowledge(0);
-		expect(await layout).toBe(true);
+		expect(await theme).toBe(true);
 		expectCalls(0);
-		expect(native.requests[1].value.layout.sidebar_open).toBe(false);
+		expect(native.requests[1].value.appearance.theme).toBe('light');
 		await acknowledge(1);
 		expect(await locale).toBe(true);
 		expectCalls(0);
@@ -331,11 +331,11 @@ describe('chat timestamp formatting volume', () => {
 		await resetMessages();
 		expectCalls(1);
 		expect(cells()[0].textContent).toBe(previousText);
-		const layout = updateAppSettings({ layout: { sidebar_open: false } });
+		const theme = updateAppSettings({ appearance: { theme: 'light' } });
 		await flushUi();
 		expectCalls(0);
 		await acknowledge(0);
-		expect(await layout).toBe(true);
+		expect(await theme).toBe(true);
 		expectCalls(0);
 	});
 

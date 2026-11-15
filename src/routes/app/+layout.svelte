@@ -16,11 +16,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { hasUsableAuth } from '$lib/auth';
-	import {
-		getNormalizedAppSettings,
-		updateAppSettings,
-		settingsState
-	} from '$lib/stores/settings.svelte';
+	import { getNormalizedAppSettings, settingsState } from '$lib/stores/settings.svelte';
 	import SettingsStatus from '$lib/components/settings/settings-status.svelte';
 	import NetworkStatus from '$lib/components/network-status.svelte';
 	import NetworkStatusIcon from '$lib/components/network-status-icon.svelte';
@@ -63,13 +59,7 @@
 	}
 </script>
 
-<Sidebar.Provider
-	class="h-dvh min-h-0 overflow-hidden"
-	open={normalizedAppSettings.layout.sidebar_open}
-	onOpenChange={(open) => {
-		void updateAppSettings({ layout: { sidebar_open: open } });
-	}}
->
+<Sidebar.Provider class="h-dvh min-h-0 overflow-hidden">
 	<AppSidebar collapsible="icon"></AppSidebar>
 	<main class="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col flex-nowrap overflow-hidden">
 		<header class="flex h-12 min-w-0 shrink-0 items-center overflow-hidden border-b">

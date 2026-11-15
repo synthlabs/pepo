@@ -3,6 +3,22 @@ import type { AppSettings } from '$lib/bindings';
 import { DEFAULT_APP_SETTINGS, gridTemplateColumns, normalizeAppSettings, px } from './settings';
 
 describe('settings helpers', () => {
+	it('discards legacy sidebar settings without mutating the saved object', () => {
+		const legacy = {
+			...structuredClone(DEFAULT_APP_SETTINGS),
+			layout: { sidebar_open: false }
+		};
+		legacy.appearance.theme = 'light';
+		legacy.chat.message_limit = 900;
+		const normalized = normalizeAppSettings(legacy);
+		expect(normalized).not.toHaveProperty('layout');
+		expect(JSON.parse(JSON.stringify(normalized))).not.toHaveProperty('layout');
+		expect(normalized.appearance.theme).toBe('light');
+		expect(normalized.chat.message_limit).toBe(900);
+		expect(normalized.schema_version).toBe(1);
+		expect(legacy.layout.sidebar_open).toBe(false);
+	});
+
 	it('defaults retained-history translation off and preserves an explicit opt-in', () => {
 		expect(DEFAULT_APP_SETTINGS.translation.translate_history).toBe(false);
 		const legacy = { ...DEFAULT_APP_SETTINGS, translation: { enabled: true } } as AppSettings;

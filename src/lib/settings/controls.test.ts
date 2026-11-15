@@ -83,9 +83,12 @@ describe('settings controls', () => {
 		]);
 	});
 	it('covers user preferences and the approved advanced network controls', () => {
+		expect(matchingControls('sidebar')).toEqual([]);
+		expect(resetSettingsPatch('app')).not.toHaveProperty('layout');
+		expect(resetSettingsPatch('all')).not.toHaveProperty('layout');
 		const paths = [...new Set(SETTINGS_CONTROLS.map((control) => control.path))].sort();
 		const expected = (
-			['appearance', 'layout', 'diagnostics', 'chat', 'emotes', 'translation', 'network'] as const
+			['appearance', 'diagnostics', 'chat', 'emotes', 'translation', 'network'] as const
 		)
 			.flatMap((section) =>
 				Object.keys(DEFAULT_APP_SETTINGS[section]).map((key) => `${section}.${key}`)

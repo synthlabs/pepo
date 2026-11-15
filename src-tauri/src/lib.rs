@@ -50,21 +50,10 @@ mod platform;
 mod token;
 mod types;
 
-#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, specta::Type)]
 struct InternalState {
     version: String,
     name: String,
-    sidebar_open: bool,
-}
-
-impl Default for InternalState {
-    fn default() -> Self {
-        Self {
-            version: String::new(),
-            name: String::new(),
-            sidebar_open: true,
-        }
-    }
 }
 
 type SharedEventSubManager = Mutex<EventSubManager>;
@@ -1828,6 +1817,20 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn internal_state_discards_legacy_sidebar_preference() {
+        for open in [true, false] {
+            let state: InternalState = serde_json::from_value(serde_json::json!({
+                "name": "pepo", "version": "0.2.32", "sidebar_open": open
+            }))
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(state).unwrap(),
+                serde_json::json!({ "name": "pepo", "version": "0.2.32" })
+            );
+        }
+    }
 
     fn auth_state(phase: types::AuthPhase, token: Option<types::UserToken>) -> AuthState {
         AuthState {

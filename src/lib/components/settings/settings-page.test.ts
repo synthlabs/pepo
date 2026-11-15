@@ -137,6 +137,15 @@ afterEach(async () => {
 });
 
 describe('settings page', () => {
+	it('omits the sidebar preference from App settings and search', async () => {
+		await click('[aria-label="Settings categories"] button:last-child');
+		expect(element('[data-settings-content]').textContent).not.toContain('Sidebar expanded');
+		expect(document.querySelector('#setting-layout-sidebar_open')).toBeNull();
+		await search('sidebar');
+		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(0);
+		expect(native.writes).toHaveLength(0);
+	});
+
 	it('exposes the notice toggle in advanced Chat settings, saves opt-out, and finds it by search', async () => {
 		expect(document.querySelector('#setting-chat-moderation_notices_enabled')).toBeNull();
 		await click('[aria-controls="settings-more-chat"]');
@@ -471,7 +480,7 @@ describe('settings page', () => {
 		expect(document.body.textContent).toContain('No settings match');
 		await click('[aria-label="Settings categories"] button:last-child');
 		expect(element<HTMLInputElement>('[aria-label="Search settings"]').value).toBe('');
-		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(3);
+		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(2);
 	});
 
 	it('commits numeric input on Enter once and retains invalid edits without a save', async () => {

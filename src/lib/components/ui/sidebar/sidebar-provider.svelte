@@ -3,17 +3,13 @@
 	import { cn } from '$lib/utils.js';
 	import type { WithElementRef } from 'bits-ui';
 	import type { HTMLAttributes } from 'svelte/elements';
-	import {
-		SIDEBAR_COOKIE_MAX_AGE,
-		SIDEBAR_COOKIE_NAME,
-		SIDEBAR_WIDTH,
-		SIDEBAR_WIDTH_ICON
-	} from './constants.js';
+	import { SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON } from './constants.js';
 	import { setSidebar } from './context.svelte.js';
+	import { readSidebarOpen, writeSidebarOpen } from './storage.js';
 
 	let {
 		ref = $bindable(null),
-		open = $bindable(true),
+		open = $bindable(readSidebarOpen()),
 		onOpenChange = () => {},
 		class: className,
 		style,
@@ -29,9 +25,7 @@
 		setOpen: (value: boolean) => {
 			open = value;
 			onOpenChange(value);
-
-			// This sets the cookie to keep the sidebar state.
-			document.cookie = `${SIDEBAR_COOKIE_NAME}=${open}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+			writeSidebarOpen(value);
 		}
 	});
 </script>

@@ -5,9 +5,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 	appearance: {
 		theme: 'dark'
 	},
-	layout: {
-		sidebar_open: true
-	},
 	diagnostics: {
 		capture_window_errors: true
 	},
@@ -98,9 +95,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 const PROVIDER_ORDER: EmoteProviderId[] = ['twitch', 'bttv', 'ffz', 'seventv'];
 
 export function normalizeAppSettings(settings: AppSettings): AppSettings {
-	const source = settings ?? DEFAULT_APP_SETTINGS;
+	const source: AppSettings & { layout?: unknown } = { ...(settings ?? DEFAULT_APP_SETTINGS) };
+	delete source.layout;
 	const appearance = source.appearance ?? DEFAULT_APP_SETTINGS.appearance;
-	const layout = source.layout ?? DEFAULT_APP_SETTINGS.layout;
 	const diagnostics = source.diagnostics ?? DEFAULT_APP_SETTINGS.diagnostics;
 	const chat = source.chat ?? DEFAULT_APP_SETTINGS.chat;
 	const translation = source.translation ?? DEFAULT_APP_SETTINGS.translation;
@@ -132,10 +129,6 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 		appearance: {
 			...DEFAULT_APP_SETTINGS.appearance,
 			...appearance
-		},
-		layout: {
-			...DEFAULT_APP_SETTINGS.layout,
-			...layout
 		},
 		diagnostics: {
 			capture_window_errors:

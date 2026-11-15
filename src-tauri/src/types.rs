@@ -41,7 +41,6 @@ impl Default for AuthPhase {
 pub struct AppSettings {
     pub schema_version: u32,
     pub appearance: AppearanceSettings,
-    pub layout: LayoutSettings,
     pub chat: ChatSettings,
     pub translation: TranslationSettings,
     pub emotes: EmoteSettings,
@@ -58,7 +57,6 @@ impl Default for AppSettings {
         Self {
             schema_version: 0,
             appearance: AppearanceSettings::default(),
-            layout: LayoutSettings::default(),
             chat: ChatSettings::default(),
             translation: TranslationSettings::default(),
             emotes: EmoteSettings::default(),
@@ -399,18 +397,6 @@ pub enum AppearanceTheme {
 impl Default for AppearanceTheme {
     fn default() -> Self {
         AppearanceTheme::Dark
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-#[serde(default)]
-pub struct LayoutSettings {
-    pub sidebar_open: bool,
-}
-
-impl Default for LayoutSettings {
-    fn default() -> Self {
-        Self { sidebar_open: true }
     }
 }
 
@@ -1349,7 +1335,6 @@ mod tests {
 
         assert_eq!(settings.schema_version, APP_SETTINGS_SCHEMA_VERSION);
         assert!(matches!(settings.appearance.theme, AppearanceTheme::Dark));
-        assert!(settings.layout.sidebar_open);
         assert_eq!(settings.chat.message_limit, 500);
         assert_eq!(settings.chat.autoscroll_threshold_px, 32);
         assert_eq!(
@@ -1498,6 +1483,24 @@ mod tests {
             settings.providers.metadata_retention_secs,
             30 * 24 * 60 * 60
         );
+    }
+
+    #[test]
+    fn app_settings_discard_legacy_sidebar_layout_and_preserve_other_preferences() {
+        for open in [true, false] {
+            let settings: AppSettings = serde_json::from_value(serde_json::json!({
+                "schema_version": 1,
+                "layout": { "sidebar_open": open },
+                "appearance": { "theme": "light" },
+                "chat": { "message_limit": 900 }
+            }))
+            .unwrap();
+            let saved = serde_json::to_value(settings.normalized()).unwrap();
+            assert!(saved.get("layout").is_none());
+            assert_eq!(saved["schema_version"], 1);
+            assert_eq!(saved["appearance"]["theme"], "light");
+            assert_eq!(saved["chat"]["message_limit"], 900);
+        }
     }
 
     #[test]

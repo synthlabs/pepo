@@ -129,7 +129,7 @@ async retryNetworkOperation(id: string) : Promise<void> {
 
 /** user-defined types **/
 
-export type AppSettings = { schema_version: number; appearance: AppearanceSettings; layout: LayoutSettings; chat: ChatSettings; translation: TranslationSettings; emotes: EmoteSettings; channel_cache: ChannelCacheSettings; auth: AuthSettings; eventsub: EventSubSettings; providers: ProviderSettings; network: NetworkSettings; diagnostics: DiagnosticsSettings }
+export type AppSettings = { schema_version: number; appearance: AppearanceSettings; chat: ChatSettings; translation: TranslationSettings; emotes: EmoteSettings; channel_cache: ChannelCacheSettings; auth: AuthSettings; eventsub: EventSubSettings; providers: ProviderSettings; network: NetworkSettings; diagnostics: DiagnosticsSettings }
 export type AppearanceSettings = { theme: AppearanceTheme }
 export type AppearanceTheme = "system" | "light" | "dark"
 export type AuthPhase = "unauthorized" | "waitingForDeviceCode" | "waitingForAuth" | "failedAuth" | "authorized"
@@ -407,8 +407,7 @@ export type EventSubSettings = { socket_idle_timeout_secs: number; retry_base_se
 export type FeedEvent = { type: "moderation"; event: ModerationEvent } | { type: "snapshot"; messages: ChatTimelineEntry[] } | { type: "message"; message: ChatTimelineEntry } | { type: "translation"; update: ChannelMessageTranslationUpdate } | { type: "reset"; messages: ChatTimelineEntry[] } | { type: "gap"; after: number; through: number } | { type: "unavailable"; error: string }
 export type FeedFrame = { cursor: number; event: FeedEvent }
 export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment }
-export type InternalState = { version: string; name: string; sidebar_open: boolean }
-export type LayoutSettings = { sidebar_open: boolean }
+export type InternalState = { version: string; name: string }
 export type ModerationAction = { type: "message_deleted"; target: ModerationUser; message_id: string } | { type: "user_messages_cleared"; target: ModerationUser } | { type: "chat_cleared" }
 export type ModerationEvent = { notification_id: string; ts: string; broadcaster_user_id: string; broadcaster_user_login: string; broadcaster_user_name: string; action: ModerationAction }
 export type ModerationUser = { user_id: string; login: string; display_name: string }

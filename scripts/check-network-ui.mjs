@@ -67,7 +67,7 @@ import { DEFAULT_APP_SETTINGS } from '${path.join(root, 'src/lib/settings.ts').r
 import { applySettingsUpdate } from '${path.join(root, 'src/lib/settings/autosave.ts').replaceAll('\\', '/')}';
 const value = structuredClone(DEFAULT_APP_SETTINGS);
 const params = new URLSearchParams(location.search);
-value.layout.sidebar_open = params.get('open') !== 'false';
+localStorage.setItem('sidebar:state', String(params.get('open') !== 'false'));
 value.appearance.theme = params.get('theme') ?? 'dark';
 value.providers.http_connect_timeout_secs = 5;
 value.providers.http_request_timeout_secs = 15;

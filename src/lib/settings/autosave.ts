@@ -2,14 +2,7 @@ import type { AppSettings } from '$lib/bindings';
 import { normalizeAppSettings } from '$lib/settings';
 
 export type EditableSettingsSection =
-	| 'appearance'
-	| 'layout'
-	| 'diagnostics'
-	| 'chat'
-	| 'emotes'
-	| 'translation'
-	| 'network'
-	| 'providers';
+	'appearance' | 'diagnostics' | 'chat' | 'emotes' | 'translation' | 'network' | 'providers';
 export type SettingsPatch = {
 	[Section in EditableSettingsSection]?: Partial<AppSettings[Section]>;
 };
@@ -26,7 +19,6 @@ export function applySettingsPatch(settings: AppSettings, patch: SettingsPatch):
 	return {
 		...settings,
 		appearance: { ...settings.appearance, ...patch.appearance },
-		layout: { ...settings.layout, ...patch.layout },
 		diagnostics: { ...settings.diagnostics, ...patch.diagnostics },
 		chat: { ...settings.chat, ...patch.chat },
 		translation: { ...settings.translation, ...patch.translation },

@@ -28,6 +28,11 @@ await writeFile(
 	path.join(output, 'native.svelte.js'),
 	`
 const params = new URLSearchParams(location.search);
+if (!sessionStorage.getItem('sidebar-check-started')) {
+  if (params.has('open')) localStorage.setItem('sidebar:state', String(params.get('open') !== 'false'));
+  else localStorage.removeItem('sidebar:state');
+  sessionStorage.setItem('sidebar-check-started', 'true');
+}
 export const page = $state({ url: new URL(location.href), params: location.pathname.includes('/chat/') ? { id: 'maya' } : {} });
 export const resolve = value => value;
 export const goto = async (value, options = {}) => {
@@ -57,7 +62,6 @@ export class SyncedState {
     if (key === 'app_settings') {
       if (!sessionStorage.getItem('settings-check-started')) { localStorage.removeItem('settings-check'); sessionStorage.setItem('settings-check-started', 'true'); }
       value = JSON.parse(localStorage.getItem('settings-check') ?? 'null') ?? value;
-      if (params.has('open')) value.layout.sidebar_open = params.get('open') !== 'false';
       if (params.has('theme')) value.appearance.theme = params.get('theme');
       native.states[key] = this;
     }
@@ -1245,6 +1249,162 @@ try {
 				[],
 				test.name + ' navigation browser errors'
 			);
+		}
+		if (test.name === 'expanded-dark') {
+			await evaluate(
+				sessionId,
+				`(() => {
+        const saved = JSON.parse(localStorage.getItem('settings-check'));
+        saved.layout = { sidebar_open: false };
+        localStorage.setItem('settings-check', JSON.stringify(saved));
+        localStorage.removeItem('sidebar:state');
+        document.cookie = 'sidebar:state=false; path=/';
+      })()`
+			);
+			await send('Page.navigate', { url: `${origin}/app/settings` }, sessionId);
+			await waitFor(
+				sessionId,
+				`document.querySelector('#setting-chat-show_badges')?.disabled === false`
+			);
+			await waitFor(
+				sessionId,
+				`document.querySelector('[data-collapsible]')?.dataset.state === 'expanded'`
+			);
+			assert.equal(
+				await evaluate(sessionId, `localStorage.getItem('sidebar:state')`),
+				null,
+				'legacy settings and cookie do not seed local sidebar preference'
+			);
+			const snapshot = () =>
+				evaluate(
+					sessionId,
+					`({ writes: window.settingsNative.writes.length,
+        status: document.querySelector('[data-settings-status]').ariaLabel })`
+				);
+			const before = await snapshot();
+			await click(sessionId, '[data-sidebar="header"] [data-sidebar="trigger"]');
+			await waitFor(
+				sessionId,
+				`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`
+			);
+			assert.equal(await evaluate(sessionId, `localStorage.getItem('sidebar:state')`), 'false');
+			assert.deepEqual(
+				await snapshot(),
+				before,
+				'collapse does not sync settings or change save status'
+			);
+			assert.equal(
+				await evaluate(sessionId, `document.cookie.includes('sidebar:state=false')`),
+				true,
+				'collapse does not replace the old cookie'
+			);
+			for (const route of ['settings', 'chat/maya', 'settings']) {
+				await send('Page.navigate', { url: `${origin}/app/${route}` }, sessionId);
+				await waitFor(
+					sessionId,
+					`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`
+				);
+			}
+			await click(sessionId, '[aria-label="Settings categories"] button:last-child');
+			assert.equal(
+				await evaluate(sessionId, `!!document.querySelector('#setting-layout-sidebar_open')`),
+				false
+			);
+			await search(sessionId, 'sidebar');
+			assert.equal(
+				await evaluate(sessionId, `document.querySelectorAll('[data-setting-row]').length`),
+				0
+			);
+			await search(sessionId, '');
+			for (const reset of ['app', 'all']) {
+				if (reset === 'app') await click(sessionId, '[aria-label="Reset settings"] > button');
+				else {
+					await click(sessionId, '[aria-label="More reset actions"]');
+					await click(sessionId, '[role="menuitem"]');
+				}
+				await evaluate(
+					sessionId,
+					`Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent === 'Reset to defaults').click()`
+				);
+				await waitFor(
+					sessionId,
+					`document.querySelector('[data-settings-status]').ariaLabel === 'Settings saved'`
+				);
+				await click(sessionId, '[data-alert-dialog-cancel]');
+				assert.equal(
+					await evaluate(sessionId, `localStorage.getItem('sidebar:state')`),
+					'false',
+					reset + ' reset preserves sidebar preference'
+				);
+				assert.equal(
+					await evaluate(sessionId, `document.querySelector('[data-collapsible]').dataset.state`),
+					'collapsed'
+				);
+			}
+			await evaluate(sessionId, `window.settingsNative.delay = 3000`);
+			await evaluate(
+				sessionId,
+				`Array.from(document.querySelectorAll('[data-setting-row="appearance.theme"] button')).find(button => button.textContent === 'Light').click()`
+			);
+			await waitFor(
+				sessionId,
+				`document.querySelector('[data-settings-status]').ariaLabel === 'Saving settings…'`
+			);
+			const pending = await snapshot();
+			await click(sessionId, '[data-sidebar="header"] [data-sidebar="trigger"]');
+			assert.deepEqual(await snapshot(), pending, 'expand does not enqueue a settings save');
+			assert.equal(await evaluate(sessionId, `localStorage.getItem('sidebar:state')`), 'true');
+			await waitFor(
+				sessionId,
+				`document.querySelector('[data-settings-status]').ariaLabel === 'Settings saved'`
+			);
+			await evaluate(
+				sessionId,
+				`window.settingsNative.delay = 0; window.settingsNative.fail = true`
+			);
+			await evaluate(
+				sessionId,
+				`Array.from(document.querySelectorAll('[data-setting-row="appearance.theme"] button')).find(button => button.textContent === 'Dark').click()`
+			);
+			await waitFor(
+				sessionId,
+				`document.querySelector('[data-settings-status]').ariaLabel === 'Save failed. Previous value restored.'`
+			);
+			const failed = await snapshot();
+			await click(sessionId, '[data-sidebar="header"] [data-sidebar="trigger"]');
+			assert.deepEqual(await snapshot(), failed, 'collapse leaves an existing save failure alone');
+			assert.equal(await evaluate(sessionId, `localStorage.getItem('sidebar:state')`), 'false');
+			assert.equal(
+				await evaluate(
+					sessionId,
+					`window.settingsNative.writes.every(value => !('layout' in value))`
+				),
+				true,
+				'settings writes omit the retired layout section'
+			);
+			await send('Page.reload', {}, sessionId);
+			await waitFor(
+				sessionId,
+				`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`
+			);
+			await click(sessionId, '[data-sidebar="footer"] [data-sidebar="menu-button"]');
+			await waitFor(sessionId, `!!document.querySelector('[role="menuitem"]')`);
+			await evaluate(
+				sessionId,
+				`Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent.trim() === 'Log out').click()`
+			);
+			await waitFor(sessionId, `location.pathname === '/'`);
+			assert.equal(
+				await evaluate(sessionId, `localStorage.getItem('sidebar:state')`),
+				'false',
+				'logout preserves the local sidebar preference'
+			);
+			await send('Page.navigate', { url: `${origin}/app/settings` }, sessionId);
+			await waitFor(
+				sessionId,
+				`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`
+			);
+			assert.deepEqual(exceptions.get(sessionId) ?? [], [], 'local sidebar browser errors');
 		}
 		console.log('PASS', test.name, JSON.stringify(layout));
 		await send('Target.closeTarget', { targetId });

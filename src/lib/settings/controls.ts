@@ -10,7 +10,7 @@ export const SETTINGS_CATEGORIES = [
 		label: 'Translation',
 		description: 'Read chat in your language.'
 	},
-	{ id: 'app', label: 'App', description: 'Appearance and the channel sidebar.' }
+	{ id: 'app', label: 'App', description: 'Appearance, diagnostics, and network preferences.' }
 ] as const;
 export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]['id'];
 type SettingPath = {
@@ -479,14 +479,6 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 		]
 	},
 	{
-		id: 'layout.sidebar_open',
-		path: 'layout.sidebar_open',
-		category: 'app',
-		label: 'Sidebar expanded',
-		description: 'Show channel names and stream details in the sidebar.',
-		kind: 'toggle'
-	},
-	{
 		id: 'diagnostics.capture_window_errors',
 		path: 'diagnostics.capture_window_errors',
 		category: 'app',
@@ -560,7 +552,6 @@ export function resetSettingsPatch(category: SettingsCategory | 'all'): Settings
 	if (category === 'app')
 		return {
 			appearance: defaults.appearance,
-			layout: defaults.layout,
 			diagnostics: defaults.diagnostics,
 			network: defaults.network,
 			providers: {
@@ -571,7 +562,6 @@ export function resetSettingsPatch(category: SettingsCategory | 'all'): Settings
 		};
 	return {
 		appearance: defaults.appearance,
-		layout: defaults.layout,
 		diagnostics: defaults.diagnostics,
 		chat: defaults.chat,
 		translation: defaults.translation,

@@ -116,18 +116,18 @@ describe('settings autosave', () => {
 		expect(test.state.result).toBe('saved');
 	});
 
-	it('rebases a queued sidebar change after a failed theme update', async () => {
+	it('rebases a queued emote change after a failed theme update', async () => {
 		const test = fixture();
 		test.initialize();
 		const theme = test.writer.update({ appearance: { theme: 'light' } });
-		const sidebar = test.writer.update({ layout: { sidebar_open: false } });
+		const emotes = test.writer.update({ emotes: { autocomplete_enabled: false } });
 		test.requests[0].reject(new Error('Disconnected'));
 		await theme;
 		expect(test.requests[1].value.appearance.theme).toBe('dark');
-		expect(test.requests[1].value.layout.sidebar_open).toBe(false);
+		expect(test.requests[1].value.emotes.autocomplete_enabled).toBe(false);
 		test.requests[1].resolve(true);
-		await sidebar;
-		expect(test.state.value.layout.sidebar_open).toBe(false);
+		await emotes;
+		expect(test.state.value.emotes.autocomplete_enabled).toBe(false);
 	});
 
 	it('rolls back to acknowledged values rather than initial defaults', async () => {
@@ -148,10 +148,10 @@ describe('settings autosave', () => {
 		const save = test.writer.update({ chat: { show_badges: false } });
 		const external = structuredClone(DEFAULT_APP_SETTINGS);
 		external.channel_cache.poll_interval_secs = 120;
-		external.layout.sidebar_open = false;
+		external.emotes.autocomplete_enabled = false;
 		test.writer.receive(external);
 		expect(test.state.value.chat.show_badges).toBe(false);
-		expect(test.state.value.layout.sidebar_open).toBe(false);
+		expect(test.state.value.emotes.autocomplete_enabled).toBe(false);
 		test.requests[0].resolve(true);
 		await save;
 		expect(test.state.value.channel_cache.poll_interval_secs).toBe(120);
