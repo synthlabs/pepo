@@ -448,6 +448,9 @@ pub struct ChatSettings {
     pub show_login_for_different_display_name: bool,
     pub use_display_names_in_mentions: bool,
     pub bold_mentions: bool,
+    pub user_card_close_on_unfocus: bool,
+    pub user_card_chrome: UserCardChrome,
+    pub user_card_placement: UserCardPlacement,
 }
 
 impl Default for ChatSettings {
@@ -473,8 +476,28 @@ impl Default for ChatSettings {
             show_login_for_different_display_name: true,
             use_display_names_in_mentions: false,
             bold_mentions: true,
+            user_card_close_on_unfocus: true,
+            user_card_chrome: UserCardChrome::Compact,
+            user_card_placement: UserCardPlacement::NearUsername,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum UserCardChrome {
+    #[default]
+    Compact,
+    Native,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum UserCardPlacement {
+    #[default]
+    NearUsername,
+    Centered,
+    Os,
 }
 
 impl ChatSettings {
@@ -1014,7 +1037,7 @@ impl From<twitch_api::helix::channels::ChannelInformation> for ChannelInfo {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+#[derive(Clone, Debug, Deserialize, Serialize, Type, PartialEq)]
 pub struct BadgeRef {
     /// An ID that identifies this set of chat badges. For example, Bits or Subscriber.
     pub set_id: String,
@@ -1239,6 +1262,24 @@ pub(crate) fn translation_input_from_fragments(fragments: &[message::Fragment]) 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn user_card_preferences_default_and_preserve_explicit_choices() {
+        let defaults: super::ChatSettings = serde_json::from_str("{}").unwrap();
+        assert!(defaults.user_card_close_on_unfocus);
+        assert_eq!(defaults.user_card_chrome, super::UserCardChrome::Compact);
+        assert_eq!(
+            defaults.user_card_placement,
+            super::UserCardPlacement::NearUsername
+        );
+        let saved: super::ChatSettings = serde_json::from_value(serde_json::json!({
+            "user_card_close_on_unfocus": false, "user_card_chrome": "native", "user_card_placement": "os"
+        })).unwrap();
+        let round_trip: super::ChatSettings =
+            serde_json::from_value(serde_json::to_value(saved).unwrap()).unwrap();
+        assert!(!round_trip.user_card_close_on_unfocus);
+        assert_eq!(round_trip.user_card_chrome, super::UserCardChrome::Native);
+        assert_eq!(round_trip.user_card_placement, super::UserCardPlacement::Os);
+    }
     #[test]
     fn username_preferences_default_and_round_trip_without_a_schema_change() {
         let defaults: super::ChatSettings = serde_json::from_str("{}").unwrap();

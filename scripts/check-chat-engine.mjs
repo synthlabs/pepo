@@ -699,6 +699,7 @@ export class SyncedState {
   }
 }
 export const commands = {
+  async openUserCard(target) { (native.cardRequests ??= []).push(target); return { status: 'ok', data: null }; },
   async getChatFeedContext() { return { status: 'ok', data: { epoch: 'browser-page' } }; },
   async subscribeChat(channel, request, sink) {
     if (native.resolutionErrors[channel]) return { status: 'error', error: native.resolutionErrors[channel] };
@@ -1213,6 +1214,34 @@ try {
 		assert.equal(await evaluate(sessionId, '!!document.querySelector("[role=dialog]")'), false);
 		await evaluate(sessionId, 'document.activeElement.click()');
 		assert.equal(await evaluate(sessionId, 'window.usernameActivations'), 3);
+		const mentionCards = await evaluate(sessionId, 'window.chatNative.cardRequests');
+		assert.equal(
+			mentionCards.length,
+			3,
+			'mouse, Enter and Space each open the mentioned user card'
+		);
+		assert(
+			mentionCards.every(
+				(target) =>
+					target.user_id === 'maya-id' &&
+					target.login === 'maya' &&
+					target.channel_login === 'usernames'
+			)
+		);
+		await evaluate(
+			sessionId,
+			`document.querySelector('[data-chat-username="author"]').click(); document.querySelector('[data-chat-username="system"]').click();`
+		);
+		const allCards = await evaluate(sessionId, 'window.chatNative.cardRequests');
+		assert.equal(allCards.length, 5, 'author and system references also open user cards');
+		assert(
+			allCards.every(
+				(target) =>
+					target.channel_id === 'usernames' &&
+					Number.isFinite(target.anchor.x) &&
+					target.anchor.width > 0
+			)
+		);
 		assert.equal(await evaluate(sessionId, 'location.pathname'), '/app/chat/usernames');
 		const usernameShot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
 		await writeFile(

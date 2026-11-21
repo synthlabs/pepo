@@ -49,6 +49,11 @@ use network::{
 mod platform;
 mod token;
 mod types;
+mod usercard;
+use usercard::{
+    get_user_card_state, open_user_card, ready_user_card, refresh_user_card, set_user_card_pinned,
+    UserCardRuntime,
+};
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, specta::Type)]
 struct InternalState {
@@ -249,6 +254,11 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             begin_background_request,
             end_background_request,
             retry_network_operation,
+            open_user_card,
+            get_user_card_state,
+            ready_user_card,
+            set_user_card_pinned,
+            refresh_user_card,
         ])
         .events(tauri_specta::collect_events![])
 }
@@ -1601,7 +1611,11 @@ pub fn run() {
             app.emit("single-instance", argv).unwrap();
         }))
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_window_state::Builder::new().build());
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_filter(|label| label == "main")
+                .build(),
+        );
 
     let builder = internal::apply_plugins(builder, internal_build);
     let builder = builder.on_page_load(|webview, payload| {
@@ -1652,6 +1666,7 @@ pub fn run() {
             state_syncer.set(APP_SETTINGS_KEY, settings.clone());
             app.manage(state_syncer.clone());
             app.manage(NetworkRuntime::default());
+            app.manage(UserCardRuntime::default());
             let catalog_app = app.handle().clone();
             let gate: synth_translate::CatalogRequestGate = Arc::new(move || {
                 let app = catalog_app.clone();
@@ -1744,6 +1759,12 @@ pub fn run() {
                 let focus_app = app.handle().clone();
                 let owner = window.label().to_owned();
                 window.on_window_event(move |event| {
+                    if matches!(
+                        event,
+                        WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed
+                    ) {
+                        focus_app.state::<UserCardRuntime>().close_all(&focus_app);
+                    }
                     if matches!(event, WindowEvent::Destroyed) {
                         focus_app.state::<NetworkRuntime>().release_owner(&owner);
                         if let Ok(engine) = focus_app.state::<ChatRuntime>().current() {

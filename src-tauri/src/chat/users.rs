@@ -1,5 +1,5 @@
 use super::timeline::{ChatTimelineEntry, SystemMessageSegment};
-use crate::message::Fragment;
+use crate::{message::Fragment, types::BadgeRef};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 
@@ -28,6 +28,34 @@ pub enum UserDirectoryUpdate {
 struct Entry {
     user: ObservedUser,
     observed: u64,
+    profile_image_url: Option<String>,
+    badges: HashMap<String, Vec<BadgeRef>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CachedUser {
+    pub user: ObservedUser,
+    pub profile_image_url: Option<String>,
+    pub badges: Option<Vec<BadgeRef>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct UserProfile {
+    pub user_id: String,
+    pub login: String,
+    pub display_name: String,
+    pub profile_image_url: Option<String>,
+}
+
+impl From<twitch_api::helix::users::User> for UserProfile {
+    fn from(user: twitch_api::helix::users::User) -> Self {
+        Self {
+            user_id: user.id.to_string(),
+            login: user.login.to_string(),
+            display_name: user.display_name.to_string(),
+            profile_image_url: user.profile_image_url,
+        }
+    }
 }
 
 pub struct UserDirectory {
@@ -51,6 +79,45 @@ impl Default for UserDirectory {
 }
 
 impl UserDirectory {
+    pub fn clock(&self) -> u64 {
+        self.clock
+    }
+
+    pub fn get(&self, id: Option<&str>, login: &str, channel: &str) -> Option<CachedUser> {
+        let id = id.or_else(|| {
+            self.logins
+                .get(&login.to_ascii_lowercase())
+                .map(String::as_str)
+        })?;
+        let entry = self.users.get(id)?;
+        Some(CachedUser {
+            user: entry.user.clone(),
+            profile_image_url: entry.profile_image_url.clone(),
+            badges: entry.badges.get(channel).cloned(),
+        })
+    }
+
+    pub fn observe_profile(&mut self, profile: UserProfile, started: u64) -> UserDirectoryUpdate {
+        let mut removed = Vec::new();
+        let newer = self
+            .users
+            .get(&profile.user_id)
+            .filter(|entry| entry.observed > started);
+        let (login, name) = newer
+            .map(|entry| (entry.user.login.clone(), entry.user.display_name.clone()))
+            .unwrap_or((profile.login, profile.display_name));
+        self.record(&profile.user_id, &login, &name, None, true, &mut removed);
+        let entry = self
+            .users
+            .get_mut(&profile.user_id)
+            .expect("profile identity was recorded");
+        entry.profile_image_url = profile.profile_image_url;
+        UserDirectoryUpdate::Delta {
+            upserts: vec![entry.user.clone()],
+            removed,
+        }
+    }
+
     pub fn snapshot(&self) -> UserDirectoryUpdate {
         UserDirectoryUpdate::Snapshot {
             users: self
@@ -152,6 +219,17 @@ impl UserDirectory {
                 }
             }
         }
+        drop(record);
+        if let ChatTimelineEntry::Chat(message) = entry {
+            if let Some(author) = self.users.get_mut(&message.chatter_user_id) {
+                if author.badges.get(&message.broadcaster_user_id) != Some(&message.badges) {
+                    author
+                        .badges
+                        .insert(message.broadcaster_user_id.clone(), message.badges.clone());
+                    changed.insert(author.user.user_id.clone(), author.user.clone());
+                }
+            }
+        }
         changed.retain(|id, _| self.users.contains_key(id));
         removed.retain(|id| !self.users.contains_key(id));
         if changed.is_empty() && removed.is_empty() {
@@ -226,6 +304,10 @@ impl UserDirectory {
             Entry {
                 user: user.clone(),
                 observed: self.clock,
+                profile_image_url: previous
+                    .as_ref()
+                    .and_then(|entry| entry.profile_image_url.clone()),
+                badges: previous.map(|entry| entry.badges).unwrap_or_default(),
             },
         );
         while self.users.len() > self.limit {
@@ -246,6 +328,119 @@ impl UserDirectory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn badge_observations_are_channel_scoped_and_replace_the_complete_previous_set() {
+        let mut directory = UserDirectory::default();
+        let mut first = message("a", "one", "1", "Maya");
+        first.badges = vec![BadgeRef {
+            set_id: "moderator".into(),
+            id: "1".into(),
+            info: String::new(),
+            badge: Default::default(),
+        }];
+        directory.observe(&ChatTimelineEntry::Chat(first));
+        assert_eq!(
+            directory.get(Some("1"), "1", "a").unwrap().badges.unwrap()[0].set_id,
+            "moderator"
+        );
+        assert!(directory.get(Some("1"), "1", "b").unwrap().badges.is_none());
+        directory.observe(&ChatTimelineEntry::Chat(message("b", "two", "1", "Maya")));
+        assert_eq!(
+            directory
+                .get(Some("1"), "1", "a")
+                .unwrap()
+                .badges
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(directory
+            .get(Some("1"), "1", "b")
+            .unwrap()
+            .badges
+            .unwrap()
+            .is_empty());
+        directory.observe(&ChatTimelineEntry::Chat(message("a", "three", "1", "Maya")));
+        assert!(directory
+            .get(Some("1"), "1", "a")
+            .unwrap()
+            .badges
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn card_profiles_enrich_identity_without_overwriting_newer_chat_or_badges() {
+        let mut directory = UserDirectory::default();
+        let started = directory.clock();
+        let incoming = message("room", "one", "1", "Newest");
+        directory.observe(&ChatTimelineEntry::Chat(incoming));
+        directory.observe_profile(
+            UserProfile {
+                user_id: "1".into(),
+                login: "stale".into(),
+                display_name: "Stale".into(),
+                profile_image_url: Some("https://example.com/avatar.png".into()),
+            },
+            started,
+        );
+        let cached = directory.get(Some("1"), "1", "room").unwrap();
+        assert_eq!(cached.user.display_name, "Newest");
+        assert_eq!(cached.user.color.as_deref(), Some("#123456"));
+        assert_eq!(
+            cached.profile_image_url.as_deref(),
+            Some("https://example.com/avatar.png")
+        );
+        assert_eq!(cached.badges, Some(vec![]));
+        assert!(directory
+            .get(Some("1"), "1", "other")
+            .unwrap()
+            .badges
+            .is_none());
+    }
+
+    #[test]
+    fn card_observations_publish_without_adding_history_and_clear_on_logout() {
+        use crate::chat::{ChatEngine, FeedEvent, FeedScope};
+        let engine = ChatEngine::new(Default::default());
+        let feed = engine.subscribe(FeedScope::Channel("room".into()));
+        feed.poll();
+        engine.observe_user_profile(
+            UserProfile {
+                user_id: "1".into(),
+                login: "maya".into(),
+                display_name: "마야".into(),
+                profile_image_url: Some("avatar".into()),
+            },
+            0,
+        );
+        let frames = feed.poll();
+        assert_eq!(frames.len(), 1);
+        assert!(matches!(frames[0].event, FeedEvent::Users));
+        assert!(frames[0].cursor > 0);
+        assert!(engine.history("room").is_empty());
+        assert_eq!(
+            engine
+                .cached_user(None, "MAYA", "room")
+                .unwrap()
+                .user
+                .user_id,
+            "1"
+        );
+        engine.shutdown();
+        engine.observe_user_profile(
+            UserProfile {
+                user_id: "2".into(),
+                login: "late".into(),
+                display_name: "Late".into(),
+                profile_image_url: None,
+            },
+            0,
+        );
+        assert!(engine.cached_user(None, "maya", "room").is_none());
+        assert!(engine.cached_user(None, "late", "room").is_none());
+    }
 
     fn message(channel: &str, id: &str, author: &str, name: &str) -> crate::types::ChannelMessage {
         serde_json::from_value(serde_json::json!({

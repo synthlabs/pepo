@@ -468,7 +468,7 @@ describe('settings page', () => {
 		await session.dispose();
 	});
 	it('starts with Chat essentials and searches editable collapsed controls and choice labels', async () => {
-		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(6);
+		expect(document.querySelectorAll('[data-setting-row]')).toHaveLength(7);
 		expect(document.querySelector('[data-setting-row="translation.layout"]')).toBeNull();
 		await search('connector');
 		const select = element<HTMLSelectElement>('#setting-translation-layout');

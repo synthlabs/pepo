@@ -38,6 +38,40 @@ const translationMore = { category: 'translation', more: true } as const;
 
 export const SETTINGS_CONTROLS: SettingControl[] = [
 	{
+		id: 'chat.user_card_close_on_unfocus',
+		path: 'chat.user_card_close_on_unfocus',
+		category: 'chat',
+		label: 'Close user cards on unfocus',
+		description: 'Close a user card when you leave it. Pin an individual card to keep it open.',
+		kind: 'toggle'
+	},
+	{
+		...chatMore,
+		id: 'chat.user_card_chrome',
+		path: 'chat.user_card_chrome',
+		label: 'User-card window style',
+		description: 'Choose compact controls or a native title bar for new user cards.',
+		kind: 'select',
+		options: [
+			{ value: 'compact', label: 'Compact' },
+			{ value: 'native', label: 'Native' }
+		]
+	},
+	{
+		...chatMore,
+		id: 'chat.user_card_placement',
+		path: 'chat.user_card_placement',
+		label: 'User-card placement',
+		description:
+			'Place new cards near the username, centered over Pepo, or let the desktop decide. Wayland uses desktop placement.',
+		kind: 'select',
+		options: [
+			{ value: 'near_username', label: 'Near username' },
+			{ value: 'centered', label: 'Centered over Pepo' },
+			{ value: 'os', label: 'Desktop placement' }
+		]
+	},
+	{
 		...chatMore,
 		id: 'chat.show_login_for_different_display_name',
 		path: 'chat.show_login_for_different_display_name',

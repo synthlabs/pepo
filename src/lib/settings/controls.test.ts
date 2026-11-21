@@ -15,6 +15,30 @@ import {
 } from './controls';
 
 describe('settings controls', () => {
+	it('defaults, searches, resets, and persists user-card behavior settings', async () => {
+		const defaults = {
+			user_card_close_on_unfocus: true,
+			user_card_chrome: 'compact',
+			user_card_placement: 'near_username'
+		};
+		const legacy = JSON.parse(JSON.stringify(DEFAULT_APP_SETTINGS));
+		for (const key of Object.keys(defaults)) delete legacy.chat[key];
+		expect(normalizeAppSettings(legacy).chat).toMatchObject(defaults);
+		const patch = {
+			user_card_close_on_unfocus: false,
+			user_card_chrome: 'native',
+			user_card_placement: 'os'
+		} as const;
+		const saved = normalizeAppSettings(applySettingsPatch(DEFAULT_APP_SETTINGS, { chat: patch }));
+		expect(saved.chat).toMatchObject(patch);
+		for (const key of Object.keys(defaults)) {
+			const control = SETTINGS_CONTROLS.find((control) => control.id === `chat.${key}`)!;
+			expect(matchingControls(control.label)).toContain(control);
+			expect(control.more ?? false).toBe(key !== 'user_card_close_on_unfocus');
+		}
+		for (const category of ['chat', 'all'] as const)
+			expect(resetSettingsPatch(category).chat).toMatchObject(defaults);
+	});
 	it('defaults, searches, resets, and persists the three extra username controls', async () => {
 		const defaults = {
 			show_login_for_different_display_name: true,

@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import type { SystemMessage, ChatSettings } from '$lib/bindings';
 	import Username from './username.svelte';
+	import type { UsernameActivation } from '$lib/chat/username';
 	import Info from '@lucide/svelte/icons/info';
 	import Shield from '@lucide/svelte/icons/shield';
 	import Clock from '@lucide/svelte/icons/clock';
@@ -18,13 +19,15 @@
 		centered = false,
 		showBackground = false,
 		timestamp,
-		settings
+		settings,
+		onactivate
 	}: {
 		message: SystemMessage;
 		centered?: boolean;
 		showBackground?: boolean;
 		timestamp?: Snippet;
 		settings?: ChatSettings;
+		onactivate?: (target: UsernameActivation) => void;
 	} = $props();
 	const icons = {
 		info: Info,
@@ -72,6 +75,7 @@
 					login={segment.login}
 					displayName={segment.display_name}
 					kind="system"
+					{onactivate}
 					channelId={message.broadcaster_user_id}
 					channelLogin={message.broadcaster_user_login}
 					{settings}

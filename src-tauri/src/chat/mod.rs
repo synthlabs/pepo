@@ -134,6 +134,35 @@ pub struct ChatEngine {
 }
 
 impl ChatEngine {
+    pub fn changes(&self) -> watch::Receiver<u64> {
+        self.changed.subscribe()
+    }
+
+    pub fn cached_user(
+        &self,
+        id: Option<&str>,
+        login: &str,
+        channel: &str,
+    ) -> Option<users::CachedUser> {
+        self.state.lock().unwrap().users.get(id, login, channel)
+    }
+
+    pub fn user_cache_clock(&self) -> u64 {
+        self.state.lock().unwrap().users.clock()
+    }
+
+    pub fn observe_user_profile(&self, profile: users::UserProfile, started: u64) {
+        let mut state = self.state.lock().unwrap();
+        if !state.active {
+            return;
+        }
+        let update = state.users.observe_profile(profile, started);
+        state.cursor += 1;
+        state.publish_with_users("", FeedEvent::Users, Some(update));
+        drop(state);
+        self.wake();
+    }
+
     pub fn new(settings: ChatSettings) -> Arc<Self> {
         let (changed, _) = watch::channel(0);
         Arc::new(Self {

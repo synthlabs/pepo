@@ -37,6 +37,9 @@ impl ChatRuntime {
         engine
     }
     pub fn stop(&self, app: &AppHandle) {
+        if let Some(cards) = app.try_state::<crate::usercard::UserCardRuntime>() {
+            cards.close_all(app);
+        }
         if let Some(engine) = self.session.lock().unwrap().take() {
             engine.shutdown();
         }

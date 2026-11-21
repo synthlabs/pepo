@@ -4,6 +4,7 @@
 	import HistoryDivider from '$lib/components/chat/history-divider.svelte';
 	import SystemMessageRow from '$lib/components/chat/system-message.svelte';
 	import Username from '$lib/components/chat/username.svelte';
+	import { openUserCard } from '$lib/chat/user-card';
 	import { formatUsername } from '$lib/chat/username';
 	import { userDirectory } from '$lib/chat/users.svelte';
 	import { openRoomFeed } from '$lib/chat/feed';
@@ -583,6 +584,7 @@
 						{#if msg.kind === 'system'}
 							<SystemMessageRow
 								message={msg}
+								onactivate={openUserCard}
 								settings={chatSettings}
 								centered={chatSettings.center_system_messages}
 								showBackground={chatSettings.show_system_message_background}
@@ -617,6 +619,7 @@
 											displayName={msg.chatter_user_name}
 											color={msg.color}
 											kind="author"
+											onactivate={openUserCard}
 											channelId={msg.broadcaster_user_id}
 											channelLogin={msg.broadcaster_user_login}
 											settings={chatSettings}
@@ -632,6 +635,7 @@
 												displayName={fragment.Mention.display_name}
 												originalText={fragment.Mention.text}
 												kind="mention"
+												onactivate={openUserCard}
 												channelId={msg.broadcaster_user_id}
 												channelLogin={msg.broadcaster_user_login}
 												settings={chatSettings}

@@ -28,7 +28,10 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 		moderation_notices_enabled: true,
 		show_login_for_different_display_name: true,
 		use_display_names_in_mentions: false,
-		bold_mentions: true
+		bold_mentions: true,
+		user_card_close_on_unfocus: true,
+		user_card_chrome: 'compact',
+		user_card_placement: 'near_username'
 	},
 	translation: {
 		enabled: false,
@@ -163,6 +166,15 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 					? chat.use_display_names_in_mentions
 					: false,
 			bold_mentions: typeof chat.bold_mentions === 'boolean' ? chat.bold_mentions : true,
+			user_card_close_on_unfocus:
+				typeof chat.user_card_close_on_unfocus === 'boolean'
+					? chat.user_card_close_on_unfocus
+					: true,
+			user_card_chrome: chat.user_card_chrome === 'native' ? 'native' : 'compact',
+			user_card_placement:
+				chat.user_card_placement === 'centered' || chat.user_card_placement === 'os'
+					? chat.user_card_placement
+					: 'near_username',
 			show_history_divider: chat.show_history_divider ?? true,
 			center_system_messages:
 				typeof chat.center_system_messages === 'boolean' ? chat.center_system_messages : false,

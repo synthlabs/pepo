@@ -10,6 +10,9 @@
 	import { withBackgroundRequest } from '$lib/network/request';
 	import { errorDetails } from '$utils/inbound';
 	import { appSettings, getNormalizedAppSettings } from '$lib/stores/settings.svelte';
+	import { getCurrentWindow } from '@tauri-apps/api/window';
+	import isTauri from '$lib/tauri';
+	import { appErrors } from '$lib/errors/controller';
 
 	let { children } = $props();
 	let normalizedAppSettings = $derived(getNormalizedAppSettings());
@@ -25,11 +28,24 @@
 
 	$effect(() => {
 		if (!appSettings.ready || typeof document === 'undefined') return;
+		if (isTauri) {
+			const current = getCurrentWindow();
+			if (current.label.startsWith('user-card-')) {
+				const theme = normalizedAppSettings.appearance.theme;
+				void current.setTheme(theme === 'system' ? null : theme).catch((error) =>
+					appErrors.capture(error, {
+						source: 'user-card.theme',
+						title: 'Could not update window theme'
+					})
+				);
+			}
+		}
 
 		return applyThemePreference(normalizedAppSettings.appearance.theme);
 	});
 
 	onMount(() => {
+		if (isTauri && getCurrentWindow().label !== 'main') return;
 		const abort = new AbortController();
 		void (async () => {
 			await appSettings.initialized;
