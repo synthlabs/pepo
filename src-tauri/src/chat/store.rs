@@ -227,6 +227,7 @@ pub fn estimated_message_bytes(m: &ChannelMessage) -> usize {
             &m.broadcaster_user_login,
             &m.chatter_user_id,
             &m.chatter_user_name,
+            &m.chatter_user_login,
             &m.message_id,
             &m.text,
             &m.color,
@@ -237,6 +238,11 @@ pub fn estimated_message_bytes(m: &ChannelMessage) -> usize {
         bytes += match fragment {
             Fragment::Text(f) => f.text.capacity(),
             Fragment::Cheer(f) => f.text.capacity(),
+            Fragment::Mention(f) => {
+                strings(&[&f.text, &f.login])
+                    + f.user_id.as_ref().map_or(0, String::capacity)
+                    + f.display_name.as_ref().map_or(0, String::capacity)
+            }
             Fragment::Emote(f) => {
                 let e = &f.emote;
                 strings(&[

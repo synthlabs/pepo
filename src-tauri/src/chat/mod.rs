@@ -6,6 +6,7 @@ pub mod runtime;
 pub mod store;
 pub mod timeline;
 pub mod translation;
+pub mod users;
 
 use crate::types::{ChannelMessage, ChannelMessageTranslationUpdate, ChatRoomInfo, ChatSettings};
 use admission::{retry_delay, RoomFailure};
@@ -43,6 +44,7 @@ struct FeedOwner {
 #[derive(Clone, Debug, Serialize, specta::Type)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FeedEvent {
+    Users,
     Moderation {
         event: moderation::ModerationEvent,
     },
@@ -71,6 +73,8 @@ pub enum FeedEvent {
 pub struct FeedFrame {
     pub cursor: u64,
     pub event: FeedEvent,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub users: Option<users::UserDirectoryUpdate>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, specta::Type, PartialEq, Eq)]
@@ -121,6 +125,7 @@ pub struct EngineState {
     notices: notices::Subscriptions,
     notice_ids: notices::RecentIds,
     moderation_ids: notices::RecentIds,
+    users: users::UserDirectory,
 }
 
 pub struct ChatEngine {
@@ -149,6 +154,7 @@ impl ChatEngine {
                 notices: notices::Subscriptions::default(),
                 notice_ids: notices::RecentIds::default(),
                 moderation_ids: notices::RecentIds::default(),
+                users: users::UserDirectory::default(),
             }),
             changed,
         })
@@ -243,6 +249,7 @@ impl ChatEngine {
         if let FeedScope::Channel(login) = &scope {
             queue.push_back(Arc::new(FeedFrame {
                 cursor: s.cursor,
+                users: Some(s.users.snapshot()),
                 event: FeedEvent::Snapshot {
                     messages: s.repository.history(login),
                 },
@@ -250,6 +257,7 @@ impl ChatEngine {
             if let Some(failure) = s.failures.get(login) {
                 queue.push_back(Arc::new(FeedFrame {
                     cursor: s.cursor,
+                    users: None,
                     event: FeedEvent::Unavailable {
                         error: failure.reason.clone(),
                     },
@@ -409,6 +417,7 @@ impl ChatEngine {
         s.active = false;
         s.translations.shutdown();
         s.repository.clear();
+        s.users = users::UserDirectory::default();
         s.subscribers.clear();
         s.leases.clear();
         s.directory.clear();
@@ -442,6 +451,7 @@ impl EngineState {
         }
         let login = message.login().to_lowercase();
         message.set_index(self.cursor + 1);
+        self.users.enrich(&mut message);
         let Some(message) = self.repository.insert(message) else {
             return false;
         };
@@ -449,7 +459,8 @@ impl EngineState {
         if let Some(chat) = message.as_chat() {
             self.translations.admit(chat, true);
         }
-        self.publish(&login, FeedEvent::Message { message });
+        let users = self.users.observe(&message);
+        self.publish_with_users(&login, FeedEvent::Message { message }, users);
         true
     }
 
@@ -492,14 +503,35 @@ impl EngineState {
         self.publish(login, FeedEvent::Unavailable { error });
     }
     fn publish(&mut self, login: &str, event: FeedEvent) {
+        self.publish_with_users(login, event, None);
+    }
+
+    fn publish_with_users(
+        &mut self,
+        login: &str,
+        event: FeedEvent,
+        users: Option<users::UserDirectoryUpdate>,
+    ) {
+        let metadata = users.as_ref().map(|users| {
+            Arc::new(FeedFrame {
+                cursor: self.cursor,
+                event: FeedEvent::Users,
+                users: Some(users.clone()),
+            })
+        });
         let frame = Arc::new(FeedFrame {
             cursor: self.cursor,
             event,
+            users,
         });
         for subscriber in self.subscribers.values_mut() {
-            if matches!(&subscriber.scope, FeedScope::Channel(channel) if channel != login) {
-                continue;
-            }
+            let delivery = if matches!(&subscriber.scope, FeedScope::Channel(channel) if channel != login)
+            {
+                let Some(metadata) = &metadata else { continue };
+                metadata
+            } else {
+                &frame
+            };
             if subscriber.lagged {
                 continue;
             }
@@ -507,7 +539,7 @@ impl EngineState {
                 subscriber.queue.clear();
                 subscriber.lagged = true;
             } else {
-                subscriber.queue.push_back(frame.clone());
+                subscriber.queue.push_back(delivery.clone());
             }
         }
     }
@@ -552,6 +584,7 @@ impl FeedSubscription {
                 sub.queue.push_back(Arc::new(FeedFrame {
                     cursor: s.cursor,
                     event,
+                    users: Some(s.users.snapshot()),
                 }));
             }
             while sub.in_flight.len() < DELIVERY_WINDOW {

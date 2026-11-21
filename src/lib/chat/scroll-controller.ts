@@ -75,11 +75,11 @@ export class ChatScrollController {
 		window.addEventListener('pointerup', this.handleScrollbarPointerEnd);
 	}
 
-	beforeContentChange(kind: 'append' | 'trim' | 'translation'): boolean {
+	beforeContentChange(kind: 'append' | 'trim' | 'translation' | 'username'): boolean {
 		const shouldRestore =
 			!this.disposed &&
 			!this.interacting &&
-			(kind === 'translation' || !this.resumingToBottom) &&
+			(kind === 'translation' || kind === 'username' || !this.resumingToBottom) &&
 			(kind !== 'trim' || this.viewport !== undefined);
 		if (shouldRestore && this.viewport && !this.pinned) {
 			this.pendingScrollSnapshot = getPinnedBatchScrollSnapshot(

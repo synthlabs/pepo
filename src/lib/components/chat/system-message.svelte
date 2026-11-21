@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import type { SystemMessage } from '$lib/bindings';
+	import type { SystemMessage, ChatSettings } from '$lib/bindings';
+	import Username from './username.svelte';
 	import Info from '@lucide/svelte/icons/info';
 	import Shield from '@lucide/svelte/icons/shield';
 	import Clock from '@lucide/svelte/icons/clock';
@@ -16,12 +17,14 @@
 		message,
 		centered = false,
 		showBackground = false,
-		timestamp
+		timestamp,
+		settings
 	}: {
 		message: SystemMessage;
 		centered?: boolean;
 		showBackground?: boolean;
 		timestamp?: Snippet;
+		settings?: ChatSettings;
 	} = $props();
 	const icons = {
 		info: Info,
@@ -64,9 +67,15 @@
 		{#each message.segments as segment, i (i)}
 			{#if segment.type === 'text'}{segment.text}{:else if segment.type === 'emphasis'}<strong
 					>{segment.text}</strong
-				>{:else if segment.type === 'user'}<strong data-system-user-id={segment.user_id}
-					>{segment.display_name}</strong
-				>{:else if segment.type === 'link'}
+				>{:else if segment.type === 'user'}<Username
+					userId={segment.user_id}
+					login={segment.login}
+					displayName={segment.display_name}
+					kind="system"
+					channelId={message.broadcaster_user_id}
+					channelLogin={message.broadcaster_user_login}
+					{settings}
+				/>{:else if segment.type === 'link'}
 				{@const url = systemMessageLink(segment.url)}
 				{#if url}<a
 						href={url}

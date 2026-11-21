@@ -3,9 +3,12 @@
 	import { quadInOut } from 'svelte/easing';
 	import HistoryDivider from '$lib/components/chat/history-divider.svelte';
 	import SystemMessageRow from '$lib/components/chat/system-message.svelte';
+	import Username from '$lib/components/chat/username.svelte';
+	import { formatUsername } from '$lib/chat/username';
+	import { userDirectory } from '$lib/chat/users.svelte';
 	import { openRoomFeed } from '$lib/chat/feed';
 	import { showDividerAfter, type HistoryBoundary } from '$lib/chat/history-boundary';
-	import { onDestroy, onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { MediaQuery, SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import {
 		commands,
@@ -138,6 +141,20 @@
 			messageHistory.resume();
 			scheduleHistoryTranslations();
 		}
+	});
+	const usernameLayout = $derived(
+		[
+			chatSettings.show_login_for_different_display_name,
+			chatSettings.use_display_names_in_mentions,
+			chatSettings.bold_mentions,
+			userDirectory.revision
+		].join(':')
+	);
+	$effect.pre(() => {
+		void usernameLayout;
+		untrack(() => {
+			if (scrollController.beforeContentChange('username')) scrollController.afterContentChange();
+		});
 	});
 
 	onMount(async () => {
@@ -566,6 +583,7 @@
 						{#if msg.kind === 'system'}
 							<SystemMessageRow
 								message={msg}
+								settings={chatSettings}
 								centered={chatSettings.center_system_messages}
 								showBackground={chatSettings.show_system_message_background}
 							>
@@ -593,13 +611,31 @@
 										<span aria-hidden="true"> </span>
 									{/if}
 									<span class="whitespace-nowrap">
-										<span style="color: {msg.color}; font-weight: 700;"
-											>{msg.chatter_user_name}</span
-										>:&#32;
+										<Username
+											userId={msg.chatter_user_id}
+											login={msg.chatter_user_login ?? ''}
+											displayName={msg.chatter_user_name}
+											color={msg.color}
+											kind="author"
+											channelId={msg.broadcaster_user_id}
+											channelLogin={msg.broadcaster_user_login}
+											settings={chatSettings}
+										/>:&#32;
 									</span>
 									{#each msg.fragments as fragment, i (i)}
 										{#if 'Text' in fragment}
 											{fragment.Text.text}
+										{:else if 'Mention' in fragment}
+											<Username
+												userId={fragment.Mention.user_id}
+												login={fragment.Mention.login}
+												displayName={fragment.Mention.display_name}
+												originalText={fragment.Mention.text}
+												kind="mention"
+												channelId={msg.broadcaster_user_id}
+												channelLogin={msg.broadcaster_user_login}
+												settings={chatSettings}
+											/>
 										{:else if 'Emote' in fragment && fragment.Emote !== undefined && fragment.Emote.emote !== undefined}
 											{#if chatSettings.show_emotes}
 												<Emote
@@ -624,7 +660,11 @@
 										{@render translationPrefix(msg, normalizedAppSettings.translation.layout)}
 										<Translation
 											translation={msg.translation}
-											authorName={msg.chatter_user_name}
+											authorName={formatUsername(
+												msg.chatter_user_name,
+												msg.chatter_user_login ?? '',
+												chatSettings.show_login_for_different_display_name
+											)}
 											layout={normalizedAppSettings.translation.layout}
 										/>
 									</div>

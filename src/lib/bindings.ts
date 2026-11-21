@@ -252,58 +252,63 @@ is_branded_content: boolean;
  * Profile image URL of the broadcaster
  */
 profile_image_url?: string }
-export type ChannelMessage = { ts: string; 
-/**
- * The broadcaster user ID.
- */
-broadcaster_user_id: string; 
-/**
- * The broadcaster display name.
- */
-broadcaster_user_name: string; 
-/**
- * The broadcaster login.
- */
-broadcaster_user_login: string; 
-/**
- * The user ID of the user that sent the message.
- */
-chatter_user_id: string; 
-/**
- * The user name of the user that sent the message.
- */
-chatter_user_name: string; 
-/**
- * A UUID that identifies the message.
- */
-message_id: string; text: string; 
-/**
- * The parsed fragments of the text field for rendering
- */
-fragments: Fragment[]; 
-/**
- * The type of message.
- */
-message_type: ChannelMessageType; 
-/**
- * List of chat badges.
- */
-badges: BadgeRef[]; 
-/**
- * Metadata if this message is a cheer.
- * The color of the user's name in the chat room.
- * This is a hexadecimal RGB color code in the form, `#<RGB>`.
- * This may be empty if it is never set.
- */
-color: string; 
-/**
- * Translated message text when available.
- */
-translation: ChannelMessageTranslation | null; 
-/**
- * Session event position used for message identity and history boundaries.
- */
-index: number; channel_sequence: number }
+export type ChannelMessage = {
+	ts: string;
+	/**
+	 * The broadcaster user ID.
+	 */
+	broadcaster_user_id: string;
+	/**
+	 * The broadcaster display name.
+	 */
+	broadcaster_user_name: string;
+	/**
+	 * The broadcaster login.
+	 */
+	broadcaster_user_login: string;
+	/**
+	 * The user ID of the user that sent the message.
+	 */
+	chatter_user_id: string;
+	/**
+	 * The user name of the user that sent the message.
+	 */
+	chatter_user_name: string;
+	chatter_user_login?: string;
+	/**
+	 * A UUID that identifies the message.
+	 */
+	message_id: string;
+	text: string;
+	/**
+	 * The parsed fragments of the text field for rendering
+	 */
+	fragments: Fragment[];
+	/**
+	 * The type of message.
+	 */
+	message_type: ChannelMessageType;
+	/**
+	 * List of chat badges.
+	 */
+	badges: BadgeRef[];
+	/**
+	 * Metadata if this message is a cheer.
+	 * The color of the user's name in the chat room.
+	 * This is a hexadecimal RGB color code in the form, `#<RGB>`.
+	 * This may be empty if it is never set.
+	 */
+	color: string;
+	/**
+	 * Translated message text when available.
+	 */
+	translation: ChannelMessageTranslation | null;
+	/**
+	 * Session event position used for message identity and history boundaries.
+	 */
+	index: number;
+	channel_sequence: number;
+};
 export type ChannelMessageTranslation = { source_language: string; target_language: string; translated_text: string }
 export type ChannelMessageTranslationUpdate = { message_id: string; translation: ChannelMessageTranslation }
 export type ChannelMessageType = 
@@ -343,7 +348,7 @@ export type ChatJoinMode = "all" | "recent" | "open"
 export type ChatRoomInfo = { broadcaster_id: string; broadcaster_login: string; broadcaster_name: string }
 export type ChatSendError = { kind: ChatSendErrorKind; message: string; details: string }
 export type ChatSendErrorKind = "authentication" | "permission_denied" | "rate_limited" | "rejected" | "connection" | "timeout" | "unexpected"
-export type ChatSettings = { join_mode: ChatJoinMode; show_history_divider: boolean; message_limit: number; pause_message_gc_while_paused: boolean; batch_live_messages: boolean; message_batch_interval_ms: number; message_gc_interval_ms: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean; center_system_messages: boolean; show_system_message_background: boolean; moderation_notices_enabled: boolean }
+export type ChatSettings = { join_mode: ChatJoinMode; show_history_divider: boolean; message_limit: number; pause_message_gc_while_paused: boolean; batch_live_messages: boolean; message_batch_interval_ms: number; message_gc_interval_ms: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean; center_system_messages: boolean; show_system_message_background: boolean; moderation_notices_enabled: boolean; show_login_for_different_display_name: boolean; use_display_names_in_mentions: boolean; bold_mentions: boolean }
 export type ChatTimelineEntry = ({ kind: "chat" } & ChannelMessage) | ({ kind: "system" } & SystemMessage)
 export type ChatTranslationLayout = "language_tag" | "message_text" | "timestamp_end" | "connector"
 export type CheerFragment = { index: number; text: string }
@@ -404,16 +409,18 @@ export type EmoteProviderPreference = { id: EmoteProviderId; enabled: boolean }
 export type EmoteSettings = { providers: EmoteProviderPreference[]; autocomplete_enabled: boolean; autocomplete_min_chars: number; search_debounce_ms: number; autocomplete_result_limit: number; picker_result_limit: number; picker_columns: number; picker_max_height_px: number; inline_emote_px: number; inline_badge_px: number }
 export type EngineStatus = { connected: boolean; joined: number; eligible: number; lingering: number; pending: number; limited: number; failures: string[] }
 export type EventSubSettings = { socket_idle_timeout_secs: number; retry_base_secs: number; retry_max_secs: number; debug_cost_watcher_enabled: boolean; debug_cost_watcher_interval_secs: number; repeated_log_throttle_enabled: boolean; unparseable_warning_throttle_secs: number; subscription_error_throttle_secs: number }
-export type FeedEvent = { type: "moderation"; event: ModerationEvent } | { type: "snapshot"; messages: ChatTimelineEntry[] } | { type: "message"; message: ChatTimelineEntry } | { type: "translation"; update: ChannelMessageTranslationUpdate } | { type: "reset"; messages: ChatTimelineEntry[] } | { type: "gap"; after: number; through: number } | { type: "unavailable"; error: string }
-export type FeedFrame = { cursor: number; event: FeedEvent }
-export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment }
+export type FeedEvent = { type: "users" } | { type: "moderation"; event: ModerationEvent } | { type: "snapshot"; messages: ChatTimelineEntry[] } | { type: "message"; message: ChatTimelineEntry } | { type: "translation"; update: ChannelMessageTranslationUpdate } | { type: "reset"; messages: ChatTimelineEntry[] } | { type: "gap"; after: number; through: number } | { type: "unavailable"; error: string }
+export type FeedFrame = { cursor: number; event: FeedEvent; users?: UserDirectoryUpdate | null }
+export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment } | { Mention: MentionFragment }
 export type InternalState = { version: string; name: string }
+export type MentionFragment = { index: number; text: string; login: string; user_id: string | null; display_name: string | null }
 export type ModerationAction = { type: "message_deleted"; target: ModerationUser; message_id: string } | { type: "user_messages_cleared"; target: ModerationUser } | { type: "chat_cleared" }
 export type ModerationEvent = { notification_id: string; ts: string; broadcaster_user_id: string; broadcaster_user_login: string; broadcaster_user_name: string; action: ModerationAction }
 export type ModerationUser = { user_id: string; login: string; display_name: string }
 export type NetworkHealthSnapshot = { revision: number; issues: NetworkIssue[] }
 export type NetworkIssue = { id: string; feature: string; category: string; message: string; failures: number; affected: number; cached: boolean; last_failure_at: number; retry_at: number | null; retryable: boolean; core: boolean; can_retry: boolean }
 export type NetworkSettings = { connect_timeout_secs: number; request_timeout_secs: number; metadata_concurrency: number; retry_base_secs: number; retry_max_secs: number }
+export type ObservedUser = { user_id: string; login: string; display_name: string; color: string | null }
 export type ProviderSettings = { http_connect_timeout_secs: number; http_request_timeout_secs: number; metadata_retention_enabled: boolean; metadata_retention_secs: number; stale_metadata_fallback: boolean }
 export type StateUpdate = { version: number | null; name: string; value: string }
 export type Stream = { 
@@ -473,6 +480,7 @@ export type TextFragment = { index: number; text: string }
 export type TimestampStyle = "short" | "medium" | "long" | "full"
 export type TranslationQueuePolicy = "newest_first" | "oldest_first"
 export type TranslationSettings = { enabled: boolean; target_language: string; layout: ChatTranslationLayout; translate_history: boolean; detection_policy: ChatDetectionPolicy; queue_policy: TranslationQueuePolicy; queue_capacity: number; max_in_flight: number }
+export type UserDirectoryUpdate = { type: "snapshot"; users: ObservedUser[] } | { type: "delta"; upserts: ObservedUser[]; removed: string[] }
 export type UserToken = { 
 /**
  * The access token used to authenticate requests with

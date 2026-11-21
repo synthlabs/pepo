@@ -39,6 +39,30 @@ const translationMore = { category: 'translation', more: true } as const;
 export const SETTINGS_CONTROLS: SettingControl[] = [
 	{
 		...chatMore,
+		id: 'chat.show_login_for_different_display_name',
+		path: 'chat.show_login_for_different_display_name',
+		label: 'Show login beside differing display names',
+		description: 'Add the account login when a display name differs beyond capitalization.',
+		kind: 'toggle'
+	},
+	{
+		...chatMore,
+		id: 'chat.use_display_names_in_mentions',
+		path: 'chat.use_display_names_in_mentions',
+		label: 'Use display names in mentions',
+		description: 'Show observed display names for @mentions instead of the text as typed.',
+		kind: 'toggle'
+	},
+	{
+		...chatMore,
+		id: 'chat.bold_mentions',
+		path: 'chat.bold_mentions',
+		label: 'Bold mentions',
+		description: 'Use bold text for @mentions in chat messages.',
+		kind: 'toggle'
+	},
+	{
+		...chatMore,
 		id: 'chat.moderation_notices_enabled',
 		path: 'chat.moderation_notices_enabled',
 		label: 'Receive moderation notices',

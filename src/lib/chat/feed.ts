@@ -1,4 +1,5 @@
 import { Channel } from '@tauri-apps/api/core';
+import { userDirectory, type UserDirectory } from './users.svelte';
 import {
 	commands,
 	type ChatFeedContext,
@@ -38,7 +39,8 @@ let nextRevision = 0;
 export function openRoomFeed(
 	channel: string,
 	receive: (frame: FeedFrame) => void,
-	transport: RoomFeedTransport = nativeTransport
+	transport: RoomFeedTransport = nativeTransport,
+	directory: UserDirectory = userDirectory
 ) {
 	const revision = ++nextRevision;
 	let request: ChatFeedRequest | undefined;
@@ -62,8 +64,10 @@ export function openRoomFeed(
 			unsubscribe();
 			throw new Error('subscription canceled');
 		}
+		directory.begin(context.epoch);
 		return transport.subscribe(channel, request, (frame) => {
 			if (closed || frame.cursor < cursor) return;
+			if (frame.users) directory.apply(frame.users);
 			receive(frame);
 			cursor = frame.cursor;
 			pendingCount += 1;

@@ -23,6 +23,7 @@
 	import { NETWORK_STATUS_CONTEXT, NetworkStatusController } from '$lib/network/status.svelte';
 	import { InternalRoot } from '$internal';
 	import { channelHeader } from '$lib/chat/channel-header';
+	import { userDirectory } from '$lib/chat/users.svelte';
 
 	let { children } = $props();
 	let normalizedAppSettings = $derived(getNormalizedAppSettings());
@@ -34,6 +35,7 @@
 		untrack(() => translation.start(ready, enabled));
 	});
 	onDestroy(() => {
+		userDirectory.clear();
 		void translation.dispose();
 	});
 

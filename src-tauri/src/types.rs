@@ -445,6 +445,9 @@ pub struct ChatSettings {
     pub center_system_messages: bool,
     pub show_system_message_background: bool,
     pub moderation_notices_enabled: bool,
+    pub show_login_for_different_display_name: bool,
+    pub use_display_names_in_mentions: bool,
+    pub bold_mentions: bool,
 }
 
 impl Default for ChatSettings {
@@ -467,6 +470,9 @@ impl Default for ChatSettings {
             center_system_messages: false,
             show_system_message_background: false,
             moderation_notices_enabled: true,
+            show_login_for_different_display_name: true,
+            use_display_names_in_mentions: false,
+            bold_mentions: true,
         }
     }
 }
@@ -1094,6 +1100,8 @@ pub struct ChannelMessage {
     pub chatter_user_id: String,
     /// The user name of the user that sent the message.
     pub chatter_user_name: String,
+    #[serde(default)]
+    pub chatter_user_login: String,
     /// A UUID that identifies the message.
     pub message_id: String,
     pub text: String,
@@ -1159,7 +1167,8 @@ impl ChannelMessage {
                 .collect();
         }
 
-        let fragments = message::Parser::parse(message_text.clone(), &emote_cache);
+        let fragments =
+            message::Parser::parse_message(&message_text, &value.message.fragments, &emote_cache);
 
         ChannelMessage {
             ts: ts,
@@ -1168,6 +1177,7 @@ impl ChannelMessage {
             broadcaster_user_login: broadcaster_login,
             chatter_user_id: value.chatter_user_id.to_string(),
             chatter_user_name: value.chatter_user_name.to_string(),
+            chatter_user_login: value.chatter_user_login.to_string(),
             message_id,
             text: message_text.clone(),
             message_type: value.message_type.into(),
@@ -1219,6 +1229,7 @@ pub(crate) fn translation_input_from_fragments(fragments: &[message::Fragment]) 
         .iter()
         .filter_map(|fragment| match fragment {
             message::Fragment::Text(fragment) => Some(fragment.text.as_str()),
+            message::Fragment::Mention(fragment) => Some(fragment.text.as_str()),
             message::Fragment::Emote(_) | message::Fragment::Cheer(_) => None,
         })
         .collect::<String>();
@@ -1228,6 +1239,24 @@ pub(crate) fn translation_input_from_fragments(fragments: &[message::Fragment]) 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn username_preferences_default_and_round_trip_without_a_schema_change() {
+        let defaults: super::ChatSettings = serde_json::from_str("{}").unwrap();
+        assert!(defaults.show_login_for_different_display_name);
+        assert!(!defaults.use_display_names_in_mentions);
+        assert!(defaults.bold_mentions);
+        let settings: super::ChatSettings = serde_json::from_value(serde_json::json!({
+            "show_login_for_different_display_name": false,
+            "use_display_names_in_mentions": true,
+            "bold_mentions": false
+        }))
+        .unwrap();
+        let saved = serde_json::to_value(settings).unwrap();
+        assert_eq!(saved["show_login_for_different_display_name"], false);
+        assert_eq!(saved["use_display_names_in_mentions"], true);
+        assert_eq!(saved["bold_mentions"], false);
+    }
+
     #[test]
     fn legacy_chat_modes_migrate_and_moderation_notices_default_enabled() {
         use super::{ChatJoinMode, ChatSettings};

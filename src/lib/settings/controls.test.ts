@@ -15,6 +15,39 @@ import {
 } from './controls';
 
 describe('settings controls', () => {
+	it('defaults, searches, resets, and persists the three extra username controls', async () => {
+		const defaults = {
+			show_login_for_different_display_name: true,
+			use_display_names_in_mentions: false,
+			bold_mentions: true
+		};
+		const legacy = structuredClone(DEFAULT_APP_SETTINGS);
+		for (const field of Object.keys(defaults))
+			delete (legacy.chat as unknown as Record<string, unknown>)[field];
+		expect(normalizeAppSettings(legacy).chat).toMatchObject(defaults);
+		let saved = structuredClone(DEFAULT_APP_SETTINGS);
+		let snapshot!: SettingsSnapshot;
+		const writer = new SettingsAutosave(
+			async (settings) => {
+				saved = structuredClone(settings);
+				return true;
+			},
+			(value) => {
+				snapshot = value;
+			}
+		);
+		writer.receive(saved);
+		for (const [field, value] of Object.entries(defaults)) {
+			const control = SETTINGS_CONTROLS.find((item) => item.id === `chat.${field}`)!;
+			expect(control).toMatchObject({ category: 'chat', more: true, kind: 'toggle' });
+			expect(matchingControls(control.label)).toContain(control);
+			expect(await writer.update(controlUpdate(control, !value))).toBe(true);
+			writer.receive(JSON.parse(JSON.stringify(saved)));
+			expect(snapshot.value.chat[field as keyof typeof defaults]).toBe(!value);
+			for (const category of ['chat', 'all'] as const)
+				expect(resetSettingsPatch(category).chat?.[field as keyof typeof defaults]).toBe(value);
+		}
+	});
 	it('keeps moderation notices in advanced Chat settings and resets to enabled', () => {
 		const control = SETTINGS_CONTROLS.find(
 			(item) => item.id === 'chat.moderation_notices_enabled'

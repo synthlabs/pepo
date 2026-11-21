@@ -65,7 +65,7 @@ describe('system messages', () => {
 		try {
 			expect(target.textContent?.trim()).toBe('Viewer was timed out. Details');
 			expect(target.querySelector('[data-chat-message-index="5"]')).not.toBeNull();
-			expect(target.querySelector('[data-system-user-id="2"]')?.tagName).toBe('STRONG');
+			expect(target.querySelector('[data-system-user-id="2"]')?.tagName).toBe('BUTTON');
 			expect(target.querySelector('svg')).toBeNull();
 			target.querySelector('a')!.click();
 			expect(native.open).toHaveBeenCalledWith('https://example.com/notice');

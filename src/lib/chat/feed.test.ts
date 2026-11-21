@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatFeedContext, ChatRoomInfo, FeedFrame } from '$lib/bindings';
 import { openRoomFeed, type RoomFeedTransport } from './feed';
+import { UserDirectory } from './users.svelte';
 
 function fixture() {
 	const receivers: ((frame: FeedFrame) => void)[] = [];
@@ -30,6 +31,30 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 describe('room feed lifetime and backpressure', () => {
+	it('applies background metadata before delivery, acknowledges it, and ignores disposed updates', async () => {
+		vi.useFakeTimers();
+		const f = fixture();
+		const users = new UserDirectory();
+		const receive = vi.fn(() => expect(users.get(null, 'maya')?.display_name).toBe('마야'));
+		const room = openRoomFeed('a', receive, f.transport, users);
+		await Promise.resolve();
+		const update: FeedFrame = {
+			cursor: 1,
+			event: { type: 'users' },
+			users: {
+				type: 'delta',
+				removed: [],
+				upserts: [{ user_id: '1', login: 'maya', display_name: '마야', color: '#123456' }]
+			}
+		};
+		f.receivers[0](update);
+		expect(receive).toHaveBeenCalledExactlyOnceWith(update);
+		await vi.advanceTimersByTimeAsync(16);
+		expect(f.transport.acknowledge).toHaveBeenCalledWith(requestMatcher, 1);
+		room.dispose();
+		f.receivers[0]({ cursor: 2, event: { type: 'users' }, users: { type: 'snapshot', users: [] } });
+		expect(users.get(null, 'maya')?.display_name).toBe('마야');
+	});
 	it('delivers typed removal effects independently of timeline notices and acknowledges them', async () => {
 		vi.useFakeTimers();
 		const f = fixture();

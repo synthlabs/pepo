@@ -25,7 +25,10 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 		alternate_backgrounds: true,
 		center_system_messages: false,
 		show_system_message_background: false,
-		moderation_notices_enabled: true
+		moderation_notices_enabled: true,
+		show_login_for_different_display_name: true,
+		use_display_names_in_mentions: false,
+		bold_mentions: true
 	},
 	translation: {
 		enabled: false,
@@ -151,6 +154,15 @@ export function normalizeAppSettings(settings: AppSettings): AppSettings {
 				typeof chat.moderation_notices_enabled === 'boolean'
 					? chat.moderation_notices_enabled
 					: true,
+			show_login_for_different_display_name:
+				typeof chat.show_login_for_different_display_name === 'boolean'
+					? chat.show_login_for_different_display_name
+					: true,
+			use_display_names_in_mentions:
+				typeof chat.use_display_names_in_mentions === 'boolean'
+					? chat.use_display_names_in_mentions
+					: false,
+			bold_mentions: typeof chat.bold_mentions === 'boolean' ? chat.bold_mentions : true,
 			show_history_divider: chat.show_history_divider ?? true,
 			center_system_messages:
 				typeof chat.center_system_messages === 'boolean' ? chat.center_system_messages : false,

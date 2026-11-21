@@ -223,7 +223,10 @@ mod tests {
         );
         assert_eq!(history[2].as_chat().unwrap().channel_sequence, 1);
         assert!(matches!(history[1], ChatTimelineEntry::System(_)));
-        assert_eq!(other.poll().len(), 1);
+        let other_frames = other.poll();
+        assert_eq!(other_frames.len(), 2);
+        assert!(matches!(other_frames[1].event, FeedEvent::Users));
+        assert!(other_frames[1].users.is_some());
         let frames = feed.poll();
         assert_eq!(frames.len(), 4);
         for (entry, frame) in history.iter().zip(frames.iter().skip(1)) {

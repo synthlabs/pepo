@@ -227,9 +227,10 @@ async function checkSystemMessages() {
 	require(notices().every((row) =>
 		row.querySelector('svg[aria-hidden="true"]')
 	), 'System icon is not decorative');
-	require(!native.settings.obj.chat.show_system_message_background && notices().every((row) =>
-		getComputedStyle(row).backgroundColor === 'rgba(0, 0, 0, 0)'
-	), 'System backgrounds are not off by default');
+	require(!native.settings.obj.chat.show_system_message_background &&
+		notices().every(
+			(row) => getComputedStyle(row).backgroundColor === 'rgba(0, 0, 0, 0)'
+		), 'System backgrounds are not off by default');
 	native.settings.obj.chat.show_system_message_background = true;
 	await native.settings.sync();
 	await wait();
@@ -284,20 +285,21 @@ async function checkSystemMessages() {
 		const style = getComputedStyle(notice);
 		const background = luminance(notice, 'transparent');
 		const foreground = luminance(notice, style.color);
-		const ratio = (value) => (Math.max(value, background) + 0.05) /
-			(Math.min(value, background) + 0.05);
+		const ratio = (value) =>
+			(Math.max(value, background) + 0.05) / (Math.min(value, background) + 0.05);
 		const textContrast = ratio(foreground);
 		contrast = Math.min(contrast, textContrast);
 		require(textContrast >= 4.5, 'System text contrast below 4.5');
 		require(Math.abs(foreground - background) <
-			Math.abs(luminance(notice, getComputedStyle(document.body).color) - background),
-			'System text is not muted');
+			Math.abs(
+				luminance(notice, getComputedStyle(document.body).color) - background
+			), 'System text is not muted');
 		const focusStyle = getComputedStyle(link);
 		const outlineContrast = ratio(luminance(notice, focusStyle.outlineColor));
 		focusContrast = Math.min(focusContrast, outlineContrast);
 		require(link.matches(':focus-visible') &&
-			parseFloat(focusStyle.outlineWidth) >= 2 && outlineContrast >= 3,
-			'System link keyboard focus is not sufficiently visible');
+			parseFloat(focusStyle.outlineWidth) >= 2 &&
+			outlineContrast >= 3, 'System link keyboard focus is not sufficiently visible');
 	};
 	let maxIconCenterOffset = 0;
 	const checkNoticeLayout = () => {
@@ -307,34 +309,42 @@ async function checkSystemMessages() {
 		for (const row of notices()) {
 			const rowStyle = getComputedStyle(row);
 			const timestamp = row.querySelector('span.text-xs');
-			require(!!timestamp === (settings.show_timestamps && !settings.center_system_messages),
-				'System timestamp ignored visibility setting');
-			require(rowStyle.backgroundColor === (settings.show_system_message_background
-				? enabledBackground : 'rgba(0, 0, 0, 0)'), 'System background ignored its setting');
-			const content = row.querySelector('[data-chat-system-message-content]').getBoundingClientRect();
+			require(!!timestamp ===
+				(settings.show_timestamps &&
+					!settings.center_system_messages), 'System timestamp ignored visibility setting');
+			require(rowStyle.backgroundColor ===
+				(settings.show_system_message_background
+					? enabledBackground
+					: 'rgba(0, 0, 0, 0)'), 'System background ignored its setting');
+			const content = row
+				.querySelector('[data-chat-system-message-content]')
+				.getBoundingClientRect();
 			const lines = [...row.querySelectorAll('[data-chat-system-message-line]')];
-			require(lines.length === (settings.center_system_messages ? 2 : 0),
-				'System divider lines ignored alignment');
+			require(lines.length ===
+				(settings.center_system_messages ? 2 : 0), 'System divider lines ignored alignment');
 			if (settings.center_system_messages) {
 				const rects = lines.map((line) => line.getBoundingClientRect());
-				require(Math.abs(rects[0].width - rects[1].width) <= 0.5,
-					'System divider lines are not equal widths');
-				require(rowStyle.columnGap === getComputedStyle(divider).columnGap,
-					'System divider spacing differs from the history divider');
+				require(Math.abs(rects[0].width - rects[1].width) <=
+					0.5, 'System divider lines are not equal widths');
+				require(rowStyle.columnGap ===
+					getComputedStyle(divider)
+						.columnGap, 'System divider spacing differs from the history divider');
 				for (const [i, line] of lines.entries()) {
 					const rect = rects[i];
 					require(line.getAttribute('aria-hidden') === 'true', 'System divider is not decorative');
-					require(rect.width >= 1.5 * parseFloat(getComputedStyle(document.documentElement).fontSize) &&
+					require(rect.width >=
+						1.5 * parseFloat(getComputedStyle(document.documentElement).fontSize) &&
 						rect.height === 1, 'System divider line dimensions are incorrect');
-					require(getComputedStyle(line).backgroundColor === getComputedStyle(dividerLine).backgroundColor,
-						'System divider line color differs from the history divider');
-					require(Math.abs(rect.top + rect.height / 2 - (content.top + content.height / 2)) <= 0.5,
-						'System divider lines are not vertically centered beside the content');
+					require(getComputedStyle(line).backgroundColor ===
+						getComputedStyle(dividerLine)
+							.backgroundColor, 'System divider line color differs from the history divider');
+					require(Math.abs(rect.top + rect.height / 2 - (content.top + content.height / 2)) <=
+						0.5, 'System divider lines are not vertically centered beside the content');
 				}
 			}
 			for (const element of row.querySelectorAll('svg, span.text-xs, strong, a')) {
-				require(getComputedStyle(element).color === rowStyle.color,
-					'System icon, timestamp, or text did not inherit the muted color');
+				require(getComputedStyle(element).color ===
+					rowStyle.color, 'System icon, timestamp, or text did not inherit the muted color');
 			}
 			const icon = row.querySelector('svg');
 			if (!icon) continue;
@@ -347,9 +357,8 @@ async function checkSystemMessages() {
 			maxIconCenterOffset = Math.max(maxIconCenterOffset, offset);
 			require(offset <= 0.5, 'System icon is not centered within its slot');
 			require(Math.abs(slot.height - parseFloat(rowStyle.lineHeight)) <= 0.5 &&
-				Math.abs(slot.top - row.getBoundingClientRect().top -
-					parseFloat(rowStyle.paddingTop)) <= 0.5,
-				'System icon slot is not aligned with the first text line');
+				Math.abs(slot.top - row.getBoundingClientRect().top - parseFloat(rowStyle.paddingTop)) <=
+					0.5, 'System icon slot is not aligned with the first text line');
 		}
 	};
 	for (const fontSize of [16, 32]) {
@@ -370,11 +379,13 @@ async function checkSystemMessages() {
 						checkNoticeContrast();
 						require(getComputedStyle(notice).textAlign ===
 							(centered ? 'center' : 'start'), 'System alignment did not update');
-						require(notices().every((row) => row.scrollWidth <= row.clientWidth + 1),
-							'System content overflows');
+						require(notices().every(
+							(row) => row.scrollWidth <= row.clientWidth + 1
+						), 'System content overflows');
 						require(getComputedStyle(previous).backgroundColor ===
-							(striped ? previousBackground : 'rgba(0, 0, 0, 0)'),
-							'System settings changed ordinary message backgrounds');
+							(striped
+								? previousBackground
+								: 'rgba(0, 0, 0, 0)'), 'System settings changed ordinary message backgrounds');
 						require(gap() < 1, 'Notice reflow lost pinned bottom');
 					}
 				}
@@ -441,6 +452,167 @@ async function checkSystemMessages() {
 	return { contrast, focusContrast, maxIconCenterOffset, count: 9, idleFrames: callbacks };
 }
 
+async function checkUsernames() {
+	const native = window.chatNative;
+	const wait = async () => {
+		await new Promise((resolve) => setTimeout(resolve, 350));
+		for (let i = 0; i < 3; i++) await new Promise(requestAnimationFrame);
+	};
+	const require = (condition, message) => {
+		if (!condition) throw new Error(message);
+	};
+	Object.assign(native.settings.obj.chat, {
+		message_limit: 1000,
+		show_login_for_different_display_name: true,
+		use_display_names_in_mentions: false,
+		bold_mentions: false,
+		center_system_messages: false,
+		show_system_message_background: false
+	});
+	native.settings.obj.translation.layout = 'message_text';
+	await native.settings.sync();
+	native.users.clear();
+	native.seed('usernames', 0);
+	for (let i = 0; i < 100; i++)
+		native.custom('usernames', {
+			chatter_user_id: 'writer',
+			chatter_user_login: 'writer',
+			chatter_user_name: '작성자',
+			color: '#4488bb',
+			text: 'Hello @MaYa, message ' + i,
+			fragments: [
+				{ Text: { index: 0, text: 'Hello ' } },
+				{ Mention: { index: 1, text: '@MaYa', login: 'maya', user_id: null, display_name: null } },
+				{ Text: { index: 2, text: ', message ' + i + ' with some wrapping text.' } }
+			]
+		});
+	await native.go('usernames');
+	await wait();
+	let viewport = document.querySelector('[aria-label="Chat messages"]');
+	const mentions = () => [...viewport.querySelectorAll('[data-chat-username="mention"]')];
+	const authors = () => [...viewport.querySelectorAll('[data-chat-username="author"]')];
+	const rows = () => [...viewport.querySelectorAll('[data-chat-message-index]')];
+	const gap = () => Math.abs(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop);
+	require(mentions().length === 100, 'Mention buttons missing from retained history');
+	require(authors().every(
+		(button) => button.textContent === '작성자 (writer)'
+	), 'Author name formatting failed');
+	require(mentions().every(
+		(button) => button.textContent === '@MaYa'
+	), 'Typed mention text changed');
+	require(getComputedStyle(mentions()[0]).fontWeight ===
+		'400', 'Mentions should start at body weight');
+	const count = rows().length;
+	const beforeUnread = document.querySelector('[aria-label^="Jump to"]')?.textContent;
+	native.observe({ user_id: 'maya-id', login: 'maya', display_name: '마야', color: '#9c63dc' });
+	await wait();
+	require(rows().length === count, 'Background metadata added a timeline row');
+	require(document.querySelector('[aria-label^="Jump to"]')?.textContent ===
+		beforeUnread, 'Metadata changed unread count');
+	require(mentions().every(
+		(button) =>
+			button.textContent === '@MaYa' && getComputedStyle(button).color === 'rgb(156, 99, 220)'
+	), 'Observed colors did not enrich typed mentions');
+	require(authors().every(
+		(button) => getComputedStyle(button).color === 'rgb(68, 136, 187)'
+	), 'Metadata changed original author colors');
+	Object.assign(native.settings.obj.chat, {
+		use_display_names_in_mentions: true,
+		bold_mentions: true
+	});
+	await native.settings.sync();
+	await wait();
+	require(mentions().every(
+		(button) =>
+			button.textContent === '@마야 (maya)' && getComputedStyle(button).fontWeight === '700'
+	), 'Mention settings did not apply');
+	require(gap() < 1, 'Name formatting lost bottom pinning');
+	viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -500, bubbles: true }));
+	viewport.scrollTop = viewport.scrollHeight / 2;
+	await wait();
+	await wait();
+	const box = viewport.getBoundingClientRect();
+	const anchor = rows().find((row) => row.getBoundingClientRect().bottom > box.top);
+	const top = anchor.getBoundingClientRect().top;
+	native.observe({
+		user_id: 'maya-id',
+		login: 'maya',
+		display_name: '메타데이터로변경된표시이름',
+		color: '#9c63dc'
+	});
+	await wait();
+	require(Math.abs(anchor.getBoundingClientRect().top - top) <
+		1, 'Metadata reflow moved the paused anchor');
+	Object.assign(native.settings.obj.chat, {
+		show_login_for_different_display_name: false,
+		bold_mentions: false
+	});
+	await native.settings.sync();
+	await wait();
+	require(authors()[0].textContent === '작성자', 'Author setting did not update');
+	require(mentions()[0].textContent ===
+		'@메타데이터로변경된표시이름', 'Mention setting did not follow name format');
+	native.system('usernames', {
+		segments: [
+			{ type: 'user', user_id: 'maya-id', login: 'maya', display_name: 'maya' },
+			{ type: 'text', text: ' was mentioned; plain @other remains text.' }
+		]
+	});
+	await wait();
+	const system = viewport.querySelector('[data-chat-system-message]');
+	require(system.querySelectorAll('button').length === 1, 'System text was scanned for mentions');
+	require(system.querySelector('button').textContent ===
+		'메타데이터로변경된표시이름', 'System name did not use cached metadata');
+	viewport.scrollTop = viewport.scrollHeight;
+	await wait();
+	native.custom('usernames', {
+		chatter_user_id: 'writer',
+		chatter_user_login: 'writer',
+		chatter_user_name: '작성자',
+		text: 'A live translated message',
+		fragments: [{ Text: { index: 0, text: 'A live translated message' } }]
+	});
+	await wait();
+	native.translate('usernames', 'Plain translated @MaYa');
+	await wait();
+	const translatedRow = rows().findLast((row) => row.querySelector('[data-chat-translation]'));
+	require(translatedRow.querySelector('[data-chat-translation] button') ===
+		null, 'Translation rendered an interactive spacer or mention');
+	const author = translatedRow.querySelector('[data-chat-username="author"]');
+	const spacer = translatedRow.querySelector(
+		'[data-chat-translation] [aria-hidden="true"] .font-bold'
+	);
+	const authorSpacerWidth = spacer.getBoundingClientRect().width;
+	require(Math.abs(author.getBoundingClientRect().width - spacer.getBoundingClientRect().width) <
+		1, 'Translation author spacer has a different width');
+	native.reset();
+	await wait();
+	require(mentions()[0].textContent ===
+		'@메타데이터로변경된표시이름', 'Reset lost cached metadata');
+	await native.go(null);
+	await wait();
+	await native.go('usernames');
+	await wait();
+	viewport = document.querySelector('[aria-label="Chat messages"]');
+	require(mentions().length === 100, 'Channel return lost mentions');
+	const lastMention = mentions().at(-1);
+	const selection = window.getSelection();
+	const range = document.createRange();
+	range.selectNodeContents(lastMention);
+	selection.removeAllRanges();
+	selection.addRange(range);
+	require(selection.toString() === lastMention.textContent, 'Username text cannot be selected');
+	selection.removeAllRanges();
+	lastMention.focus();
+	window.usernameActivations = 0;
+	document.addEventListener('click', (event) => {
+		if (event.target.closest?.('[data-chat-username]')) window.usernameActivations++;
+	});
+	require(viewport.scrollWidth <=
+		viewport.clientWidth, 'Username rendering overflowed the chat viewport');
+	return { mentions: mentions().length, authorSpacerWidth, pausedAnchorStable: true };
+}
+
 await writeFile(
 	path.join(output, 'native.svelte.js'),
 	`
@@ -455,6 +627,7 @@ export class Channel { constructor(callback) { this.onmessage = callback; } }
 export const invoke = async command => { throw new Error('Unexpected native invoke in chat engine fixture: ' + command); };
 window.__TAURI_INTERNALS__ = {};
 export const native = window.chatNative = { feeds: new Map(), closed: [], acknowledgements: [], metadataRequests: 0, delays: {}, resolutionErrors: {}, roomFailures: {} };
+native.users = new Map();
 let sequence = 0;
 const histories = new Map();
 const channelSequences = new Map();
@@ -474,6 +647,16 @@ native.push = (channel, text) => {
   const msg = message(channel, text); const history = histories.get(channel) ?? [];
   history.push(msg); histories.set(channel, history.slice(-(native.settings?.obj.chat.message_limit ?? 500)));
   for (const feed of native.feeds.values()) if (feed.channel === channel) feed.onmessage({ cursor: sequence, event: { type: 'message', message: msg } });
+};
+native.custom = (channel, overrides) => {
+  const msg = Object.assign(message(channel, ''), overrides);
+  const history = histories.get(channel) ?? []; history.push(msg); histories.set(channel, history);
+  for (const feed of native.feeds.values()) if (feed.channel === channel) feed.onmessage({ cursor: sequence, event: { type: 'message', message: structuredClone(msg) } });
+};
+native.observe = user => {
+  native.users.set(user.user_id, user);
+  const cursor = ++sequence;
+  for (const feed of native.feeds.values()) feed.onmessage({ cursor, event: { type: 'users' }, users: { type: 'delta', upserts: [user], removed: [] } });
 };
 const system = (channel, input) => ({ kind: 'system', index: ++sequence, ts: input.ts ?? '2026-11-14T19:00:00Z', message_id: input.message_id ?? 'system-' + sequence, broadcaster_user_id: channel, broadcaster_user_login: channel, broadcaster_user_name: channel, icon: input.icon ?? null, segments: input.segments });
 native.system = (channel, input) => {
@@ -499,7 +682,7 @@ native.translate = (channel, text, id) => {
 };
 native.go = channel => goto(channel ? '/app/chat/' + channel : '/app/settings');
 native.reset = () => {
-  for (const feed of native.feeds.values()) feed.onmessage({ cursor: sequence, event: { type: 'reset', messages: structuredClone(histories.get(feed.channel) ?? []) } });
+  for (const feed of native.feeds.values()) feed.onmessage({ cursor: sequence, event: { type: 'reset', messages: structuredClone(histories.get(feed.channel) ?? []) }, users: { type: 'snapshot', users: [...native.users.values()] } });
 };
 export class SyncedState {
   obj = $state({}); ready = $state(true);
@@ -520,7 +703,7 @@ export const commands = {
   async subscribeChat(channel, request, sink) {
     if (native.resolutionErrors[channel]) return { status: 'error', error: native.resolutionErrors[channel] };
     native.feeds.set(request, { channel, onmessage: sink.onmessage });
-    sink.onmessage({ cursor: sequence, event: { type: 'snapshot', messages: structuredClone(histories.get(channel) ?? []) } });
+    sink.onmessage({ cursor: sequence, event: { type: 'snapshot', messages: structuredClone(histories.get(channel) ?? []) }, users: { type: 'snapshot', users: [...native.users.values()] } });
     if (native.roomFailures[channel]) sink.onmessage({ cursor: sequence, event: { type: 'unavailable', error: native.roomFailures[channel] } });
     await new Promise(resolve => setTimeout(resolve, native.delays[channel] ?? 0));
     return { status: 'ok', data: { broadcaster_id: channel, broadcaster_login: channel, broadcaster_name: channel } };
@@ -985,14 +1168,58 @@ try {
 				await writeFile(
 					path.join(
 						output,
-						'systems-' + width + '-' + theme + '-' + (centered ? 'center' : 'left') +
-						(background ? '-background' : '') + '.png'
+						'systems-' +
+							width +
+							'-' +
+							theme +
+							'-' +
+							(centered ? 'center' : 'left') +
+							(background ? '-background' : '') +
+							'.png'
 					),
 					Buffer.from(systemShot.data, 'base64')
 				);
 			}
 		}
 		assert.deepEqual(exceptions.get(sessionId) ?? [], []);
+		const usernames = await evaluate(sessionId, '(' + checkUsernames.toString() + ')()');
+		for (const [key, code, keyCode] of [
+			['Enter', 'Enter', 13],
+			[' ', 'Space', 32]
+		]) {
+			await send(
+				'Input.dispatchKeyEvent',
+				{ type: 'rawKeyDown', key, code, windowsVirtualKeyCode: keyCode },
+				sessionId
+			);
+			await send(
+				'Input.dispatchKeyEvent',
+				{
+					type: 'char',
+					text: keyCode === 13 ? '\r' : ' ',
+					key,
+					code,
+					windowsVirtualKeyCode: keyCode
+				},
+				sessionId
+			);
+			await send(
+				'Input.dispatchKeyEvent',
+				{ type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode },
+				sessionId
+			);
+		}
+		assert.equal(await evaluate(sessionId, 'window.usernameActivations'), 2);
+		assert.equal(await evaluate(sessionId, '!!document.querySelector("[role=dialog]")'), false);
+		await evaluate(sessionId, 'document.activeElement.click()');
+		assert.equal(await evaluate(sessionId, 'window.usernameActivations'), 3);
+		assert.equal(await evaluate(sessionId, 'location.pathname'), '/app/chat/usernames');
+		const usernameShot = await send('Page.captureScreenshot', { format: 'png' }, sessionId);
+		await writeFile(
+			path.join(output, 'usernames-' + width + '-' + theme + '.png'),
+			Buffer.from(usernameShot.data, 'base64')
+		);
+		console.log(JSON.stringify({ width, theme, usernames }));
 		await send('Target.closeTarget', { targetId });
 	}
 	const backlogResults = [];
