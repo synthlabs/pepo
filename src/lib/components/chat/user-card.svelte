@@ -93,7 +93,7 @@
 					{...props}
 					variant="ghost"
 					size="icon"
-					class="size-6 focus-visible:ring-offset-0"
+					class="text-muted-foreground hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground size-7 focus-visible:ring-offset-0 focus-visible:ring-inset [&_svg]:size-3.5"
 					data-tauri-drag-region="false"
 					aria-label={label}
 					aria-pressed={pressed}
@@ -146,64 +146,68 @@
 	>
 		<header
 			bind:this={header}
-			class="flex h-7 shrink-0 cursor-move items-center justify-end gap-1 px-1 select-none"
+			class="border-border flex h-8 shrink-0 cursor-move items-center gap-2 border-b pr-0.5 pl-4 select-none"
 			data-tauri-drag-region="deep"
 			aria-label="Window controls"
 		>
-			{@render actionButton('profile', 'Open in Twitch', 'Open in Twitch', onprofile)}
-			{#if closeOnUnfocus}
-				{@render actionButton(
-					'pin',
-					cardState.pinned ? 'Unpin user card' : 'Pin user card',
-					cardState.pinned ? 'Unpin to close on unfocus' : 'Keep this card open',
-					() => onpin(!cardState.pinned),
-					cardState.pinned
-				)}
-			{/if}
-			{#if cardState.chrome === 'compact'}
-				<Button
-					variant="ghost"
-					size="icon"
-					class="size-6 focus-visible:ring-offset-0"
-					data-tauri-drag-region="false"
-					aria-label="Close user card"
-					onclick={onclose}><X class="size-4" /></Button
-				>
-			{/if}
+			<p
+				class="text-muted-foreground min-w-0 flex-1 truncate text-xs"
+				title={`#${cardState.channel_login}`}
+				data-user-card-channel
+			>
+				#{cardState.channel_login}
+			</p>
+			<div class="flex shrink-0 items-center gap-0.5">
+				{@render actionButton('profile', 'Open in Twitch', 'Open in Twitch', onprofile)}
+				{#if closeOnUnfocus}
+					{@render actionButton(
+						'pin',
+						cardState.pinned ? 'Unpin user card' : 'Pin user card',
+						cardState.pinned ? 'Unpin to close on unfocus' : 'Keep this card open',
+						() => onpin(!cardState.pinned),
+						cardState.pinned
+					)}
+				{/if}
+				{#if cardState.chrome === 'compact'}
+					<Button
+						variant="ghost"
+						size="icon"
+						class="text-muted-foreground hover:text-foreground size-7 focus-visible:ring-offset-0 focus-visible:ring-inset [&_svg]:size-3.5"
+						data-tauri-drag-region="false"
+						aria-label="Close user card"
+						onclick={onclose}><X aria-hidden="true" /></Button
+					>
+				{/if}
+			</div>
 		</header>
 		<div class="min-h-0 flex-1 overflow-y-auto" data-user-card-scroll>
-			<div bind:this={details} class="flex flex-col gap-3 px-5 pb-4" data-user-card-details>
-				<div class="flex items-center gap-3">
-					<Avatar.Root class="size-14 shrink-0">
+			<div bind:this={details} class="flex flex-col gap-3 p-4" data-user-card-details>
+				<div class="flex items-start gap-3" data-user-card-summary>
+					<Avatar.Root class="size-12 shrink-0">
 						<Avatar.Image src={cardState.profile_image_url ?? undefined} alt="" />
 						<Avatar.Fallback
 							><UserRound
-								class="text-muted-foreground size-7"
+								class="text-muted-foreground size-6"
 								aria-hidden="true"
 							/></Avatar.Fallback
 						>
 					</Avatar.Root>
 					<div class="min-w-0">
-						<h1 class="text-lg leading-snug font-semibold wrap-anywhere">
+						<h1 class="text-base font-semibold wrap-anywhere">
 							{cardState.user.display_name || cardState.user.login}
 						</h1>
-						<p class="text-muted-foreground mt-0.5 text-sm wrap-anywhere">
+						<p class="text-muted-foreground text-xs wrap-anywhere">
 							@{cardState.user.login}
 						</p>
+						{#if cardState.badges?.length}
+							<div class="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Channel badges">
+								{#each cardState.badges as badge (`${badge.set_id}:${badge.id}`)}<Badge
+										badge_ref={badge}
+										sizePx={20}
+									/>{/each}
+							</div>
+						{/if}
 					</div>
-				</div>
-				<div class="space-y-2">
-					<p class="text-muted-foreground text-xs wrap-anywhere" data-user-card-channel>
-						#{cardState.channel_login}
-					</p>
-					{#if cardState.badges?.length}
-						<div class="flex flex-wrap items-center gap-1.5" aria-label="Channel badges">
-							{#each cardState.badges as badge (`${badge.set_id}:${badge.id}`)}<Badge
-									badge_ref={badge}
-									sizePx={20}
-								/>{/each}
-						</div>
-					{/if}
 				</div>
 				{#if cardState.profile_status === 'loading'}
 					<p class="text-muted-foreground text-xs" role="status">Loading profile…</p>

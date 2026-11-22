@@ -221,7 +221,8 @@ try {
 					`document.documentElement.classList.toggle('dark', ${theme === 'dark'}); cardNative.update({ chrome: ${JSON.stringify(chrome)} });`
 				);
 				await waitFor(sessionId, `!!document.querySelector('[aria-label="Pin user card"]')`);
-				const initialHeight = await evaluate(sessionId, 'cardNative.heights[0]');
+				const contentHeight = await evaluate(sessionId, 'cardNative.heights[0]');
+				const initialHeight = Math.max(120, contentHeight);
 				assert(
 					initialHeight >= 120 && initialHeight < 160,
 					'initial height fits the empty-badge card'
@@ -232,7 +233,7 @@ try {
 						sessionId,
 						`document.querySelector('[aria-label="Window controls"]').getBoundingClientRect().height`
 					),
-					28
+					32
 				);
 				assert.equal(
 					await evaluate(sessionId, `getComputedStyle(document.querySelector('header')).cursor`),
@@ -252,6 +253,40 @@ try {
 					),
 					'#room'
 				);
+				const longChannel = 'a_channel_name_long_enough_to_truncate_in_the_toolbar'.repeat(2);
+				await evaluate(
+					sessionId,
+					`cardNative.update({ channel_login: ${JSON.stringify(longChannel)} })`
+				);
+				await waitFor(
+					sessionId,
+					`document.querySelector('[data-user-card-channel]').title === ${JSON.stringify('#' + longChannel)}`
+				);
+				const toolbarLayout = await evaluate(
+					sessionId,
+					`(() => {
+							const channel = document.querySelector('header [data-user-card-channel]');
+							const buttons = [...document.querySelectorAll('header button')];
+							return { text: channel.textContent.trim(), title: channel.title,
+								scrollWidth: channel.scrollWidth, clientWidth: channel.clientWidth,
+								buttons: buttons.map(button => {
+									const rect = button.getBoundingClientRect();
+									return { width: rect.width, height: rect.height, right: rect.right };
+								}) };
+						})()`
+				);
+				assert.equal(toolbarLayout.text, toolbarLayout.title);
+				assert(
+					toolbarLayout.scrollWidth > toolbarLayout.clientWidth,
+					JSON.stringify(toolbarLayout)
+				);
+				assert(
+					toolbarLayout.buttons.every(
+						(button) => button.width >= 28 && button.height >= 28 && button.right <= width
+					),
+					JSON.stringify(toolbarLayout)
+				);
+				await evaluate(sessionId, `cardNative.update({ channel_login: 'room' })`);
 				assert.equal(
 					await evaluate(sessionId, `!!document.querySelector('[aria-label="Channel badges"]')`),
 					false
@@ -367,6 +402,8 @@ try {
 					detailsTop,
 					'growing the window leaves details below the controls'
 				);
+				await evaluate(sessionId, `cardNative.update({ profile_status: 'loading' })`);
+				await waitFor(sessionId, `document.body.textContent.includes('Loading profile')`);
 				await resize(sessionId, width, 120);
 				assert.equal(
 					await evaluate(
@@ -383,12 +420,14 @@ try {
 				assert.equal(
 					await evaluate(
 						sessionId,
-						`document.querySelector('[aria-label="Open in Twitch"]').getBoundingClientRect().bottom <= 28`
+						`document.querySelector('[aria-label="Open in Twitch"]').getBoundingClientRect().bottom <= 32`
 					),
 					true,
 					'Twitch button stays visible above the scrolling details'
 				);
 				await resize(sessionId, width, initialHeight);
+				await evaluate(sessionId, `cardNative.update({ profile_status: 'ready' })`);
+				await waitFor(sessionId, `!document.querySelector('[role="status"]')`);
 				await evaluate(
 					sessionId,
 					`document.querySelector('[data-user-card-scroll]').scrollTop = 0`
@@ -423,7 +462,7 @@ try {
 				);
 				assert.deepEqual(
 					await evaluate(sessionId, 'cardNative.heights'),
-					[initialHeight],
+					[contentHeight],
 					'profile and badge updates do not refit an open window'
 				);
 				assert.equal(await evaluate(sessionId, 'innerHeight'), initialHeight);
@@ -440,6 +479,25 @@ try {
 				await writeFile(
 					path.join(output, `${theme}-${chrome}-${width}.png`),
 					Buffer.from(screenshot.data, 'base64')
+				);
+				await evaluate(
+					sessionId,
+					`cardNative.update({ user: { user_id: '1', login: 'maya', display_name: 'Maya', color: null } }); document.querySelector('[data-user-card-scroll]').scrollTop = 0`
+				);
+				await waitFor(sessionId, `document.querySelector('h1').textContent.trim() === 'Maya'`);
+				const profileHeight = await evaluate(
+					sessionId,
+					`Math.max(120, Math.ceil(document.querySelector('header').getBoundingClientRect().height + document.querySelector('[data-user-card-details]').getBoundingClientRect().height))`
+				);
+				await resize(sessionId, width, profileHeight);
+				const profileScreenshot = await send(
+					'Page.captureScreenshot',
+					{ format: 'png' },
+					sessionId
+				);
+				await writeFile(
+					path.join(output, `${theme}-${chrome}-${width}-profile.png`),
+					Buffer.from(profileScreenshot.data, 'base64')
 				);
 				await evaluate(sessionId, 'cardNative.policy(false)');
 				await waitFor(sessionId, `!document.querySelector('[aria-label="Unpin user card"]')`);

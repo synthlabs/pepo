@@ -81,6 +81,9 @@ describe('user card', () => {
 			try {
 				flushSync();
 				const controls = target.querySelector('[aria-label="Window controls"]')!;
+				const channel = controls.querySelector('[data-user-card-channel]')!;
+				expect(channel.textContent?.trim()).toBe('#room');
+				expect(channel.getAttribute('title')).toBe('#room');
 				expect(
 					[...controls.querySelectorAll('button')].map((button) =>
 						button.getAttribute('aria-label')

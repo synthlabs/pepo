@@ -41,8 +41,8 @@ export const SETTINGS_CONTROLS: SettingControl[] = [
 		id: 'chat.user_card_close_on_unfocus',
 		path: 'chat.user_card_close_on_unfocus',
 		category: 'chat',
-		label: 'Close user cards on unfocus',
-		description: 'Close a user card when you leave it. Pin an individual card to keep it open.',
+		label: 'Close a user card when you leave it',
+		description: 'Pin an individual card to keep it open.',
 		kind: 'toggle'
 	},
 	{
