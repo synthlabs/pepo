@@ -20,6 +20,7 @@ export default mergeConfig(
 			conditions: ['browser']
 		},
 		test: {
+			setupFiles: ['./src/test/setup.ts'],
 			include: ['src/**/*.{test,spec}.ts', 'utils/js/**/*.{test,spec}.ts']
 		}
 	})
