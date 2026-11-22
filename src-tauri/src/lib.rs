@@ -6,8 +6,6 @@ use specta_typescript::Typescript;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
-#[cfg(target_os = "macos")]
-use tauri::TitleBarStyle;
 use tauri::{AppHandle, Emitter, Listener, Manager, State, WindowEvent};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
@@ -50,6 +48,7 @@ mod platform;
 mod token;
 mod types;
 mod usercard;
+mod window_chrome;
 use usercard::{
     get_user_card_state, open_user_card, ready_user_card, refresh_user_card, set_user_card_pinned,
     UserCardRuntime,
@@ -268,28 +267,25 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
 fn send_chat_message(
     broadcaster_id: String,
     message: String,
+    diagnostics: Option<chat_send::ChatSendDiagnostics>,
     _app_handle: AppHandle,
     token_manager: State<'_, TokenManager>,
     client: State<'_, HelixClient<'static, reqwest::Client>>,
 ) -> Result<(), chat_send::ChatSendError> {
-    debug!(
-        "sending chat message: broadcaster_id={}, message={}",
-        broadcaster_id, message
-    );
-
+    let attempt = chat_send::SendAttempt::new(&broadcaster_id, &message, diagnostics);
     let client = client.inner();
 
     let token_guard = tauri::async_runtime::block_on(token_manager.active_twitch_token())
-        .ok_or_else(chat_send::ChatSendError::missing_token)?;
+        .ok_or_else(|| attempt.missing_token())?;
     let user_id = token_guard.user_id.clone();
     match tauri::async_runtime::block_on(client.send_chat_message(
-        broadcaster_id,
-        user_id,
+        broadcaster_id.as_str(),
+        user_id.as_str(),
         message.as_str(),
         &token_guard,
     )) {
-        Ok(response) => chat_send::check_response(response),
-        Err(error) => Err(chat_send::ChatSendError::from_request(error)),
+        Ok(response) => attempt.response(user_id.as_str(), response),
+        Err(error) => Err(attempt.request_error(user_id.as_str(), error)),
     }
 }
 
@@ -1691,67 +1687,10 @@ pub fn run() {
                     internal_state.name.clone(),
                     internal_state.version.clone()
                 ))
-                .visible(false)
-                .background_color(tauri::webview::Color(20, 26, 39, 255));
+                .visible(false);
 
-            #[cfg(target_os = "linux")]
-            let win_builder = win_builder.theme(Some(tauri::Theme::Dark));
-
-            // set transparent title bar only when building for macOS
-            #[cfg(target_os = "macos")]
-            let win_builder = win_builder.title_bar_style(TitleBarStyle::Transparent);
-
-            let window = win_builder.build().unwrap();
-
-            // set background color only when building for macOS
-            #[cfg(target_os = "macos")]
-            {
-                use objc2_app_kit::{NSColor, NSWindow};
-
-                unsafe {
-                    let ns_window = &*(window.ns_window().unwrap() as *mut NSWindow);
-
-                    //rgb(24, 31, 42)
-                    let bg_color = NSColor::colorWithRed_green_blue_alpha(
-                        20.0 / 255.0,
-                        26.0 / 255.0,
-                        39.0 / 255.0,
-                        1.0,
-                    );
-                    ns_window.setBackgroundColor(bg_color.downcast_ref());
-                }
-            }
-
-            // set title bar color only when building for Windows
-            #[cfg(target_os = "windows")]
-            {
-                use windows::Win32::Foundation::COLORREF;
-                use windows::Win32::Graphics::Dwm::{
-                    DwmSetWindowAttribute, DWMWA_CAPTION_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                };
-
-                let hwnd = window.hwnd().unwrap();
-
-                unsafe {
-                    // enable dark mode for title bar text/buttons
-                    let use_dark_mode: i32 = 1;
-                    let _ = DwmSetWindowAttribute(
-                        hwnd,
-                        DWMWA_USE_IMMERSIVE_DARK_MODE,
-                        &use_dark_mode as *const i32 as *const std::ffi::c_void,
-                        std::mem::size_of::<i32>() as u32,
-                    );
-
-                    // RGB(20, 26, 39) -> COLORREF 0x00BBGGRR = 0x00271A14
-                    let caption_color = COLORREF(0x00271A14);
-                    let _ = DwmSetWindowAttribute(
-                        hwnd,
-                        DWMWA_CAPTION_COLOR,
-                        &caption_color as *const COLORREF as *const std::ffi::c_void,
-                        std::mem::size_of::<COLORREF>() as u32,
-                    );
-                }
-            }
+            let window = window_chrome::configure(win_builder).build().unwrap();
+            window_chrome::apply(&window);
 
             // Revalidate/refresh the token whenever the window regains focus -
             // covers returning to the app after the machine has slept.

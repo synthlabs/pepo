@@ -1,4 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tracing::{info, warn};
 use twitch_api::helix::{chat::SendChatMessageResponse, ClientRequestError, HelixRequestPostError};
 
 #[derive(Clone, Debug, PartialEq, Serialize, specta::Type)]
@@ -18,6 +21,148 @@ pub struct ChatSendError {
     pub kind: ChatSendErrorKind,
     pub message: String,
     pub details: String,
+    pub attempt_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, specta::Type)]
+pub struct ChatSendDiagnostics {
+    pub attempt_id: String,
+    pub channel_login: String,
+    pub last_completion: Option<EmoteCompletionDiagnostics>,
+    pub key_events: Vec<ChatSendKeyEvent>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
+pub struct EmoteCompletionDiagnostics {
+    pub mode: String,
+    pub method: String,
+    pub emote_id: String,
+    pub emote_name: String,
+    pub provider: String,
+    pub scope: String,
+    pub edited_since_selection: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
+pub struct ChatSendKeyEvent {
+    pub key: String,
+    pub shift: bool,
+    pub repeat: bool,
+    pub is_composing: bool,
+    pub picker_visible: bool,
+    pub result_count: usize,
+    pub selected_index: Option<usize>,
+    pub age_ms: f64,
+}
+
+pub struct SendAttempt<'a> {
+    diagnostics: ChatSendDiagnostics,
+    broadcaster_id: &'a str,
+    message: &'a str,
+    started: Instant,
+}
+
+impl<'a> SendAttempt<'a> {
+    pub fn new(
+        broadcaster_id: &'a str,
+        message: &'a str,
+        diagnostics: Option<ChatSendDiagnostics>,
+    ) -> Self {
+        static NEXT_ATTEMPT: AtomicU64 = AtomicU64::new(1);
+        let mut diagnostics = diagnostics.unwrap_or_default();
+        if diagnostics.attempt_id.is_empty() {
+            diagnostics.attempt_id = format!(
+                "native-{}-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos(),
+                NEXT_ATTEMPT.fetch_add(1, Ordering::Relaxed),
+            );
+        }
+        if diagnostics.key_events.len() > 16 {
+            diagnostics
+                .key_events
+                .drain(..diagnostics.key_events.len() - 16);
+        }
+        let attempt = Self {
+            diagnostics,
+            broadcaster_id,
+            message,
+            started: Instant::now(),
+        };
+        info!("chat.send.native_attempt {}", attempt.record(None));
+        attempt
+    }
+
+    fn record(&self, sender_id: Option<&str>) -> serde_json::Value {
+        serde_json::json!({
+            "attempt_id": self.diagnostics.attempt_id,
+            "channel_login": self.diagnostics.channel_login,
+            "broadcaster_id": self.broadcaster_id,
+            "sender_id": sender_id,
+            "utf8_bytes": self.message.len(),
+            "utf16_length": self.message.encode_utf16().count(),
+            "scalar_length": self.message.chars().count(),
+            "elapsed_ms": self.started.elapsed().as_secs_f64() * 1000.0,
+        })
+    }
+
+    fn failure(
+        &self,
+        sender_id: Option<&str>,
+        mut error: ChatSendError,
+        outcome: serde_json::Value,
+    ) -> ChatSendError {
+        error.attempt_id = Some(self.diagnostics.attempt_id.clone());
+        let mut record = self.record(sender_id);
+        record["kind"] = serde_json::json!(error.kind);
+        record["outcome"] = outcome;
+        record["message"] = serde_json::json!(self.message);
+        record["unusual_codepoints"] = serde_json::json!(self.message.chars().enumerate()
+            .filter(|(_, ch)| !ch.is_ascii_graphic())
+            .map(|(index, ch)| serde_json::json!({"index": index, "codepoint": format!("U+{:04X}", ch as u32)}))
+            .collect::<Vec<_>>());
+        record["composer"] = serde_json::json!(self.diagnostics);
+        warn!("chat.send.native_failure {record}");
+        error
+    }
+
+    pub fn missing_token(&self) -> ChatSendError {
+        self.failure(
+            None,
+            ChatSendError::missing_token(),
+            serde_json::json!({"stage": "authentication"}),
+        )
+    }
+
+    pub fn response(
+        &self,
+        sender_id: &str,
+        response: SendChatMessageResponse,
+    ) -> Result<(), ChatSendError> {
+        let outcome = serde_json::json!({
+            "is_sent": response.is_sent,
+            "message_id": response.message_id,
+            "drop_reason": response.drop_reason,
+        });
+        match check_response(response) {
+            Ok(()) => {
+                let mut record = self.record(Some(sender_id));
+                record["outcome"] = outcome;
+                info!("chat.send.native_result {record}");
+                Ok(())
+            }
+            Err(error) => Err(self.failure(Some(sender_id), error, outcome)),
+        }
+    }
+
+    pub fn request_error(&self, sender_id: &str, error: RequestError) -> ChatSendError {
+        let outcome =
+            serde_json::json!({"stage": "request", "http_status": response_status(&error)});
+        self.failure(Some(sender_id), ChatSendError::from_request(error), outcome)
+    }
 }
 
 const UNEXPECTED_MESSAGE: &str = "Could not send this message.";
@@ -30,6 +175,7 @@ impl ChatSendError {
             kind,
             message: message.into(),
             details,
+            attempt_id: None,
         }
     }
 
@@ -195,6 +341,147 @@ mod tests {
         let error = ChatSendError::from_request(ClientRequestError::Custom("401 timeout".into()));
         assert_eq!(error.kind, ChatSendErrorKind::Unexpected);
         assert!(error.details.contains("401 timeout"));
+    }
+
+    #[test]
+    fn send_diagnostics_are_correlated_lossless_and_visible_at_info() {
+        if crate::logging::run_log_test_in_child(
+            "chat_send::tests::send_diagnostics_are_correlated_lossless_and_visible_at_info",
+        ) {
+            return;
+        }
+        use std::sync::{Arc, Mutex};
+        #[derive(Clone)]
+        struct Output(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Output {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let captured = output.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_max_level(tracing::Level::INFO)
+            .with_writer(move || Output(captured.clone()))
+            .finish();
+        let payload = "Kappa \u{200b}\n🥳";
+        tracing::subscriber::with_default(subscriber, || {
+            let completion = EmoteCompletionDiagnostics {
+                mode: "colon".into(),
+                method: "keyboard".into(),
+                emote_id: "25".into(),
+                emote_name: "private-success-emote".into(),
+                provider: "Twitch".into(),
+                scope: "Global".into(),
+                edited_since_selection: false,
+            };
+            let success = SendAttempt::new(
+                "1",
+                "private-success-message",
+                Some(ChatSendDiagnostics {
+                    attempt_id: "success-id".into(),
+                    channel_login: "maya".into(),
+                    last_completion: Some(completion.clone()),
+                    key_events: Vec::new(),
+                }),
+            );
+            success
+                .response("2", response(true, serde_json::Value::Null))
+                .unwrap();
+            let rejection = SendAttempt::new(
+                "1",
+                payload,
+                Some(ChatSendDiagnostics {
+                    attempt_id: "rejection-id".into(),
+                    channel_login: "maya".into(),
+                    last_completion: Some(EmoteCompletionDiagnostics {
+                        emote_name: "Kappa".into(),
+                        ..completion
+                    }),
+                    key_events: Vec::new(),
+                }),
+            );
+            let error = rejection
+                .response(
+                    "2",
+                    response(
+                        false,
+                        serde_json::json!({
+                            "code": "msg_rejected", "message": "Please try again later."
+                        }),
+                    ),
+                )
+                .unwrap_err();
+            assert_eq!(error.attempt_id.as_deref(), Some("rejection-id"));
+            assert_eq!(error.kind, ChatSendErrorKind::Rejected);
+            assert!(!error.details.contains(payload));
+            let transport = SendAttempt::new(
+                "1",
+                "failed request",
+                Some(ChatSendDiagnostics {
+                    attempt_id: "request-id".into(),
+                    ..Default::default()
+                }),
+            );
+            assert_eq!(
+                transport
+                    .request_error("2", request_error(401))
+                    .attempt_id
+                    .as_deref(),
+                Some("request-id")
+            );
+            let absent = SendAttempt::new("1", "no token", None);
+            let next = SendAttempt::new("1", "no token", None);
+            assert_ne!(absent.diagnostics.attempt_id, next.diagnostics.attempt_id);
+            assert!(!absent.diagnostics.attempt_id.is_empty());
+            assert_eq!(
+                absent.missing_token().attempt_id.as_deref(),
+                Some(absent.diagnostics.attempt_id.as_str())
+            );
+        });
+        let output = String::from_utf8(output.lock().unwrap().clone()).unwrap();
+        assert!(!output.contains("private-success-message"));
+        assert!(!output.contains("private-success-emote"));
+        assert!(!output.contains("secret request body"));
+        assert!(!output.contains("private diagnostic"));
+        let records: Vec<serde_json::Value> = output
+            .lines()
+            .map(|line| serde_json::from_str(&line[line.find('{').unwrap()..]).unwrap())
+            .collect();
+        let rejection = records
+            .iter()
+            .find(|record| {
+                record["attempt_id"] == "rejection-id" && record.get("message").is_some()
+            })
+            .unwrap();
+        assert_eq!(rejection["message"], payload);
+        assert_eq!(rejection["utf8_bytes"], 14);
+        assert_eq!(rejection["utf16_length"], 10);
+        assert_eq!(rejection["scalar_length"], 9);
+        assert_eq!(
+            rejection["unusual_codepoints"],
+            serde_json::json!([
+                {"index":5,"codepoint":"U+0020"}, {"index":6,"codepoint":"U+200B"},
+                {"index":7,"codepoint":"U+000A"}, {"index":8,"codepoint":"U+1F973"},
+            ])
+        );
+        assert_eq!(rejection["outcome"]["drop_reason"]["code"], "msg_rejected");
+        assert_eq!(rejection["sender_id"], "2");
+        assert_eq!(
+            rejection["composer"]["last_completion"]["emote_name"],
+            "Kappa"
+        );
+        assert!(records
+            .iter()
+            .any(|record| record["attempt_id"] == "request-id"
+                && record["outcome"]["http_status"] == 401));
+        assert_eq!(output.matches("WARN").count(), 3);
     }
 
     #[tokio::test]

@@ -17,6 +17,7 @@ use tauri::{
 use tokio::sync::watch;
 
 const STATE_EVENT: &str = "user-card-state";
+const MIN_CARD_HEIGHT: f64 = 120.0;
 
 #[derive(Clone, Debug, Deserialize, specta::Type)]
 pub struct UserCardTarget {
@@ -65,8 +66,15 @@ struct Card {
     activation: u64,
     armed: bool,
     native_ready: bool,
+    initial_placement: Option<InitialPlacement>,
     request: u64,
     tasks: Vec<tauri::async_runtime::JoinHandle<()>>,
+}
+
+struct InitialPlacement {
+    parent: String,
+    anchor: CardAnchor,
+    mode: UserCardPlacement,
 }
 
 impl Drop for Card {
@@ -93,14 +101,20 @@ impl Registry {
             .map(|(label, _)| label.clone())
     }
 
-    fn focus(&mut self, label: &str, focused: bool, close_on_unfocus: bool) -> bool {
+    fn focus(
+        &mut self,
+        label: &str,
+        focused: bool,
+        native_active: bool,
+        close_on_unfocus: bool,
+    ) -> bool {
         let Some(card) = self.cards.get_mut(label) else {
             return false;
         };
-        if focused {
+        if focused || native_active {
             card.armed = true;
         }
-        !focused && card.armed && !card.state.pinned && close_on_unfocus
+        !focused && !native_active && card.armed && !card.state.pinned && close_on_unfocus
     }
 
     fn resolve(&mut self, label: &str, id: &str, login: &str) -> Option<String> {
@@ -409,6 +423,45 @@ fn fit_position(x: f64, y: f64, width: f64, height: f64, area: (f64, f64, f64, f
     )
 }
 
+fn fit_height(content_height: f64, available_height: Option<f64>) -> Result<f64, String> {
+    if !content_height.is_finite() || content_height <= 0.0 {
+        return Err("The user card content height is invalid.".into());
+    }
+    let maximum = available_height.unwrap_or(f64::MAX).max(MIN_CARD_HEIGHT);
+    Ok(content_height.ceil().clamp(MIN_CARD_HEIGHT, maximum))
+}
+
+fn fit_card(window: &WebviewWindow, content_height: f64) -> Result<(), String> {
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let inner = window.inner_size().map_err(|error| error.to_string())?;
+    let frame_height = window
+        .outer_size()
+        .map_err(|error| error.to_string())?
+        .height
+        .saturating_sub(inner.height) as f64
+        / scale;
+    let available = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+        .map(|monitor| monitor.work_area().size.height as f64 / scale - frame_height);
+    let height = fit_height(content_height, available)?;
+    window
+        .set_size(tauri::LogicalSize::new(inner.width as f64 / scale, height))
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn native_foreground(window: &WebviewWindow) -> bool {
+    window.hwnd().is_ok_and(|handle| unsafe {
+        windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow().0 == handle.0
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn native_foreground(_window: &WebviewWindow) -> bool {
+    false
+}
+
 fn place_card(
     window: &WebviewWindow,
     parent: &WebviewWindow,
@@ -541,6 +594,11 @@ pub async fn open_user_card(
                     activation,
                     armed: false,
                     native_ready: false,
+                    initial_placement: Some(InitialPlacement {
+                        parent: window.label().into(),
+                        anchor: target.anchor.clone(),
+                        mode: settings.user_card_placement,
+                    }),
                     request: 0,
                     tasks: Vec::new(),
                 },
@@ -556,17 +614,23 @@ pub async fn open_user_card(
         }
         return Ok(());
     }
-    let built = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("user-card".into()))
+    let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("user-card".into()))
         .title(&format!("{} — Pepo", target.display_name))
         .inner_size(360.0, 240.0)
-        .min_inner_size(320.0, 200.0)
+        .min_inner_size(320.0, MIN_CARD_HEIGHT)
         .prevent_overflow()
         .resizable(true)
         .theme(theme)
         .decorations(settings.user_card_chrome == UserCardChrome::Native)
+        .focused(false)
         .visible(false)
-        .background_color(tauri::webview::Color(20, 26, 39, 255))
-        .build();
+        .background_color(crate::window_chrome::BACKGROUND_COLOR);
+    let builder = if settings.user_card_chrome == UserCardChrome::Native {
+        crate::window_chrome::configure(builder)
+    } else {
+        builder
+    };
+    let built = builder.build();
     let card = match built {
         Ok(card)
             if engine.active() && runtime.registry.lock().unwrap().cards.contains_key(&label) =>
@@ -582,6 +646,9 @@ pub async fn open_user_card(
             return Err(error.to_string());
         }
     };
+    if settings.user_card_chrome == UserCardChrome::Native {
+        crate::window_chrome::apply(&card);
+    }
     if let Err(error) = place_card(&card, &window, &target.anchor, settings.user_card_placement) {
         tracing::debug!(%error, "using desktop placement for user card");
     }
@@ -591,14 +658,19 @@ pub async fn open_user_card(
         let runtime = event_app.state::<UserCardRuntime>();
         match event {
             WindowEvent::Focused(focused) => {
+                let native_active = !focused
+                    && event_app
+                        .get_webview_window(&event_label)
+                        .is_some_and(|card| native_foreground(&card));
                 let policy = app_settings(event_app.state::<StateSyncer>().inner())
                     .chat
                     .user_card_close_on_unfocus;
-                let close = runtime
-                    .registry
-                    .lock()
-                    .unwrap()
-                    .focus(&event_label, *focused, policy);
+                let close = runtime.registry.lock().unwrap().focus(
+                    &event_label,
+                    *focused,
+                    native_active,
+                    policy,
+                );
                 if close {
                     runtime.registry.lock().unwrap().cards.remove(&event_label);
                     if let Some(card) = event_app.get_webview_window(&event_label) {
@@ -639,21 +711,33 @@ pub fn get_user_card_state(app: AppHandle, window: WebviewWindow) -> Result<User
 
 #[tauri::command]
 #[specta::specta]
-pub async fn ready_user_card(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
-    loop {
-        let ready = app
-            .state::<UserCardRuntime>()
-            .registry
-            .lock()
-            .unwrap()
-            .cards
-            .get(window.label())
-            .map(|card| card.native_ready)
-            .ok_or("This user card has closed.")?;
-        if ready {
-            break;
+pub async fn ready_user_card(
+    app: AppHandle,
+    window: WebviewWindow,
+    content_height: f64,
+) -> Result<(), String> {
+    fit_height(content_height, None)?;
+    let placement = loop {
+        {
+            let runtime = app.state::<UserCardRuntime>();
+            let mut registry = runtime.registry.lock().unwrap();
+            let card = registry
+                .cards
+                .get_mut(window.label())
+                .ok_or("This user card has closed.")?;
+            if card.native_ready {
+                break card.initial_placement.take();
+            }
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    };
+    if let Some(placement) = placement {
+        fit_card(&window, content_height)?;
+        if let Some(parent) = app.get_webview_window(&placement.parent) {
+            if let Err(error) = place_card(&window, &parent, &placement.anchor, placement.mode) {
+                tracing::debug!(%error, "using desktop placement for user card");
+            }
+        }
     }
     window.show().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())

@@ -13,6 +13,8 @@
 	let error = $state<string | null>(null);
 	let closeOnUnfocus = $derived(getNormalizedAppSettings().chat.user_card_close_on_unfocus);
 	let session: UserCardSession;
+	let card = $state<UserCard>();
+	let errorContent = $state<HTMLDivElement>();
 
 	function unwrap<T>(result: Result<T, string>): T {
 		if (result.status === 'error') throw result.error;
@@ -34,6 +36,14 @@
 		void perform(() => getCurrentWindow().close());
 	}
 
+	async function ready() {
+		await appSettings.initialized;
+		await tick();
+		const height =
+			card?.measureContentHeight() ?? errorContent?.getBoundingClientRect().height ?? 120;
+		unwrap(await commands.readyUserCard(height));
+	}
+
 	async function start() {
 		error = null;
 		try {
@@ -41,7 +51,7 @@
 		} catch (failure) {
 			error = 'Could not load this user card.';
 			appErrors.capture(failure, { source: 'user-card.load', title: error });
-			await perform(async () => unwrap(await commands.readyUserCard()));
+			await perform(ready);
 		}
 	}
 
@@ -52,11 +62,7 @@
 				listen: (receive) =>
 					window.listen<UserCardState>('user-card-state', ({ payload }) => receive(payload)),
 				snapshot: async () => unwrap(await commands.getUserCardState()),
-				ready: async () => {
-					await appSettings.initialized;
-					await tick();
-					unwrap(await commands.readyUserCard());
-				}
+				ready
 			},
 			(value) => {
 				cardState = value;
@@ -84,6 +90,7 @@
 <div class="h-dvh min-h-0 overflow-hidden">
 	{#if cardState}
 		<UserCard
+			bind:this={card}
 			state={cardState}
 			{closeOnUnfocus}
 			onclose={close}
@@ -98,7 +105,10 @@
 			}}
 		/>
 	{:else if error}
-		<div class="flex h-full flex-col items-start justify-center gap-3 p-5">
+		<div
+			bind:this={errorContent}
+			class="flex max-h-full flex-col items-start gap-3 overflow-y-auto p-5"
+		>
 			<p role="alert" class="text-sm">{error}</p>
 			<div class="flex gap-2">
 				<Button

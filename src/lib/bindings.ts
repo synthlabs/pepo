@@ -89,12 +89,13 @@ export const commands = {
 	},
 	async sendChatMessage(
 		broadcasterId: string,
-		message: string
+		message: string,
+		diagnostics: ChatSendDiagnostics | null
 	): Promise<Result<null, ChatSendError>> {
 		try {
 			return {
 				status: 'ok',
-				data: await TAURI_INVOKE('send_chat_message', { broadcasterId, message })
+				data: await TAURI_INVOKE('send_chat_message', { broadcasterId, message, diagnostics })
 			};
 		} catch (e) {
 			if (e instanceof Error) throw e;
@@ -155,9 +156,9 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async readyUserCard(): Promise<Result<null, string>> {
+	async readyUserCard(contentHeight: number): Promise<Result<null, string>> {
 		try {
-			return { status: 'ok', data: await TAURI_INVOKE('ready_user_card') };
+			return { status: 'ok', data: await TAURI_INVOKE('ready_user_card', { contentHeight }) };
 		} catch (e) {
 			if (e instanceof Error) throw e;
 			else return { status: 'error', error: e as any };
@@ -456,7 +457,18 @@ export type ChatRoomInfo = {
 	broadcaster_login: string;
 	broadcaster_name: string;
 };
-export type ChatSendError = { kind: ChatSendErrorKind; message: string; details: string };
+export type ChatSendDiagnostics = {
+	attempt_id: string;
+	channel_login: string;
+	last_completion: EmoteCompletionDiagnostics | null;
+	key_events: ChatSendKeyEvent[];
+};
+export type ChatSendError = {
+	kind: ChatSendErrorKind;
+	message: string;
+	details: string;
+	attempt_id: string | null;
+};
 export type ChatSendErrorKind =
 	| 'authentication'
 	| 'permission_denied'
@@ -465,6 +477,16 @@ export type ChatSendErrorKind =
 	| 'connection'
 	| 'timeout'
 	| 'unexpected';
+export type ChatSendKeyEvent = {
+	key: string;
+	shift: boolean;
+	repeat: boolean;
+	is_composing: boolean;
+	picker_visible: boolean;
+	result_count: number;
+	selected_index: number | null;
+	age_ms: number;
+};
 export type ChatSettings = {
 	join_mode: ChatJoinMode;
 	show_history_divider: boolean;
@@ -546,6 +568,15 @@ export type Emote = {
 	 * The scope of the emote (e.g. "Global", "Channel").
 	 */
 	scope: string;
+};
+export type EmoteCompletionDiagnostics = {
+	mode: string;
+	method: string;
+	emote_id: string;
+	emote_name: string;
+	provider: string;
+	scope: string;
+	edited_since_selection: boolean;
 };
 export type EmoteFragment = { index: number; emote: Emote };
 export type EmoteProviderId = 'twitch' | 'bttv' | 'ffz' | 'seventv';

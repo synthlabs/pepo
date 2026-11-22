@@ -27,15 +27,15 @@ const callbacks = new Set();
 let preferences = $state({ chat: { user_card_close_on_unfocus: true } });
 let current = { user: { user_id: '1', login: 'maya', display_name: '마야', color: null },
   profile_image_url: null, channel_id: 'room', channel_login: 'room', badges: null,
-  profile_status: 'loading', error: null, pinned: false, chrome: 'compact', revision: 1 };
-const native = window.cardNative = { ready: false, closes: 0, retries: 0, urls: [], errors: [],
+  profile_status: 'ready', error: null, pinned: false, chrome: new URL(location.href).searchParams.get('chrome') ?? 'compact', revision: 1 };
+const native = window.cardNative = { ready: false, heights: [], closes: 0, retries: 0, urls: [], errors: [],
   update(patch) { current = { ...current, ...patch, revision: current.revision + 1 }; for (const callback of callbacks) callback({ payload: current }); },
   policy(value) { preferences.chat.user_card_close_on_unfocus = value; }
 };
 const ok = (data) => ({ status: 'ok', data });
 export const commands = {
   async getUserCardState() { return ok(current); },
-  async readyUserCard() { native.ready = true; return ok(null); },
+  async readyUserCard(height) { native.heights.push(height); native.ready = true; return ok(null); },
   async setUserCardPinned(pinned) { native.update({ pinned }); return ok(null); },
   async refreshUserCard() { native.retries++; native.update({ profile_status: 'loading', error: null }); return ok(null); }
 };
@@ -174,10 +174,34 @@ try {
 		}
 		assert.fail(`Timed out: ${expression}`);
 	};
+	const resize = (sessionId, width, height) =>
+		send(
+			'Emulation.setDeviceMetricsOverride',
+			{ width, height, deviceScaleFactor: 1, mobile: false },
+			sessionId
+		);
+	const key = async (sessionId, key, code, windowsVirtualKeyCode, modifiers = 0, text) => {
+		await send(
+			'Input.dispatchKeyEvent',
+			{ type: 'rawKeyDown', key, code, windowsVirtualKeyCode, modifiers },
+			sessionId
+		);
+		if (text)
+			await send(
+				'Input.dispatchKeyEvent',
+				{ type: 'char', text, key, code, windowsVirtualKeyCode, modifiers },
+				sessionId
+			);
+		await send(
+			'Input.dispatchKeyEvent',
+			{ type: 'keyUp', key, code, windowsVirtualKeyCode, modifiers },
+			sessionId
+		);
+	};
 	let count = 0;
 	for (const theme of ['dark', 'light'])
 		for (const chrome of ['compact', 'native'])
-			for (const width of [320, 420]) {
+			for (const width of [320, 360, 420]) {
 				const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
 				const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
 				await send('Runtime.enable', {}, sessionId);
@@ -187,7 +211,7 @@ try {
 					{ width, height: 240, deviceScaleFactor: 1, mobile: false },
 					sessionId
 				);
-				await send('Page.navigate', { url: origin }, sessionId);
+				await send('Page.navigate', { url: `${origin}?chrome=${chrome}` }, sessionId);
 				await waitFor(
 					sessionId,
 					'window.cardNative?.ready && !!document.querySelector("[data-user-card]")'
@@ -197,10 +221,186 @@ try {
 					`document.documentElement.classList.toggle('dark', ${theme === 'dark'}); cardNative.update({ chrome: ${JSON.stringify(chrome)} });`
 				);
 				await waitFor(sessionId, `!!document.querySelector('[aria-label="Pin user card"]')`);
-				await evaluate(sessionId, `document.querySelector('[aria-label="Pin user card"]').click()`);
+				const initialHeight = await evaluate(sessionId, 'cardNative.heights[0]');
+				assert(
+					initialHeight >= 120 && initialHeight < 160,
+					'initial height fits the empty-badge card'
+				);
+				await resize(sessionId, width, initialHeight);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`document.querySelector('[aria-label="Window controls"]').getBoundingClientRect().height`
+					),
+					28
+				);
+				assert.equal(
+					await evaluate(sessionId, `getComputedStyle(document.querySelector('header')).cursor`),
+					'move'
+				);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`getComputedStyle(document.querySelector('[aria-label="Pin user card"]')).cursor`
+					),
+					'pointer'
+				);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`document.querySelector('[data-user-card-channel]').textContent.trim()`
+					),
+					'#room'
+				);
+				assert.equal(
+					await evaluate(sessionId, `!!document.querySelector('[aria-label="Channel badges"]')`),
+					false
+				);
+				assert.equal(
+					await evaluate(sessionId, `document.body.textContent.includes('Badges not observed')`),
+					false
+				);
+				await evaluate(sessionId, 'cardNative.update({ badges: [] })');
+				assert.equal(
+					await evaluate(sessionId, `document.body.textContent.includes('No badges observed')`),
+					false
+				);
+
+				assert.deepEqual(
+					await evaluate(
+						sessionId,
+						`Array.from(document.querySelectorAll('header button'), button => button.getAttribute('aria-label'))`
+					),
+					['Open in Twitch', 'Pin user card', ...(chrome === 'compact' ? ['Close user card'] : [])]
+				);
+				assert.equal(
+					await evaluate(sessionId, `!!document.querySelector('[data-user-card-footer]')`),
+					false
+				);
+				for (const [label, tooltip, preceding, modifiers] of [
+					['Open in Twitch', 'Open in Twitch', 'Pin user card', 8],
+					['Pin user card', 'Keep this card open', 'Open in Twitch', 0]
+				]) {
+					const selector = `[aria-label="${label}"]`;
+					await evaluate(
+						sessionId,
+						`window.dispatchEvent(new Event('blur')); document.activeElement.blur(); document.querySelector('${selector}').focus()`
+					);
+					await delay(200);
+					assert.equal(
+						await evaluate(sessionId, `!!document.querySelector('[role="tooltip"]')`),
+						false,
+						`${label}: automatic focus does not open tooltip`
+					);
+					await evaluate(
+						sessionId,
+						`window.dispatchEvent(new Event('blur')); window.dispatchEvent(new Event('focus')); document.activeElement.dispatchEvent(new FocusEvent('focus'))`
+					);
+					await delay(200);
+					assert.equal(
+						await evaluate(sessionId, `!!document.querySelector('[role="tooltip"]')`),
+						false,
+						`${label}: restored focus does not open tooltip`
+					);
+					await evaluate(
+						sessionId,
+						`document.querySelector('[aria-label="${preceding}"]').focus()`
+					);
+					await key(sessionId, 'Tab', 'Tab', 9, modifiers);
+					await waitFor(
+						sessionId,
+						`document.querySelector('[role="tooltip"]')?.textContent === ${JSON.stringify(tooltip)}`
+					);
+					assert.equal(
+						await evaluate(sessionId, `document.activeElement.getAttribute('aria-label')`),
+						label
+					);
+					await evaluate(
+						sessionId,
+						`window.dispatchEvent(new Event('blur')); document.activeElement.blur()`
+					);
+					await waitFor(sessionId, `!document.querySelector('[role="tooltip"]')`);
+					const point = await evaluate(
+						sessionId,
+						`(() => { const rect = document.querySelector('${selector}').getBoundingClientRect(); return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }; })()`
+					);
+					await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point }, sessionId);
+					await waitFor(
+						sessionId,
+						`document.querySelector('[role="tooltip"]')?.textContent === ${JSON.stringify(tooltip)}`
+					);
+					await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 80 }, sessionId);
+					await evaluate(sessionId, `window.dispatchEvent(new Event('blur'))`);
+					await waitFor(sessionId, `!document.querySelector('[role="tooltip"]')`);
+				}
+				await evaluate(
+					sessionId,
+					`document.querySelector('[aria-label="Open in Twitch"]').focus()`
+				);
+				await key(sessionId, 'Tab', 'Tab', 9);
+				await waitFor(sessionId, `!!document.querySelector('[role="tooltip"]')`);
+				await key(sessionId, 'Enter', 'Enter', 13, 0, '\r');
 				await waitFor(
 					sessionId,
 					`document.querySelector('[aria-label="Unpin user card"]')?.getAttribute('aria-pressed') === 'true'`
+				);
+				await key(sessionId, ' ', 'Space', 32, 0, ' ');
+				await waitFor(sessionId, `!!document.querySelector('[aria-label="Pin user card"]')`);
+				await key(sessionId, 'Enter', 'Enter', 13, 0, '\r');
+				await waitFor(sessionId, `!!document.querySelector('[aria-label="Unpin user card"]')`);
+				await evaluate(
+					sessionId,
+					`window.dispatchEvent(new Event('blur')); document.activeElement.blur()`
+				);
+				await waitFor(sessionId, `!document.querySelector('[role="tooltip"]')`);
+
+				const detailsTop = await evaluate(
+					sessionId,
+					`document.querySelector('[data-user-card-details]').getBoundingClientRect().top`
+				);
+				await resize(sessionId, width, 400);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`document.querySelector('[data-user-card-details]').getBoundingClientRect().top`
+					),
+					detailsTop,
+					'growing the window leaves details below the controls'
+				);
+				await resize(sessionId, width, 120);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`(() => { const node = document.querySelector('[data-user-card-scroll]'); node.scrollTop = node.scrollHeight; return node.scrollHeight > node.clientHeight; })()`
+					),
+					true
+				);
+				assert.equal(
+					await evaluate(sessionId, `document.querySelector('header').getBoundingClientRect().top`),
+					0,
+					'window controls remain visible while scrolling'
+				);
+				assert.equal(
+					await evaluate(
+						sessionId,
+						`document.querySelector('[aria-label="Open in Twitch"]').getBoundingClientRect().bottom <= 28`
+					),
+					true,
+					'Twitch button stays visible above the scrolling details'
+				);
+				await resize(sessionId, width, initialHeight);
+				await evaluate(
+					sessionId,
+					`document.querySelector('[data-user-card-scroll]').scrollTop = 0`
+				);
+				const compactScreenshot = await send(
+					'Page.captureScreenshot',
+					{ format: 'png' },
+					sessionId
+				);
+				await writeFile(
+					path.join(output, `${theme}-${chrome}-${width}-empty.png`),
+					Buffer.from(compactScreenshot.data, 'base64')
 				);
 				await evaluate(sessionId, `cardNative.update({ profile_status: 'unavailable' });`);
 				await waitFor(sessionId, `document.body.textContent.includes('unavailable')`);
@@ -221,6 +421,12 @@ try {
 					),
 					5
 				);
+				assert.deepEqual(
+					await evaluate(sessionId, 'cardNative.heights'),
+					[initialHeight],
+					'profile and badge updates do not refit an open window'
+				);
+				assert.equal(await evaluate(sessionId, 'innerHeight'), initialHeight);
 				assert.equal(
 					await evaluate(sessionId, 'document.documentElement.scrollWidth <= innerWidth'),
 					true,
@@ -237,11 +443,22 @@ try {
 				);
 				await evaluate(sessionId, 'cardNative.policy(false)');
 				await waitFor(sessionId, `!document.querySelector('[aria-label="Unpin user card"]')`);
+				assert.deepEqual(
+					await evaluate(
+						sessionId,
+						`Array.from(document.querySelectorAll('header button'), button => button.getAttribute('aria-label'))`
+					),
+					['Open in Twitch', ...(chrome === 'compact' ? ['Close user card'] : [])]
+				);
 				await evaluate(
 					sessionId,
-					`Array.from(document.querySelectorAll('button')).find(button => button.textContent.includes('View on Twitch')).click()`
+					`document.querySelector('[aria-label="Open in Twitch"]').click(); document.querySelector('[aria-label="Open in Twitch"]').focus()`
 				);
+				await key(sessionId, 'Enter', 'Enter', 13, 0, '\r');
+				await key(sessionId, ' ', 'Space', 32, 0, ' ');
 				assert.deepEqual(await evaluate(sessionId, 'cardNative.urls'), [
+					'https://www.twitch.tv/maya',
+					'https://www.twitch.tv/maya',
 					'https://www.twitch.tv/maya'
 				]);
 				await send(

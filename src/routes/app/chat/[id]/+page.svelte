@@ -34,6 +34,7 @@
 	import type { Emote as EmoteType } from '$lib/bindings.ts';
 	import { parseColonMacro } from '$lib/chat/colon-macro';
 	import { captureChatSendError } from '$lib/chat/send-errors';
+	import { ComposerDiagnostics } from '$lib/chat/send-diagnostics';
 	import { MessageHistoryScheduler } from '$lib/chat/message-history';
 	import { measureHistoryOriginSpacer } from '$lib/chat/history-origin';
 	import { ChatScrollController } from '$lib/chat/scroll-controller';
@@ -80,6 +81,7 @@
 	let channel_name: string = $derived(page.params.id ?? '');
 	let msgs: ChatTimelineEntry[] = $state([]);
 	let chatInput = $state('');
+	const composerDiagnostics = new ComposerDiagnostics();
 	let hasInput = $derived(chatInput.length > 0);
 	let showCounter = $derived(chatInput.length >= COUNTER_THRESHOLD);
 	let errorState = $state({ active: false, msg: '' });
@@ -363,18 +365,26 @@
 		const message = chatInput;
 		const channel = channel_name;
 		const broadcasterId = channelInfo.broadcaster_id;
+		const attempt = composerDiagnostics.begin(message, channel, broadcasterId, Logger);
 		sendPending = true;
 		chatInput = '';
 		try {
-			const result = await commands.sendChatMessage(broadcasterId, message);
+			const result = await commands.sendChatMessage(broadcasterId, message, attempt.diagnostics);
 			if (result.status === 'error') {
-				const feedback = captureChatSendError(channel, result.error);
+				attempt.failed(result.error, 'returned');
+				const feedback = captureChatSendError(
+					channel,
+					result.error,
+					attempt.diagnostics.attempt_id
+				);
 				if (feedback && !destroyed) showMessageError(feedback);
 			} else {
+				attempt.sent();
 				Logger.debug('message sent');
 			}
 		} catch (error) {
-			captureChatSendError(channel, error);
+			attempt.failed(error, 'invoke');
+			captureChatSendError(channel, error, attempt.diagnostics.attempt_id);
 		} finally {
 			if (!destroyed) sendPending = false;
 		}
@@ -447,7 +457,8 @@
 		}, emoteSettings.search_debounce_ms);
 	});
 
-	const insertEmote = (emote: EmoteType) => {
+	const insertEmote = (emote: EmoteType, method: 'keyboard' | 'mouse' = 'mouse') => {
+		const mode = !pickerOpenedByButton && colonMatch ? 'colon' : 'picker';
 		const next =
 			!pickerOpenedByButton && colonMatch
 				? chatInput.substring(0, chatInput.lastIndexOf(':')) + emote.name + ' '
@@ -461,6 +472,7 @@
 			return;
 		}
 		chatInput = next;
+		composerDiagnostics.inserted(emote, mode, method, next);
 	};
 
 	const toggleEmotePicker = async () => {
@@ -486,6 +498,11 @@
 	};
 
 	const handleKeydown = (event: KeyboardEvent) => {
+		composerDiagnostics.key(event, {
+			picker_visible: emotePickerVisible,
+			result_count: emoteResults.length,
+			selected_index: selectedEmoteIndex
+		});
 		if (!emotePickerVisible) return;
 
 		if (event.key === 'Tab') {
@@ -497,7 +514,7 @@
 			}
 		} else if (event.key === 'Enter') {
 			event.preventDefault();
-			insertEmote(emoteResults[selectedEmoteIndex]);
+			insertEmote(emoteResults[selectedEmoteIndex], 'keyboard');
 		} else if (event.key === 'Escape') {
 			event.preventDefault();
 			if (colonMatch) dismissedQuery = colonMatch;
@@ -726,6 +743,7 @@
 			<form onsubmit={submitForm} aria-busy={sendPending} class="flex items-center">
 				<input
 					bind:value={chatInput}
+					oninput={(event) => composerDiagnostics.inputChanged(event.currentTarget.value)}
 					aria-label="Chat message"
 					maxlength={MAX_MESSAGE_LENGTH}
 					onkeydown={handleKeydown}

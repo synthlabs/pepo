@@ -113,5 +113,9 @@ objc2-app-kit = "0.3.2"
 [target."cfg(target_os = \"windows\")"]
 [target."cfg(target_os = \"windows\")".dependencies]
 [target."cfg(target_os = \"windows\")".dependencies.windows]
-features = ["Win32_Graphics_Dwm"]
+features = ["Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging"]
+version = "0.62"
+
+[target."cfg(target_os = \"windows\")".dev-dependencies.windows]
+features = ["Win32_Graphics_Gdi", "Win32_UI_Input_KeyboardAndMouse"]
 version = "0.62"

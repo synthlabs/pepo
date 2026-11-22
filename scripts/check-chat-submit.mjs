@@ -26,9 +26,10 @@ await mkdir(output, { recursive: true });
 await writeFile(
 	path.join(output, 'native.svelte.js'),
 	`
+import { commands as realCommands } from '../../src/lib/bindings.ts';
 export const page = $state({ url: new URL(location.href), params: { id: 'maya' } });
 export const native = window.chatNative = {
-    calls: [], requests: [], logs: [], debug: [], reports: [], pauses: [], joins: [], searches: [], captured: 0,
+    calls: [], requests: [], logs: [], debug: [], diagnostics: [], reports: [], pauses: [], joins: [], searches: [], captured: 0,
     failReport: false, failCapabilities: false,
     emote: { id: '25', name: 'Kappa', tier: '', emote_type: 'globals', emote_set_id: '0', format: ['static'],
         scale: ['1.0'], theme_mode: ['light', 'dark'], url: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
@@ -36,7 +37,10 @@ export const native = window.chatNative = {
     logError(message) { return error(message); },
     roomError(message) { this.feed.onmessage({ cursor: 1, event: { type: 'unavailable', error: message } }); },
     navigate(id) { page.params = { id }; },
-    resolve(index, result) { this.requests[index].resolve(result); },
+    resolve(index, result) {
+        if (result.status === 'error') this.requests[index].reject(result.error);
+        else this.requests[index].resolve(result.data);
+    },
     reject(index, message) { this.requests[index].reject(new Error(message)); }
 };
 export class SyncedState {
@@ -62,12 +66,10 @@ export const commands = {
     acknowledgeChat: async () => {},
     searchEmotes: async (query) => {
         native.searches.push(query);
+        if (native.fixtures) return { status: 'ok', data: native.fixtures.filter(emote => emote.name.toLowerCase().includes(String(query).toLowerCase())) };
         return { status: 'ok', data: String(query).toLowerCase().startsWith('ka') ? [native.emote] : [] };
     },
-    sendChatMessage: (broadcasterId, message) => {
-        native.calls.push({ broadcasterId, message });
-        return new Promise((resolve, reject) => native.requests.push({ resolve, reject }));
-    }
+    sendChatMessage: realCommands.sendChatMessage
 };
 export class Channel { constructor(callback) { this.onmessage = callback; } }
 const listeners = new Map();
@@ -83,6 +85,9 @@ export async function error(message, options) {
 }
 export async function invoke(command, args) {
     switch (command) {
+        case 'send_chat_message':
+            native.calls.push(args);
+            return new Promise((resolve, reject) => native.requests.push({ resolve, reject }));
         case 'plugin:inbound|register_submission':
         case 'plugin:inbound|cancel_submission': return undefined;
         case 'plugin:inbound|capabilities':
@@ -104,7 +109,9 @@ export async function invoke(command, args) {
 export const PUBLIC_UPDATE_INSTALL_MODE = '';
 export const checkForAppUpdates = async () => {};
 export default {
-    debug(...values) { native.debug.push(values); }, info() {},
+    debug(...values) { native.debug.push(values); },
+    info(event, record) { if (event.startsWith('chat.send.')) native.diagnostics.push({ level: 'info', event, record: JSON.parse(record) }); },
+    warn(event, record) { if (event.startsWith('chat.send.')) native.diagnostics.push({ level: 'warn', event, record: JSON.parse(record) }); },
     error(...values) { void error(values.join(' ')); }
 };
 `
@@ -278,6 +285,12 @@ try {
 	const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
 	const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
 	await send('Runtime.enable', {}, sessionId);
+	await send('Network.enable', {}, sessionId);
+	await send(
+		'Network.setBlockedURLs',
+		{ urls: ['https://*', 'http://api.twitch.tv/*', 'wss://*'] },
+		sessionId
+	);
 	await send('Page.navigate', { url: origin }, sessionId);
 	const run = (expression) => evaluate(sessionId, expression);
 	const wait = (expression, timeoutMs) => waitFor(sessionId, expression, timeoutMs);
@@ -324,7 +337,13 @@ try {
 	let index = await submit('first message');
 	assert.deepEqual(await run('chatNative.calls[0]'), {
 		broadcasterId: 'maya-id',
-		message: 'first message'
+		message: 'first message',
+		diagnostics: {
+			attempt_id: await run('chatNative.calls[0].diagnostics.attempt_id'),
+			channel_login: 'maya',
+			last_completion: null,
+			key_events: []
+		}
 	});
 	await type('next draft');
 	await run(`${form}.requestSubmit()`);
@@ -560,6 +579,188 @@ try {
 	assert.equal(await run('chatNative.calls.length'), callsBeforeEmote, 'Enter picked, not sent');
 	await type('');
 	console.log('PASS 500-character limit, counter and refused emote insertion');
+
+	const pressKey = async (key, shift = false) => {
+		const codes = { Enter: 13, Tab: 9, Escape: 27 };
+		const params = {
+			key,
+			code: key,
+			windowsVirtualKeyCode: codes[key],
+			nativeVirtualKeyCode: codes[key],
+			modifiers: shift ? 8 : 0
+		};
+		await send(
+			'Input.dispatchKeyEvent',
+			{
+				...params,
+				type: 'keyDown',
+				...(key === 'Enter' ? { text: '\r', unmodifiedText: '\r' } : {})
+			},
+			sessionId
+		);
+		await send('Input.dispatchKeyEvent', { ...params, type: 'keyUp' }, sessionId);
+	};
+	const assertSentPayload = async (index, message) => {
+		const call = await run(`chatNative.calls[${index}]`);
+		assert.equal(call.broadcasterId, 'third-id');
+		assert.equal(call.message, message);
+		assert.equal(call.diagnostics.channel_login, 'third');
+		assert.match(call.diagnostics.attempt_id, /^[0-9a-f-]{36}$/);
+		return call;
+	};
+	const fixtures = ['Twitch', 'BTTV', 'FFZ', '7TV'].map((provider, i) => ({
+		provider,
+		name: ['Kappa', 'Kapow', 'KapCat', 'KaDance'][i]
+	}));
+	await run(
+		`chatNative.fixtures = ${JSON.stringify(fixtures)}.map((emote, i) => ({ ...chatNative.emote, ...emote, id: String(i) }))`
+	);
+	for (let target = 0; target < fixtures.length; target++) {
+		const name = fixtures[target].name;
+		index = await submit(name);
+		await assertSentPayload(index, name);
+		await settle(index);
+		index = await submit(name + ' ');
+		const manual = await assertSentPayload(index, name + ' ');
+		await settle(index);
+		await type(':ka');
+		await wait(`!!document.querySelector('img[alt="Kappa"]')`);
+		const before = await run('chatNative.calls.length');
+		for (let step = 0; step < (target || fixtures.length); step++) await pressKey('Tab');
+		await pressKey('Enter');
+		assert.equal(await run('chatNative.calls.length'), before, 'first Enter only inserts');
+		// No input-value wait between presses: exercise consecutive native Enter events.
+		await pressKey('Enter');
+		await wait(`chatNative.calls.length === ${before + 1}`);
+		const completed = await assertSentPayload(before, name + ' ');
+		assert.equal(completed.message, manual.message);
+		assert.deepEqual(completed.diagnostics.last_completion, {
+			mode: 'colon',
+			method: 'keyboard',
+			emote_id: String(target),
+			emote_name: name,
+			provider: fixtures[target].provider,
+			scope: 'Global',
+			edited_since_selection: false
+		});
+		assert.deepEqual(
+			completed.diagnostics.key_events.slice(-2).map((event) => [event.key, event.picker_visible]),
+			[
+				['Enter', true],
+				['Enter', false]
+			]
+		);
+		await settle(before);
+		assert.equal(await run('chatNative.calls.length'), before + 1, 'one send');
+	}
+	console.log('PASS four-provider manual/completed payload equality and native double-Enter sends');
+
+	await type('');
+	await run(`${form}.querySelector('button[type="button"]').click()`);
+	await wait(`!!document.querySelector('input[placeholder="Search emotes..."]')`);
+	await run(`document.querySelector('img[alt="Kappa"]').closest('button').click()`);
+	await wait(`${input}.value === 'Kappa '`);
+	await run(`${input}.focus()`);
+	await pressKey('Enter');
+	index = await run('chatNative.calls.length - 1');
+	assert.equal(
+		(await assertSentPayload(index, 'Kappa ')).diagnostics.last_completion.mode,
+		'picker'
+	);
+	await settle(index);
+
+	await type(':ka');
+	await wait(`!!document.querySelector('img[alt="Kappa"]')`);
+	await pressKey('Tab', true);
+	await pressKey('Enter');
+	await pressKey('Enter');
+	index = await run('chatNative.calls.length - 1');
+	const backwards = await assertSentPayload(index, 'KaDance ');
+	assert(backwards.diagnostics.key_events.some((event) => event.key === 'Tab' && event.shift));
+	await settle(index);
+
+	await type(':ka');
+	await wait(`!!document.querySelector('img[alt="Kappa"]')`);
+	await run(`document.querySelector('img[alt="Kappa"]').closest('button').click()`);
+	await wait(`${input}.value === 'Kappa '`);
+	await run(`${input}.focus()`);
+	await pressKey('Enter');
+	index = await run('chatNative.calls.length - 1');
+	assert.equal(
+		(await assertSentPayload(index, 'Kappa ')).diagnostics.last_completion.method,
+		'mouse'
+	);
+	await settle(index);
+
+	await type(':ka');
+	await wait(`!!document.querySelector('img[alt="Kappa"]')`);
+	await pressKey('Enter');
+	await type('Kappa \u200b🥳');
+	await pressKey('Enter');
+	index = await run('chatNative.calls.length - 1');
+	const failedCall = await assertSentPayload(index, 'Kappa \u200b🥳');
+	assert.equal(failedCall.diagnostics.last_completion.edited_since_selection, true);
+	await type('next draft while pending');
+	await settle(
+		index,
+		failure('rejected', 'Your message could not be sent, please try again later.', 'MsgRejected')
+	);
+	const failedRecord = await run(
+		`chatNative.diagnostics.find(entry => entry.event === 'chat.send.frontend_failure' && entry.record.attempt_id === ${JSON.stringify(failedCall.diagnostics.attempt_id)})`
+	);
+	assert.equal(failedRecord.level, 'warn');
+	assert.equal(failedRecord.record.message, failedCall.message);
+	assert.equal(failedRecord.record.composer.last_completion.emote_name, 'Kappa');
+	assert(failedRecord.record.unusual_codepoints.some((point) => point.codepoint === 'U+200B'));
+	assert.equal(await run(`${input}.value`), 'next draft while pending');
+	assert.equal(await run(`document.querySelectorAll('${notice}').length`), 0);
+	assert(
+		await run(
+			`chatNative.logs.some(entry => entry.message.includes(${JSON.stringify(failedCall.diagnostics.attempt_id)}))`
+		)
+	);
+	index = await submit('next independent draft');
+	assert.equal((await run(`chatNative.calls[${index}]`)).diagnostics.last_completion, null);
+	await settle(index);
+
+	await type(':ka');
+	await wait(`!!document.querySelector('img[alt="Kappa"]')`);
+	await pressKey('Enter');
+	await type('');
+	index = await submit('cleared draft has no completion');
+	assert.equal((await run(`chatNative.calls[${index}]`)).diagnostics.last_completion, null);
+	await settle(index);
+
+	await type('a'.repeat(496) + ' :ka');
+	await wait(`!!document.querySelector('img[alt="Kappa"]')`);
+	await pressKey('Enter');
+	await pressKey('Enter');
+	index = await run('chatNative.calls.length - 1');
+	const refused = await assertSentPayload(index, 'a'.repeat(496) + ' :ka');
+	assert.equal(refused.diagnostics.last_completion, null, 'refused insertion is not a completion');
+	await settle(index);
+
+	const sentIds = await run('chatNative.calls.map(call => call.diagnostics.attempt_id)');
+	assert.equal(new Set(sentIds).size, sentIds.length);
+	const successRecords = await run(
+		"chatNative.diagnostics.filter(entry => entry.level === 'info')"
+	);
+	assert(
+		successRecords.every((entry) => !('message' in entry.record) && !('composer' in entry.record))
+	);
+	const invokeFailure = await run(
+		"chatNative.diagnostics.find(entry => entry.event === 'chat.send.frontend_failure' && entry.record.stage === 'invoke')"
+	);
+	assert(invokeFailure);
+	assert(
+		await run(
+			`chatNative.logs.some(entry => entry.message.includes(${JSON.stringify(invokeFailure.record.attempt_id)}))`
+		)
+	);
+	await run('delete chatNative.fixtures');
+	console.log(
+		'PASS Shift+Tab/mouse selection, draft isolation, failed Unicode payloads, correlation and success privacy'
+	);
 
 	await run("chatNative.navigate('notice-preview')");
 	await wait("chatNative.joins.at(-1) === 'notice-preview'");

@@ -1,5 +1,8 @@
 use super::*;
 
+#[cfg(target_os = "windows")]
+mod native;
+
 fn target(id: Option<&str>, login: &str, channel: &str) -> UserCardTarget {
     UserCardTarget {
         user_id: id.map(str::to_owned),
@@ -36,6 +39,7 @@ fn insert(registry: &mut Registry, label: &str, target: UserCardTarget, activati
             activation,
             armed: false,
             native_ready: false,
+            initial_placement: None,
             request: 0,
             tasks: Vec::new(),
         },
@@ -62,13 +66,37 @@ fn deduplicates_known_and_unresolved_references_without_conflating_login_owners(
 fn blur_policy_is_armed_by_focus_and_respects_pin_and_current_setting() {
     let mut registry = Registry::default();
     insert(&mut registry, "one", target(Some("1"), "maya", "a"), 1);
-    assert!(!registry.focus("one", false, true));
-    assert!(!registry.focus("one", true, true));
-    assert!(registry.focus("one", false, true));
+    assert!(!registry.focus("one", false, false, true));
+    assert!(!registry.focus("one", true, false, true));
+    assert!(registry.focus("one", false, false, true));
     registry.cards.get_mut("one").unwrap().state.pinned = true;
-    assert!(!registry.focus("one", false, true));
+    assert!(!registry.focus("one", false, false, true));
     registry.cards.get_mut("one").unwrap().state.pinned = false;
-    assert!(!registry.focus("one", false, false));
+    assert!(!registry.focus("one", false, false, false));
+}
+
+#[test]
+fn webview_blur_while_native_window_is_active_keeps_card_open() {
+    for chrome in [UserCardChrome::Compact, UserCardChrome::Native] {
+        let mut registry = Registry::default();
+        insert(&mut registry, "one", target(Some("1"), "maya", "a"), 1);
+        registry.cards.get_mut("one").unwrap().state.chrome = chrome;
+        assert!(!registry.focus("one", true, true, true));
+        assert!(!registry.focus("one", false, true, true));
+        assert!(!registry.focus("one", true, true, true));
+        assert!(registry.focus("one", false, false, true));
+    }
+}
+
+#[test]
+fn initial_height_fits_content_and_monitor_after_native_frame_is_removed() {
+    assert_eq!(fit_height(172.2, Some(800.0)).unwrap(), 173.0);
+    assert_eq!(fit_height(80.0, Some(800.0)).unwrap(), MIN_CARD_HEIGHT);
+    assert_eq!(fit_height(1500.0, Some(740.0)).unwrap(), 740.0);
+    assert_eq!(fit_height(240.0, None).unwrap(), 240.0);
+    for height in [f64::NAN, f64::INFINITY, -1.0, 0.0] {
+        assert!(fit_height(height, None).is_err());
+    }
 }
 
 #[test]
