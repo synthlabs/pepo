@@ -3,838 +3,574 @@
 
 /** user-defined commands **/
 
+
 export const commands = {
-	async getFollowedStreams(): Promise<Result<Stream[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_followed_streams') };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getFollowedChannels(): Promise<Result<Broadcaster[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_followed_channels') };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getChannelInfo(channelName: string): Promise<Result<ChannelInfo, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_channel_info', { channelName }) };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async subscribeChat(
-		channelName: string,
-		request: ChatFeedRequest,
-		onEvent: TAURI_CHANNEL<FeedFrame>
-	): Promise<Result<ChatRoomInfo, string>> {
-		try {
-			return {
-				status: 'ok',
-				data: await TAURI_INVOKE('subscribe_chat', { channelName, request, onEvent })
-			};
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async postSystemMessage(
-		room: ChatRoomInfo,
-		input: SystemMessageInput
-	): Promise<Result<boolean, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('post_system_message', { room, input }) };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async unsubscribeChat(request: ChatFeedRequest): Promise<void> {
-		await TAURI_INVOKE('unsubscribe_chat', { request });
-	},
-	async acknowledgeChat(request: ChatFeedRequest, cursor: number): Promise<void> {
-		await TAURI_INVOKE('acknowledge_chat', { request, cursor });
-	},
-	async getChatEngineStatus(): Promise<EngineStatus> {
-		return await TAURI_INVOKE('get_chat_engine_status');
-	},
-	async getChatFeedContext(): Promise<Result<ChatFeedContext, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_chat_feed_context') };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async login(quick: boolean): Promise<Result<UserToken, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('login', { quick }) };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async logout(): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('logout') };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async sendChatMessage(
-		broadcasterId: string,
-		message: string,
-		diagnostics: ChatSendDiagnostics | null
-	): Promise<Result<null, ChatSendError>> {
-		try {
-			return {
-				status: 'ok',
-				data: await TAURI_INVOKE('send_chat_message', { broadcasterId, message, diagnostics })
-			};
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async emitState(name: string): Promise<boolean> {
-		return await TAURI_INVOKE('emit_state', { name });
-	},
-	async updateState(state: StateUpdate): Promise<boolean> {
-		return await TAURI_INVOKE('update_state', { state });
-	},
-	async searchEmotes(
-		query: string,
-		broadcasterId: string,
-		limit: number | null
-	): Promise<Result<Emote[], string>> {
-		try {
-			return {
-				status: 'ok',
-				data: await TAURI_INVOKE('search_emotes', { query, broadcasterId, limit })
-			};
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getNetworkStatus(): Promise<NetworkHealthSnapshot> {
-		return await TAURI_INVOKE('get_network_status');
-	},
-	async beginBackgroundRequest(provider: string): Promise<Result<string, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('begin_background_request', { provider }) };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async endBackgroundRequest(id: string): Promise<void> {
-		await TAURI_INVOKE('end_background_request', { id });
-	},
-	async retryNetworkOperation(id: string): Promise<void> {
-		await TAURI_INVOKE('retry_network_operation', { id });
-	},
-	async openUserCard(target: UserCardTarget): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('open_user_card', { target }) };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getUserCardState(): Promise<Result<UserCardState, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_user_card_state') };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async readyUserCard(contentHeight: number): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('ready_user_card', { contentHeight }) };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async setUserCardPinned(pinned: boolean): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('set_user_card_pinned', { pinned }) };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async refreshUserCard(): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('refresh_user_card') };
-		} catch (e) {
-			if (e instanceof Error) throw e;
-			else return { status: 'error', error: e as any };
-		}
-	}
-};
+async getFollowedStreams() : Promise<Result<Stream[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_followed_streams") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getFollowedChannels() : Promise<Result<Broadcaster[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_followed_channels") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getChannelInfo(channelName: string) : Promise<Result<ChannelInfo, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_channel_info", { channelName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async subscribeChat(channelName: string, request: ChatFeedRequest, onEvent: TAURI_CHANNEL<FeedFrame>) : Promise<Result<ChatRoomInfo, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("subscribe_chat", { channelName, request, onEvent }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async postSystemMessage(room: ChatRoomInfo, input: SystemMessageInput) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("post_system_message", { room, input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async unsubscribeChat(request: ChatFeedRequest) : Promise<void> {
+    await TAURI_INVOKE("unsubscribe_chat", { request });
+},
+async acknowledgeChat(request: ChatFeedRequest, cursor: number) : Promise<void> {
+    await TAURI_INVOKE("acknowledge_chat", { request, cursor });
+},
+async getChatEngineStatus() : Promise<EngineStatus> {
+    return await TAURI_INVOKE("get_chat_engine_status");
+},
+async getChatFeedContext() : Promise<Result<ChatFeedContext, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_chat_feed_context") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async login(quick: boolean) : Promise<Result<UserToken, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("login", { quick }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async logout() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("logout") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sendChatMessage(broadcasterId: string, message: string, diagnostics: ChatSendDiagnostics | null) : Promise<Result<null, ChatSendError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("send_chat_message", { broadcasterId, message, diagnostics }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async emitState(name: string) : Promise<boolean> {
+    return await TAURI_INVOKE("emit_state", { name });
+},
+async updateState(state: StateUpdate) : Promise<boolean> {
+    return await TAURI_INVOKE("update_state", { state });
+},
+async searchEmotes(query: string, broadcasterId: string, limit: number | null) : Promise<Result<Emote[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("search_emotes", { query, broadcasterId, limit }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getNetworkStatus() : Promise<NetworkHealthSnapshot> {
+    return await TAURI_INVOKE("get_network_status");
+},
+async beginBackgroundRequest(provider: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("begin_background_request", { provider }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async endBackgroundRequest(id: string) : Promise<void> {
+    await TAURI_INVOKE("end_background_request", { id });
+},
+async retryNetworkOperation(id: string) : Promise<void> {
+    await TAURI_INVOKE("retry_network_operation", { id });
+},
+async openUserCard(target: UserCardTarget) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("open_user_card", { target }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getUserCardState() : Promise<Result<UserCardState, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_user_card_state") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async readyUserCard(contentHeight: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("ready_user_card", { contentHeight }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setUserCardPinned(pinned: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_user_card_pinned", { pinned }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async refreshUserCard() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("refresh_user_card") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+}
+}
 
 /** user-defined events **/
 
+
+
 /** user-defined constants **/
+
+
 
 /** user-defined types **/
 
-export type AppSettings = {
-	schema_version: number;
-	appearance: AppearanceSettings;
-	chat: ChatSettings;
-	translation: TranslationSettings;
-	emotes: EmoteSettings;
-	channel_cache: ChannelCacheSettings;
-	auth: AuthSettings;
-	eventsub: EventSubSettings;
-	providers: ProviderSettings;
-	network: NetworkSettings;
-	diagnostics: DiagnosticsSettings;
-};
-export type AppearanceSettings = { theme: AppearanceTheme };
-export type AppearanceTheme = 'system' | 'light' | 'dark';
-export type AuthPhase =
-	'unauthorized' | 'waitingForDeviceCode' | 'waitingForAuth' | 'failedAuth' | 'authorized';
-export type AuthSettings = {
-	login_activation_delay_ms: number;
-	refresh_supervisor_tick_secs: number;
-	validation_interval_secs: number;
-	refresh_if_remaining_lt_secs: number;
-};
-export type AuthState = { phase: AuthPhase; device_code: string; token: UserToken | null };
-export type Badge = {
-	/**
-	 * An ID that identifies this set of chat badges. For example, Bits or Subscriber.
-	 */
-	set_id: string;
-	/**
-	 * An ID that identifies this version of the badge. The ID can be any value.
-	 * For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
-	 */
-	id: string;
-	/**
-	 * URL to png of size 28x28
-	 */
-	image_url_1x: string;
-	/**
-	 * URL to png of size 56x56
-	 */
-	image_url_2x: string;
-	/**
-	 * URL to png of size 112x112
-	 */
-	image_url_4x: string;
-	/**
-	 * Title of the badge
-	 */
-	title: string;
-	/**
-	 * Descrition of the badge
-	 */
-	description: string;
-};
-export type BadgeRef = {
-	/**
-	 * An ID that identifies this set of chat badges. For example, Bits or Subscriber.
-	 */
-	set_id: string;
-	/**
-	 * An ID that identifies this version of the badge. The ID can be any value.
-	 * For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
-	 */
-	id: string;
-	/**
-	 * Contains metadata related to the chat badges in the badges tag.
-	 * Currently, this tag contains metadata only for subscriber badges, to indicate the number of months the user has been a subscriber.
-	 */
-	info: string;
-	/**
-	 * The info for displaying the badge
-	 */
-	badge: Badge;
-};
-export type Broadcaster = {
-	/**
-	 * An ID that uniquely identifies the broadcaster that this user is following.
-	 */
-	id: string;
-	/**
-	 * The broadcaster’s login name.
-	 */
-	login: string;
-	/**
-	 * The broadcaster’s display name.
-	 */
-	display_name: string;
-	profile_image_url: string;
-	offline_image_url: string;
-	description: string;
-	created_at: string;
-};
-export type CardAnchor = { x: number; y: number; width: number; height: number };
-export type ChannelCache = { channels: Partial<{ [key in string]: ChannelStatus }> };
-export type ChannelCacheSettings = {
-	recurring_poll_enabled: boolean;
-	poll_interval_secs: number;
-	error_log_throttle_enabled: boolean;
-	error_log_throttle_secs: number;
-	user_lookup_chunk_size: number;
-};
-export type ChannelInfo = {
-	/**
-	 * Twitch User ID of this channel owner
-	 */
-	broadcaster_id: string;
-	/**
-	 * Twitch User login of this channel owner
-	 */
-	broadcaster_login: string;
-	/**
-	 * Twitch user display name of this channel owner
-	 */
-	broadcaster_name: string;
-	/**
-	 * Current game ID being played on the channel
-	 */
-	game_id: string;
-	/**
-	 * Name of the game being played on the channel
-	 */
-	game_name: string;
-	/**
-	 * Language of the channel
-	 */
-	broadcaster_language: string;
-	/**
-	 * Title of the stream
-	 */
-	title: string;
-	/**
-	 * Description of the stream
-	 */
-	description?: string;
-	/**
-	 * Stream delay in seconds
-	 *
-	 * # Notes
-	 *
-	 * This value may not be accurate, it'll only be accurate when the token belongs to the broadcaster and they are partnered.
-	 */
-	delay?: number;
-	/**
-	 * The tags applied to the channel.
-	 */
-	tags: string[];
-	/**
-	 * Boolean flag indicating if the channel has branded content.
-	 */
-	is_branded_content: boolean;
-	/**
-	 * Profile image URL of the broadcaster
-	 */
-	profile_image_url?: string;
-};
-export type ChannelMessage = {
-	ts: string;
-	/**
-	 * The broadcaster user ID.
-	 */
-	broadcaster_user_id: string;
-	/**
-	 * The broadcaster display name.
-	 */
-	broadcaster_user_name: string;
-	/**
-	 * The broadcaster login.
-	 */
-	broadcaster_user_login: string;
-	/**
-	 * The user ID of the user that sent the message.
-	 */
-	chatter_user_id: string;
-	/**
-	 * The user name of the user that sent the message.
-	 */
-	chatter_user_name: string;
-	chatter_user_login?: string;
-	/**
-	 * A UUID that identifies the message.
-	 */
-	message_id: string;
-	text: string;
-	/**
-	 * The parsed fragments of the text field for rendering
-	 */
-	fragments: Fragment[];
-	/**
-	 * The type of message.
-	 */
-	message_type: ChannelMessageType;
-	/**
-	 * List of chat badges.
-	 */
-	badges: BadgeRef[];
-	/**
-	 * Metadata if this message is a cheer.
-	 * The color of the user's name in the chat room.
-	 * This is a hexadecimal RGB color code in the form, `#<RGB>`.
-	 * This may be empty if it is never set.
-	 */
-	color: string;
-	/**
-	 * Translated message text when available.
-	 */
-	translation: ChannelMessageTranslation | null;
-	/**
-	 * Session event position used for message identity and history boundaries.
-	 */
-	index: number;
-	channel_sequence: number;
-};
-export type ChannelMessageTranslation = {
-	source_language: string;
-	target_language: string;
-	translated_text: string;
-};
-export type ChannelMessageTranslationUpdate = {
-	message_id: string;
-	translation: ChannelMessageTranslation;
-};
-export type ChannelMessageType =
-	/**
-	 * An Unknown Message Type
-	 */
-	| 'unknown'
-	/**
-	 * A regular text message
-	 */
-	| 'text'
-	/**
-	 * A highlighted message with channel points
-	 */
-	| 'channel_points_highlighted'
-	/**
-	 * A message sent with channel points during sub-only mode
-	 */
-	| 'channel_points_sub_only'
-	/**
-	 * A first message from a user
-	 */
-	| 'user_intro'
-	/**
-	 * A gigantified emote
-	 */
-	| 'power_ups_gigantified_emote'
-	/**
-	 * A message sent with effects
-	 */
-	| 'power_ups_message_effect';
-export type ChannelStatus = {
-	broadcaster_id: string;
-	login: string;
-	display_name: string;
-	profile_image_url: string;
-	is_live: boolean;
-	is_partner?: boolean;
-	stream: Stream | null;
-};
-export type ChatDetectionPolicy = 'reliable_only' | 'best_guess';
-export type ChatFeedContext = { epoch: string };
-export type ChatFeedRequest = { epoch: string; revision: number };
-export type ChatJoinMode = 'all' | 'recent' | 'open';
-export type ChatRoomInfo = {
-	broadcaster_id: string;
-	broadcaster_login: string;
-	broadcaster_name: string;
-};
-export type ChatSendDiagnostics = {
-	attempt_id: string;
-	channel_login: string;
-	last_completion: EmoteCompletionDiagnostics | null;
-	key_events: ChatSendKeyEvent[];
-};
-export type ChatSendError = {
-	kind: ChatSendErrorKind;
-	message: string;
-	details: string;
-	attempt_id: string | null;
-};
-export type ChatSendErrorKind =
-	| 'authentication'
-	| 'permission_denied'
-	| 'rate_limited'
-	| 'rejected'
-	| 'connection'
-	| 'timeout'
-	| 'unexpected';
-export type ChatSendKeyEvent = {
-	key: string;
-	shift: boolean;
-	repeat: boolean;
-	is_composing: boolean;
-	picker_visible: boolean;
-	result_count: number;
-	selected_index: number | null;
-	age_ms: number;
-};
-export type ChatSettings = {
-	join_mode: ChatJoinMode;
-	show_history_divider: boolean;
-	message_limit: number;
-	pause_message_gc_while_paused: boolean;
-	batch_live_messages: boolean;
-	message_batch_interval_ms: number;
-	message_gc_interval_ms: number;
-	autoscroll_threshold_px: number;
-	show_timestamps: boolean;
-	timestamp_locale: string;
-	timestamp_style: TimestampStyle;
-	show_badges: boolean;
-	show_emotes: boolean;
-	alternate_backgrounds: boolean;
-	center_system_messages: boolean;
-	show_system_message_background: boolean;
-	moderation_notices_enabled: boolean;
-	show_login_for_different_display_name: boolean;
-	use_display_names_in_mentions: boolean;
-	bold_mentions: boolean;
-	user_card_close_on_unfocus: boolean;
-	user_card_chrome: UserCardChrome;
-	user_card_placement: UserCardPlacement;
-};
-export type ChatTimelineEntry =
-	({ kind: 'chat' } & ChannelMessage) | ({ kind: 'system' } & SystemMessage);
-export type ChatTranslationLayout = 'language_tag' | 'message_text' | 'timestamp_end' | 'connector';
-export type CheerFragment = { index: number; text: string };
-export type DiagnosticsSettings = { capture_window_errors: boolean };
-export type Emote = {
-	/**
-	 * ID of the emote.
-	 */
-	id: string;
-	/**
-	 * Name of the emote a viewer types into Twitch chat for the image to appear.
-	 */
-	name: string;
-	tier: string;
-	/**
-	 * If the emote_type is "subscriptions", this indicates the subscriber tier at which the emote is unlocked. Set to an empty string otherwise.
-	 * The type of emote.
-	 *
-	 * The most common values for custom channel emotes are
-	 *
-	 * `subscriptions`: Indicates a custom subscriber emote.
-	 *
-	 * `bitstier`: Indicates a custom Bits tier emote.
-	 *
-	 * `follower`: Indicates a custom follower emote.
-	 */
-	emote_type: string;
-	/**
-	 * ID of the emote set the emote belongs to.
-	 */
-	emote_set_id: string;
-	/**
-	 * The formats that the emote is available in.
-	 */
-	format: string[];
-	/**
-	 * The sizes that the emote is available in.
-	 */
-	scale: string[];
-	/**
-	 * The background themes that the emote is available in.
-	 */
-	theme_mode: string[];
-	/**
-	 * Fully constructed URL for the emote image.
-	 */
-	url: string;
-	/**
-	 * The provider this emote comes from (e.g. "Twitch", "BTTV").
-	 */
-	provider: string;
-	/**
-	 * The scope of the emote (e.g. "Global", "Channel").
-	 */
-	scope: string;
-};
-export type EmoteCompletionDiagnostics = {
-	mode: string;
-	method: string;
-	emote_id: string;
-	emote_name: string;
-	provider: string;
-	scope: string;
-	edited_since_selection: boolean;
-};
-export type EmoteFragment = { index: number; emote: Emote };
-export type EmoteProviderId = 'twitch' | 'bttv' | 'ffz' | 'seventv';
-export type EmoteProviderPreference = { id: EmoteProviderId; enabled: boolean };
-export type EmoteSettings = {
-	providers: EmoteProviderPreference[];
-	autocomplete_enabled: boolean;
-	autocomplete_min_chars: number;
-	search_debounce_ms: number;
-	autocomplete_result_limit: number;
-	picker_result_limit: number;
-	picker_columns: number;
-	picker_max_height_px: number;
-	inline_emote_px: number;
-	inline_badge_px: number;
-};
-export type EngineStatus = {
-	connected: boolean;
-	joined: number;
-	eligible: number;
-	lingering: number;
-	pending: number;
-	limited: number;
-	failures: string[];
-};
-export type EventSubSettings = {
-	socket_idle_timeout_secs: number;
-	retry_base_secs: number;
-	retry_max_secs: number;
-	debug_cost_watcher_enabled: boolean;
-	debug_cost_watcher_interval_secs: number;
-	repeated_log_throttle_enabled: boolean;
-	unparseable_warning_throttle_secs: number;
-	subscription_error_throttle_secs: number;
-};
-export type FeedEvent =
-	| { type: 'users' }
-	| { type: 'moderation'; event: ModerationEvent }
-	| { type: 'snapshot'; messages: ChatTimelineEntry[] }
-	| { type: 'message'; message: ChatTimelineEntry }
-	| { type: 'translation'; update: ChannelMessageTranslationUpdate }
-	| { type: 'reset'; messages: ChatTimelineEntry[] }
-	| { type: 'gap'; after: number; through: number }
-	| { type: 'unavailable'; error: string };
-export type FeedFrame = { cursor: number; event: FeedEvent; users?: UserDirectoryUpdate | null };
-export type Fragment =
-	| { Text: TextFragment }
-	| { Emote: EmoteFragment }
-	| { Cheer: CheerFragment }
-	| { Mention: MentionFragment };
-export type InternalState = { version: string; name: string };
-export type MentionFragment = {
-	index: number;
-	text: string;
-	login: string;
-	user_id: string | null;
-	display_name: string | null;
-};
-export type ModerationAction =
-	| { type: 'message_deleted'; target: ModerationUser; message_id: string }
-	| { type: 'user_messages_cleared'; target: ModerationUser }
-	| { type: 'chat_cleared' };
-export type ModerationEvent = {
-	notification_id: string;
-	ts: string;
-	broadcaster_user_id: string;
-	broadcaster_user_login: string;
-	broadcaster_user_name: string;
-	action: ModerationAction;
-};
-export type ModerationUser = { user_id: string; login: string; display_name: string };
-export type NetworkHealthSnapshot = { revision: number; issues: NetworkIssue[] };
-export type NetworkIssue = {
-	id: string;
-	feature: string;
-	category: string;
-	message: string;
-	failures: number;
-	affected: number;
-	cached: boolean;
-	last_failure_at: number;
-	retry_at: number | null;
-	retryable: boolean;
-	core: boolean;
-	can_retry: boolean;
-};
-export type NetworkSettings = {
-	connect_timeout_secs: number;
-	request_timeout_secs: number;
-	metadata_concurrency: number;
-	retry_base_secs: number;
-	retry_max_secs: number;
-};
-export type ObservedUser = {
-	user_id: string;
-	login: string;
-	display_name: string;
-	color: string | null;
-};
-export type ProfileStatus = 'loading' | 'ready' | 'unavailable' | 'error';
-export type ProviderSettings = {
-	http_connect_timeout_secs: number;
-	http_request_timeout_secs: number;
-	metadata_retention_enabled: boolean;
-	metadata_retention_secs: number;
-	stale_metadata_fallback: boolean;
-};
-export type StateUpdate = { version: number | null; name: string; value: string };
-export type Stream = {
-	/**
-	 * ID of the game being played on the stream.
-	 */
-	game_id: string;
-	/**
-	 * Name of the game being played.
-	 */
-	game_name: string;
-	/**
-	 * Stream ID.
-	 */
-	id: string;
-	/**
-	 * Stream language.
-	 */
-	language: string;
-	/**
-	 * Indicates if the broadcaster has specified their channel contains mature content that may be inappropriate for younger audiences.
-	 */
-	is_mature: boolean;
-	/**
-	 * UTC timestamp.
-	 */
-	started_at: string;
-	tags: string[];
-	/**
-	 * Thumbnail URL of the stream. All image URLs have variable width and height. You can replace {width} and {height} with any values to get that size image
-	 */
-	thumbnail_url: string;
-	/**
-	 * Stream title.
-	 */
-	title: string;
-	/**
-	 * ID of the user who is streaming.
-	 */
-	user_id: string;
-	/**
-	 * Display name corresponding to user_id.
-	 */
-	user_name: string;
-	/**
-	 * Login of the user who is streaming.
-	 */
-	user_login: string;
-	/**
-	 * Number of viewers watching the stream at the time of the query.
-	 */
-	viewer_count: number;
-};
-export type SystemMessage = {
-	index: number;
-	ts: string;
-	message_id: string;
-	broadcaster_user_id: string;
-	broadcaster_user_login: string;
-	broadcaster_user_name: string;
-	segments: SystemMessageSegment[];
-	icon: SystemMessageIcon | null;
-};
-export type SystemMessageIcon = 'info' | 'shield' | 'clock' | 'success' | 'warning' | 'error';
-export type SystemMessageInput = {
-	message_id: string;
-	ts: string;
-	segments: SystemMessageSegment[];
-	icon: SystemMessageIcon | null;
-};
-export type SystemMessageSegment =
-	| { type: 'text'; text: string }
-	| { type: 'emphasis'; text: string }
-	| { type: 'user'; user_id: string; login: string; display_name: string }
-	| { type: 'link'; text: string; url: string };
-export type TextFragment = { index: number; text: string };
-export type TimestampStyle = 'short' | 'medium' | 'long' | 'full';
-export type TranslationQueuePolicy = 'newest_first' | 'oldest_first';
-export type TranslationSettings = {
-	enabled: boolean;
-	target_language: string;
-	layout: ChatTranslationLayout;
-	translate_history: boolean;
-	detection_policy: ChatDetectionPolicy;
-	queue_policy: TranslationQueuePolicy;
-	queue_capacity: number;
-	max_in_flight: number;
-};
-export type UserCardChrome = 'compact' | 'native';
-export type UserCardPlacement = 'near_username' | 'centered' | 'os';
-export type UserCardState = {
-	user: ObservedUser;
-	profile_image_url: string | null;
-	channel_id: string;
-	channel_login: string;
-	badges: BadgeRef[] | null;
-	profile_status: ProfileStatus;
-	error: string | null;
-	pinned: boolean;
-	chrome: UserCardChrome;
-	revision: number;
-};
-export type UserCardTarget = {
-	user_id: string | null;
-	login: string;
-	display_name: string;
-	channel_id: string;
-	channel_login: string;
-	anchor: CardAnchor;
-};
-export type UserDirectoryUpdate =
-	| { type: 'snapshot'; users: ObservedUser[] }
-	| { type: 'delta'; upserts: ObservedUser[]; removed: string[] };
-export type UserToken = {
-	/**
-	 * The access token used to authenticate requests with
-	 */
-	access_token: string;
-	client_id: string;
-	/**
-	 * Username of user associated with this token
-	 */
-	login: string;
-	/**
-	 * User ID of the user associated with this token
-	 */
-	user_id: string;
-	/**
-	 * The refresh token used to extend the life of this user token
-	 */
-	refresh_token: string | null;
-	expires_in: number;
-	profile_image_url?: string;
-};
+export type AppSettings = { schema_version: number; appearance: AppearanceSettings; chat: ChatSettings; translation: TranslationSettings; emotes: EmoteSettings; channel_cache: ChannelCacheSettings; auth: AuthSettings; eventsub: EventSubSettings; providers: ProviderSettings; network: NetworkSettings; diagnostics: DiagnosticsSettings }
+export type AppearanceSettings = { theme: AppearanceTheme }
+export type AppearanceTheme = "system" | "light" | "dark"
+export type AuthPhase = "unauthorized" | "waitingForDeviceCode" | "waitingForAuth" | "failedAuth" | "authorized"
+export type AuthSettings = { login_activation_delay_ms: number; refresh_supervisor_tick_secs: number; validation_interval_secs: number; refresh_if_remaining_lt_secs: number }
+export type AuthState = { phase: AuthPhase; device_code: string; token: UserToken | null }
+export type Badge = { 
+/**
+ * An ID that identifies this set of chat badges. For example, Bits or Subscriber.
+ */
+set_id: string; 
+/**
+ * An ID that identifies this version of the badge. The ID can be any value.
+ * For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
+ */
+id: string; 
+/**
+ * URL to png of size 28x28
+ */
+image_url_1x: string; 
+/**
+ * URL to png of size 56x56
+ */
+image_url_2x: string; 
+/**
+ * URL to png of size 112x112
+ */
+image_url_4x: string; 
+/**
+ * Title of the badge
+ */
+title: string; 
+/**
+ * Descrition of the badge
+ */
+description: string }
+export type BadgeRef = { 
+/**
+ * An ID that identifies this set of chat badges. For example, Bits or Subscriber.
+ */
+set_id: string; 
+/**
+ * An ID that identifies this version of the badge. The ID can be any value.
+ * For example, for Bits, the ID is the Bits tier level, but for World of Warcraft, it could be Alliance or Horde.
+ */
+id: string; 
+/**
+ * Contains metadata related to the chat badges in the badges tag.
+ * Currently, this tag contains metadata only for subscriber badges, to indicate the number of months the user has been a subscriber.
+ */
+info: string; 
+/**
+ * The info for displaying the badge
+ */
+badge: Badge }
+export type Broadcaster = { 
+/**
+ * An ID that uniquely identifies the broadcaster that this user is following.
+ */
+id: string; 
+/**
+ * The broadcaster’s login name.
+ */
+login: string; 
+/**
+ * The broadcaster’s display name.
+ */
+display_name: string; profile_image_url: string; offline_image_url: string; description: string; created_at: string }
+export type CardAnchor = { x: number; y: number; width: number; height: number }
+export type ChannelCache = { channels: Partial<{ [key in string]: ChannelStatus }> }
+export type ChannelCacheSettings = { recurring_poll_enabled: boolean; poll_interval_secs: number; error_log_throttle_enabled: boolean; error_log_throttle_secs: number; user_lookup_chunk_size: number }
+export type ChannelInfo = { 
+/**
+ * Twitch User ID of this channel owner
+ */
+broadcaster_id: string; 
+/**
+ * Twitch User login of this channel owner
+ */
+broadcaster_login: string; 
+/**
+ * Twitch user display name of this channel owner
+ */
+broadcaster_name: string; 
+/**
+ * Current game ID being played on the channel
+ */
+game_id: string; 
+/**
+ * Name of the game being played on the channel
+ */
+game_name: string; 
+/**
+ * Language of the channel
+ */
+broadcaster_language: string; 
+/**
+ * Title of the stream
+ */
+title: string; 
+/**
+ * Description of the stream
+ */
+description?: string; 
+/**
+ * Stream delay in seconds
+ * 
+ * # Notes
+ * 
+ * This value may not be accurate, it'll only be accurate when the token belongs to the broadcaster and they are partnered.
+ */
+delay?: number; 
+/**
+ * The tags applied to the channel.
+ */
+tags: string[]; 
+/**
+ * Boolean flag indicating if the channel has branded content.
+ */
+is_branded_content: boolean; 
+/**
+ * Profile image URL of the broadcaster
+ */
+profile_image_url?: string }
+export type ChannelMessage = { ts: string; 
+/**
+ * The broadcaster user ID.
+ */
+broadcaster_user_id: string; 
+/**
+ * The broadcaster display name.
+ */
+broadcaster_user_name: string; 
+/**
+ * The broadcaster login.
+ */
+broadcaster_user_login: string; 
+/**
+ * The user ID of the user that sent the message.
+ */
+chatter_user_id: string; 
+/**
+ * The user name of the user that sent the message.
+ */
+chatter_user_name: string; chatter_user_login?: string; 
+/**
+ * A UUID that identifies the message.
+ */
+message_id: string; text: string; 
+/**
+ * The parsed fragments of the text field for rendering
+ */
+fragments: Fragment[]; 
+/**
+ * The type of message.
+ */
+message_type: ChannelMessageType; 
+/**
+ * List of chat badges.
+ */
+badges: BadgeRef[]; 
+/**
+ * Metadata if this message is a cheer.
+ * The color of the user's name in the chat room.
+ * This is a hexadecimal RGB color code in the form, `#<RGB>`.
+ * This may be empty if it is never set.
+ */
+color: string; 
+/**
+ * Translated message text when available.
+ */
+translation: ChannelMessageTranslation | null; 
+/**
+ * Session event position used for message identity and history boundaries.
+ */
+index: number; channel_sequence: number }
+export type ChannelMessageTranslation = { source_language: string; target_language: string; translated_text: string }
+export type ChannelMessageTranslationUpdate = { message_id: string; translation: ChannelMessageTranslation }
+export type ChannelMessageType = 
+/**
+ * An Unknown Message Type
+ */
+"unknown" | 
+/**
+ * A regular text message
+ */
+"text" | 
+/**
+ * A highlighted message with channel points
+ */
+"channel_points_highlighted" | 
+/**
+ * A message sent with channel points during sub-only mode
+ */
+"channel_points_sub_only" | 
+/**
+ * A first message from a user
+ */
+"user_intro" | 
+/**
+ * A gigantified emote
+ */
+"power_ups_gigantified_emote" | 
+/**
+ * A message sent with effects
+ */
+"power_ups_message_effect"
+export type ChannelStatus = { broadcaster_id: string; login: string; display_name: string; profile_image_url: string; is_live: boolean; is_partner?: boolean; stream: Stream | null }
+export type ChatDetectionPolicy = "reliable_only" | "best_guess"
+export type ChatFeedContext = { epoch: string }
+export type ChatFeedRequest = { epoch: string; revision: number }
+export type ChatJoinMode = "all" | "recent" | "open"
+export type ChatRoomInfo = { broadcaster_id: string; broadcaster_login: string; broadcaster_name: string }
+export type ChatSendDiagnostics = { attempt_id: string; channel_login: string; last_completion: EmoteCompletionDiagnostics | null; key_events: ChatSendKeyEvent[] }
+export type ChatSendError = { kind: ChatSendErrorKind; message: string; details: string; attempt_id: string | null }
+export type ChatSendErrorKind = "authentication" | "permission_denied" | "rate_limited" | "rejected" | "connection" | "timeout" | "unexpected"
+export type ChatSendKeyEvent = { key: string; shift: boolean; repeat: boolean; is_composing: boolean; picker_visible: boolean; result_count: number; selected_index: number | null; age_ms: number }
+export type ChatSettings = { join_mode: ChatJoinMode; show_history_divider: boolean; message_limit: number; pause_message_gc_while_paused: boolean; batch_live_messages: boolean; message_batch_interval_ms: number; message_gc_interval_ms: number; autoscroll_threshold_px: number; show_timestamps: boolean; timestamp_locale: string; timestamp_style: TimestampStyle; show_badges: boolean; show_emotes: boolean; alternate_backgrounds: boolean; center_system_messages: boolean; show_system_message_background: boolean; moderation_notices_enabled: boolean; show_login_for_different_display_name: boolean; use_display_names_in_mentions: boolean; bold_mentions: boolean; user_card_close_on_unfocus: boolean; user_card_chrome: UserCardChrome; user_card_placement: UserCardPlacement }
+export type ChatTimelineEntry = ({ kind: "chat" } & ChannelMessage) | ({ kind: "system" } & SystemMessage)
+export type ChatTranslationLayout = "language_tag" | "message_text" | "timestamp_end" | "connector"
+export type CheerFragment = { index: number; text: string }
+export type DiagnosticsSettings = { capture_window_errors: boolean }
+export type Emote = { 
+/**
+ * ID of the emote.
+ */
+id: string; 
+/**
+ * Name of the emote a viewer types into Twitch chat for the image to appear.
+ */
+name: string; tier: string; 
+/**
+ * If the emote_type is "subscriptions", this indicates the subscriber tier at which the emote is unlocked. Set to an empty string otherwise.
+ * The type of emote.
+ * 
+ * The most common values for custom channel emotes are
+ * 
+ * `subscriptions`: Indicates a custom subscriber emote.
+ * 
+ * `bitstier`: Indicates a custom Bits tier emote.
+ * 
+ * `follower`: Indicates a custom follower emote.
+ */
+emote_type: string; 
+/**
+ * ID of the emote set the emote belongs to.
+ */
+emote_set_id: string; 
+/**
+ * The formats that the emote is available in.
+ */
+format: string[]; 
+/**
+ * The sizes that the emote is available in.
+ */
+scale: string[]; 
+/**
+ * The background themes that the emote is available in.
+ */
+theme_mode: string[]; 
+/**
+ * Fully constructed URL for the emote image.
+ */
+url: string; 
+/**
+ * The provider this emote comes from (e.g. "Twitch", "BTTV").
+ */
+provider: string; 
+/**
+ * The scope of the emote (e.g. "Global", "Channel").
+ */
+scope: string }
+export type EmoteCompletionDiagnostics = { mode: string; method: string; emote_id: string; emote_name: string; provider: string; scope: string; edited_since_selection: boolean }
+export type EmoteFragment = { index: number; emote: Emote }
+export type EmoteProviderId = "twitch" | "bttv" | "ffz" | "seventv"
+export type EmoteProviderPreference = { id: EmoteProviderId; enabled: boolean }
+export type EmoteSettings = { providers: EmoteProviderPreference[]; autocomplete_enabled: boolean; autocomplete_min_chars: number; search_debounce_ms: number; autocomplete_result_limit: number; picker_result_limit: number; picker_columns: number; picker_max_height_px: number; inline_emote_px: number; inline_badge_px: number }
+export type EngineStatus = { connected: boolean; joined: number; eligible: number; lingering: number; pending: number; limited: number; failures: string[] }
+export type EventSubSettings = { socket_idle_timeout_secs: number; retry_base_secs: number; retry_max_secs: number; debug_cost_watcher_enabled: boolean; debug_cost_watcher_interval_secs: number; repeated_log_throttle_enabled: boolean; unparseable_warning_throttle_secs: number; subscription_error_throttle_secs: number }
+export type FeedEvent = { type: "users" } | { type: "moderation"; event: ModerationEvent } | { type: "snapshot"; messages: ChatTimelineEntry[] } | { type: "message"; message: ChatTimelineEntry } | { type: "translation"; update: ChannelMessageTranslationUpdate } | { type: "reset"; messages: ChatTimelineEntry[] } | { type: "gap"; after: number; through: number } | { type: "unavailable"; error: string }
+export type FeedFrame = { cursor: number; event: FeedEvent; users?: UserDirectoryUpdate | null }
+export type Fragment = { Text: TextFragment } | { Emote: EmoteFragment } | { Cheer: CheerFragment } | { Mention: MentionFragment }
+export type InternalState = { version: string; name: string }
+export type MentionFragment = { index: number; text: string; login: string; user_id: string | null; display_name: string | null }
+export type ModerationAction = { type: "message_deleted"; target: ModerationUser; message_id: string } | { type: "user_messages_cleared"; target: ModerationUser } | { type: "chat_cleared" }
+export type ModerationEvent = { notification_id: string; ts: string; broadcaster_user_id: string; broadcaster_user_login: string; broadcaster_user_name: string; action: ModerationAction }
+export type ModerationUser = { user_id: string; login: string; display_name: string }
+export type NetworkHealthSnapshot = { revision: number; issues: NetworkIssue[] }
+export type NetworkIssue = { id: string; feature: string; category: string; message: string; failures: number; affected: number; cached: boolean; last_failure_at: number; retry_at: number | null; retryable: boolean; core: boolean; can_retry: boolean }
+export type NetworkSettings = { connect_timeout_secs: number; request_timeout_secs: number; metadata_concurrency: number; retry_base_secs: number; retry_max_secs: number }
+export type ObservedUser = { user_id: string; login: string; display_name: string; color: string | null }
+export type ProfileStatus = "loading" | "ready" | "unavailable" | "error"
+export type ProviderSettings = { http_connect_timeout_secs: number; http_request_timeout_secs: number; metadata_retention_enabled: boolean; metadata_retention_secs: number; stale_metadata_fallback: boolean }
+export type StateUpdate = { version: number | null; name: string; value: string }
+export type Stream = { 
+/**
+ * ID of the game being played on the stream.
+ */
+game_id: string; 
+/**
+ * Name of the game being played.
+ */
+game_name: string; 
+/**
+ * Stream ID.
+ */
+id: string; 
+/**
+ * Stream language.
+ */
+language: string; 
+/**
+ * Indicates if the broadcaster has specified their channel contains mature content that may be inappropriate for younger audiences.
+ */
+is_mature: boolean; 
+/**
+ * UTC timestamp.
+ */
+started_at: string; tags: string[]; 
+/**
+ * Thumbnail URL of the stream. All image URLs have variable width and height. You can replace {width} and {height} with any values to get that size image
+ */
+thumbnail_url: string; 
+/**
+ * Stream title.
+ */
+title: string; 
+/**
+ * ID of the user who is streaming.
+ */
+user_id: string; 
+/**
+ * Display name corresponding to user_id.
+ */
+user_name: string; 
+/**
+ * Login of the user who is streaming.
+ */
+user_login: string; 
+/**
+ * Number of viewers watching the stream at the time of the query.
+ */
+viewer_count: number }
+export type SystemMessage = { index: number; ts: string; message_id: string; broadcaster_user_id: string; broadcaster_user_login: string; broadcaster_user_name: string; segments: SystemMessageSegment[]; icon: SystemMessageIcon | null }
+export type SystemMessageIcon = "info" | "shield" | "clock" | "success" | "warning" | "error"
+export type SystemMessageInput = { message_id: string; ts: string; segments: SystemMessageSegment[]; icon: SystemMessageIcon | null }
+export type SystemMessageSegment = { type: "text"; text: string } | { type: "emphasis"; text: string } | { type: "user"; user_id: string; login: string; display_name: string } | { type: "link"; text: string; url: string }
+export type TextFragment = { index: number; text: string }
+export type TimestampStyle = "short" | "medium" | "long" | "full"
+export type TranslationQueuePolicy = "newest_first" | "oldest_first"
+export type TranslationSettings = { enabled: boolean; target_language: string; layout: ChatTranslationLayout; translate_history: boolean; detection_policy: ChatDetectionPolicy; queue_policy: TranslationQueuePolicy; queue_capacity: number; max_in_flight: number }
+export type UserCardChrome = "compact" | "native"
+export type UserCardPlacement = "near_username" | "centered" | "os"
+export type UserCardState = { user: ObservedUser; profile_image_url: string | null; channel_id: string; channel_login: string; badges: BadgeRef[] | null; profile_status: ProfileStatus; error: string | null; pinned: boolean; chrome: UserCardChrome; revision: number }
+export type UserCardTarget = { user_id: string | null; login: string; display_name: string; channel_id: string; channel_login: string; anchor: CardAnchor }
+export type UserDirectoryUpdate = { type: "snapshot"; users: ObservedUser[] } | { type: "delta"; upserts: ObservedUser[]; removed: string[] }
+export type UserToken = { 
+/**
+ * The access token used to authenticate requests with
+ */
+access_token: string; client_id: string; 
+/**
+ * Username of user associated with this token
+ */
+login: string; 
+/**
+ * User ID of the user associated with this token
+ */
+user_id: string; 
+/**
+ * The refresh token used to extend the life of this user token
+ */
+refresh_token: string | null; expires_in: number; profile_image_url?: string }
 
 /** tauri-specta globals **/
 
-import { invoke as TAURI_INVOKE, Channel as TAURI_CHANNEL } from '@tauri-apps/api/core';
-import * as TAURI_API_EVENT from '@tauri-apps/api/event';
-import { type WebviewWindow as __WebviewWindow__ } from '@tauri-apps/api/webviewWindow';
+import {
+	invoke as TAURI_INVOKE,
+	Channel as TAURI_CHANNEL,
+} from "@tauri-apps/api/core";
+import * as TAURI_API_EVENT from "@tauri-apps/api/event";
+import { type WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
 
 type __EventObj__<T> = {
-	listen: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
-	once: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
+	listen: (
+		cb: TAURI_API_EVENT.EventCallback<T>,
+	) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
+	once: (
+		cb: TAURI_API_EVENT.EventCallback<T>,
+	) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
 	emit: null extends T
 		? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
 		: (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
 };
 
-export type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error: E };
+export type Result<T, E> =
+	| { status: "ok"; data: T }
+	| { status: "error"; error: E };
 
-function __makeEvents__<T extends Record<string, any>>(mappings: Record<keyof T, string>) {
+function __makeEvents__<T extends Record<string, any>>(
+	mappings: Record<keyof T, string>,
+) {
 	return new Proxy(
 		{} as unknown as {
 			[K in keyof T]: __EventObj__<T[K]> & {
@@ -849,20 +585,20 @@ function __makeEvents__<T extends Record<string, any>>(mappings: Record<keyof T,
 					apply: (_, __, [window]: [__WebviewWindow__]) => ({
 						listen: (arg: any) => window.listen(name, arg),
 						once: (arg: any) => window.once(name, arg),
-						emit: (arg: any) => window.emit(name, arg)
+						emit: (arg: any) => window.emit(name, arg),
 					}),
 					get: (_, command: keyof __EventObj__<any>) => {
 						switch (command) {
-							case 'listen':
+							case "listen":
 								return (arg: any) => TAURI_API_EVENT.listen(name, arg);
-							case 'once':
+							case "once":
 								return (arg: any) => TAURI_API_EVENT.once(name, arg);
-							case 'emit':
+							case "emit":
 								return (arg: any) => TAURI_API_EVENT.emit(name, arg);
 						}
-					}
+					},
 				});
-			}
-		}
+			},
+		},
 	);
 }

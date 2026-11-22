@@ -1,13 +1,13 @@
 {
 	"name": "pepo",
-	"version": "0.2.32",
+	"version": "0.2.33",
 	"private": false,
 	"scripts": {
 		"build": "pnpm run check && vite build",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:user-card": "node scripts/check-user-card.mjs",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"check:window-controls": "node scripts/check-window-controls.mjs",
-		"check:user-card": "node scripts/check-user-card.mjs",
 		"dev": "vite dev",
 		"format": "node scripts/format.mjs --write",
 		"format:check": "node scripts/format.mjs --check",
