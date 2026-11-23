@@ -164,7 +164,7 @@ impl EmoteProvider<MultiCache> for FfzProvider {
             let fallback = self.hydrate_persisted_cache(GLOBAL_SCOPE_KEY, provider_settings);
             let url = format!("{}/set/global", self.api_base);
 
-            match { fetch_json::<FfzGlobalResponse>(client, "FFZ", "global", &url).await } {
+            match fetch_json::<FfzGlobalResponse>(client, "FFZ", "global", &url).await {
                 Ok(resp) => {
                     let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
                     let mut count = 0;
@@ -205,15 +205,14 @@ impl EmoteProvider<MultiCache> for FfzProvider {
             let fallback = self.hydrate_persisted_cache(&broadcaster_id, provider_settings);
             let url = format!("{}/room/id/{}", self.api_base, broadcaster_id);
 
-            match {
-                fetch_json::<FfzRoomResponse>(
-                    client,
-                    "FFZ",
-                    format!("channel:{broadcaster_id}"),
-                    &url,
-                )
-                .await
-            } {
+            match fetch_json::<FfzRoomResponse>(
+                client,
+                "FFZ",
+                format!("channel:{broadcaster_id}"),
+                &url,
+            )
+            .await
+            {
                 Ok(resp) => {
                     let cache = EmoteCache::new(broadcaster_id.clone(), self.get_name());
                     let mut count = 0;

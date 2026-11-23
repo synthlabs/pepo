@@ -20,9 +20,10 @@ pub struct AuthState {
     pub token: Option<UserToken>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum AuthPhase {
+    #[default]
     Unauthorized,
     WaitingForDeviceCode,
     WaitingForAuth,
@@ -30,13 +31,7 @@ pub enum AuthPhase {
     Authorized,
 }
 
-impl Default for AuthPhase {
-    fn default() -> Self {
-        AuthPhase::Unauthorized
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 #[serde(default)]
 pub struct AppSettings {
     pub schema_version: u32,
@@ -50,24 +45,6 @@ pub struct AppSettings {
     pub providers: ProviderSettings,
     pub network: NetworkSettings,
     pub diagnostics: DiagnosticsSettings,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            schema_version: 0,
-            appearance: AppearanceSettings::default(),
-            chat: ChatSettings::default(),
-            translation: TranslationSettings::default(),
-            emotes: EmoteSettings::default(),
-            channel_cache: ChannelCacheSettings::default(),
-            auth: AuthSettings::default(),
-            eventsub: EventSubSettings::default(),
-            providers: ProviderSettings::default(),
-            network: NetworkSettings::default(),
-            diagnostics: DiagnosticsSettings::default(),
-        }
-    }
 }
 
 impl AppSettings {
@@ -386,18 +363,13 @@ impl Default for AppearanceSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum AppearanceTheme {
     System,
     Light,
+    #[default]
     Dark,
-}
-
-impl Default for AppearanceTheme {
-    fn default() -> Self {
-        AppearanceTheme::Dark
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
@@ -577,34 +549,24 @@ pub enum TranslationQueuePolicy {
     OldestFirst,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ChatTranslationLayout {
     LanguageTag,
+    #[default]
     MessageText,
     TimestampEnd,
     Connector,
 }
 
-impl Default for ChatTranslationLayout {
-    fn default() -> Self {
-        Self::MessageText
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum TimestampStyle {
+    #[default]
     Short,
     Medium,
     Long,
     Full,
-}
-
-impl Default for TimestampStyle {
-    fn default() -> Self {
-        TimestampStyle::Short
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -771,26 +733,24 @@ pub struct UserToken {
 
 impl core::fmt::Debug for UserToken {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            UserToken {
-                access_token: _,
-                client_id,
-                login,
-                user_id,
-                refresh_token: _,
-                expires_in,
-                profile_image_url,
-            } => f
-                .debug_struct("UserToken")
-                .field("access_token", &"********")
-                .field("client_id", &client_id)
-                .field("login", &login)
-                .field("user_id", &user_id)
-                .field("refresh_token", &"********")
-                .field("expires_in", &expires_in)
-                .field("profile_image_url", &profile_image_url)
-                .finish(),
-        }
+        let UserToken {
+            access_token: _,
+            client_id,
+            login,
+            user_id,
+            refresh_token: _,
+            expires_in,
+            profile_image_url,
+        } = self;
+        f.debug_struct("UserToken")
+            .field("access_token", &"********")
+            .field("client_id", &client_id)
+            .field("login", &login)
+            .field("user_id", &user_id)
+            .field("refresh_token", &"********")
+            .field("expires_in", &expires_in)
+            .field("profile_image_url", &profile_image_url)
+            .finish()
     }
 }
 
@@ -1176,7 +1136,7 @@ impl ChannelMessage {
                     {
                         if !emote_cache.has_emote(text.to_string()) {
                             let scope = em
-                                .resolve_user_name(&emote.owner_id.to_string())
+                                .resolve_user_name(emote.owner_id.as_ref())
                                 .unwrap_or_else(|| "Channel".to_string());
                             em.insert_twitch_fragment_emote(
                                 broadcaster_id.clone(),
@@ -1194,7 +1154,7 @@ impl ChannelMessage {
             message::Parser::parse_message(&message_text, &value.message.fragments, &emote_cache);
 
         ChannelMessage {
-            ts: ts,
+            ts,
             broadcaster_user_id: value.broadcaster_user_id.to_string(),
             broadcaster_user_name: value.broadcaster_user_name.to_string(),
             broadcaster_user_login: broadcaster_login,

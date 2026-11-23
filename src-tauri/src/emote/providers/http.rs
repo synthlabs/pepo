@@ -108,6 +108,7 @@ pub(crate) fn provider_client(settings: &ProviderSettings) -> reqwest::Client {
         .expect("valid emote provider HTTP client")
 }
 
+#[allow(clippy::result_large_err)]
 pub(crate) async fn fetch_json<T>(
     client: &reqwest::Client,
     provider: &str,

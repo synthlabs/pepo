@@ -45,61 +45,56 @@ jobs:
           node-version: '26'
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: '. -> target'
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: ./utils/scripts/install_deps.sh --ci
-      - run: pnpm install --frozen-lockfile
-      - name: Frontend and script tests
-        run: pnpm test:run
-      - name: Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
-      - name: Check dependency locks
-        if: always()
-        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml
-
-  lint:
-    permissions:
-      contents: read
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive
-      - uses: pnpm/action-setup@v6
-        with:
-          run_install: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '26'
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - name: Check dependency locks
-        if: always()
-        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml
-
-  verify-install:
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [ubuntu-24.04, windows-latest]
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive
-      - name: Linux packaging integration tests
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
         if: runner.os == 'Linux'
-        run: bash scripts/packaging-integration.test.sh
-      - name: Windows installer tests
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: .\utils\packaging\tauri\install.test.ps1
+        run: pnpm exec playwright install --with-deps chromium
+      # Mirrors `pnpm verify` with per-platform limits; enforced by tests/unit/ci-contract.test.ts.
+      - name: Check
+        run: pnpm check
+      - name: Lint
+        run: pnpm lint
+      - name: Build frontend
+        run: pnpm build
+      - name: Unit tests
+        run: pnpm test:unit
+      - name: Shared tests
+        run: pnpm test:shared
+      - name: Script tests
+        run: pnpm test:scripts
+      - name: Rust tests
+        run: pnpm test:rust
+      - name: Packaging tests
+        if: runner.os != 'macOS'
+        run: pnpm test:packaging
+      - name: Browser tests
+        if: runner.os == 'Linux'
+        run: pnpm test:browser
+      - name: Internal hook
+        run: pnpm test:internal
+      - name: Rust formatting and clippy
+        run: cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Dependency locks and whitespace
+        if: always()
+        run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml && git diff --check && git -C utils diff --check
+      - name: Save test reports and failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.platform }}
+          path: |
+            target/test-results/*.json
+            target/test-results/browser/
+          if-no-files-found: ignore
 
   verify-ssh:
     permissions:
@@ -114,7 +109,7 @@ jobs:
 
   build:
     if: inputs.packages
-    needs: [verify, lint, verify-install, verify-ssh]
+    needs: [verify, verify-ssh]
     strategy:
       fail-fast: false
       matrix:

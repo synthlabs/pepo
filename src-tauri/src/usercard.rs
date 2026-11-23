@@ -615,7 +615,7 @@ pub async fn open_user_card(
         return Ok(());
     }
     let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("user-card".into()))
-        .title(&format!("{} — Pepo", target.display_name))
+        .title(format!("{} — Pepo", target.display_name))
         .inner_size(360.0, 240.0)
         .min_inner_size(320.0, MIN_CARD_HEIGHT)
         .prevent_overflow()

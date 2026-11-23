@@ -6,11 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 export const FORMAT_PATTERNS = [
 	'src/**/*.{svelte,ts,js,css,json,md}',
+	'tests/**/*.{svelte,ts,js,mjs,json,md}',
+	'scripts/**/*.{js,mjs}',
 	'utils/js/**/*.{svelte,ts,js,json,md}',
 	'README.md',
 	'components.json',
 	'eslint.config.js',
 	'package.json',
+	'playwright.config.ts',
 	'postcss.config.js',
 	'svelte.config.js',
 	'tailwind.config.ts',
@@ -38,9 +41,13 @@ function quoteCmdArg(value) {
 
 function spawnCommand(command, args) {
 	if (process.platform === 'win32' && command.toLowerCase().endsWith('.cmd')) {
-		return spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', [command, ...args].map(quoteCmdArg).join(' ')], {
-			stdio: 'inherit'
-		});
+		return spawnSync(
+			process.env.ComSpec ?? 'cmd.exe',
+			['/d', '/s', '/c', [command, ...args].map(quoteCmdArg).join(' ')],
+			{
+				stdio: 'inherit'
+			}
+		);
 	}
 
 	return spawnSync(command, args, { stdio: 'inherit' });

@@ -65,6 +65,7 @@ struct SubscriptionRoute {
     version: String,
 }
 
+#[allow(clippy::result_large_err)]
 pub(super) fn decode(frame: &str) -> Result<DecodedFrame<'_>, ParseFailure> {
     serde_json::from_str::<&RawValue>(frame).map_err(|error| {
         ParseFailure::new(
@@ -138,11 +139,13 @@ pub(super) fn decode(frame: &str) -> Result<DecodedFrame<'_>, ParseFailure> {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_envelope<'a, T: Deserialize<'a>>(frame: &'a str) -> Result<T, ParseFailure> {
     twitch_api::parse_json(frame, false)
         .map_err(|error| ParseFailure::new(frame, &PayloadParseError::DeserializeError(error)))
 }
 
+#[allow(clippy::result_large_err)]
 fn recover_chat<'a>(
     frame: &'a str,
     original_error: &PayloadParseError,

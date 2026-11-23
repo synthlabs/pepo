@@ -448,9 +448,10 @@ async fn refresh_joined_channel_cache(
         }
     };
 
-    let live_streams = fetch_live_streams_for_logins(client, &[candidate.login.clone()], token)
-        .await
-        .map_err(|err| format!("failed to get joined channel stream: {err}"))?;
+    let live_streams =
+        fetch_live_streams_for_logins(client, std::slice::from_ref(&candidate.login), token)
+            .await
+            .map_err(|err| format!("failed to get joined channel stream: {err}"))?;
     let mut cache = state_syncer.snapshot::<types::ChannelCache>("channel_cache");
     let previous_status = cache.channels.get(&candidate.login).cloned();
 
@@ -466,6 +467,7 @@ async fn refresh_joined_channel_cache(
     Ok(())
 }
 
+#[allow(clippy::result_large_err)]
 async fn fetch_live_streams_for_logins<C: twitch_api::HttpClient>(
     client: &HelixClient<'_, C>,
     logins: &[String],
@@ -584,13 +586,11 @@ impl ChannelCacheFetchError {
         use twitch_api::helix::{ClientRequestError, HelixRequestGetError};
 
         let (category, status) = match error {
-            ClientRequestError::HelixRequestGetError(error) => match error {
+            ClientRequestError::HelixRequestGetError(
                 HelixRequestGetError::DeserializeError(_, _, _, status)
-                | HelixRequestGetError::InvalidResponse { status, .. } => {
-                    ("response", Some(status.as_u16()))
-                }
-                _ => ("response", None),
-            },
+                | HelixRequestGetError::InvalidResponse { status, .. },
+            ) => ("response", Some(status.as_u16())),
+            ClientRequestError::HelixRequestGetError(_) => ("response", None),
             ClientRequestError::RequestError(error) => (error.category, error.status),
             ClientRequestError::CreateRequestError(_) => ("request_build", None),
             _ => ("response", None),
@@ -994,21 +994,19 @@ async fn login(
         .ensure_loaded(auth_state_snapshot.token.clone())
         .await?;
 
-    let user_token: types::UserToken;
     if clear_stale_authorized_auth_if_needed(&app_handle, &token_manager, &auth_state_snapshot)
         .await
+        && quick
     {
-        if quick {
-            return Err("no valid token".to_string());
-        }
+        return Err("no valid token".to_string());
     }
 
-    if token_manager.active_snapshot().await.is_some() {
+    let user_token: types::UserToken = if token_manager.active_snapshot().await.is_some() {
         debug!("using saved token while validation runs in the background");
-        user_token = token_manager
+        token_manager
             .active_public_token()
             .await
-            .ok_or_else(|| "no active token".to_owned())?;
+            .ok_or_else(|| "no active token".to_owned())?
     } else if quick {
         return Err("no valid token".to_string());
     } else {
@@ -1038,11 +1036,11 @@ async fn login(
             .unwrap();
 
         token_manager.finish_device_code_flow().await?;
-        user_token = token_manager
+        token_manager
             .active_public_token()
             .await
-            .ok_or_else(|| "no active token".to_owned())?;
-    }
+            .ok_or_else(|| "no active token".to_owned())?
+    };
 
     let directory_store = app_handle.store("channel-directory.json").ok();
     let cached_directory = directory_store
@@ -1624,7 +1622,7 @@ pub fn run() {
         }
     });
 
-    let _builder = builder
+    builder
         .invoke_handler(public_handlers.invoke_handler())
         .setup(move |app| {
             #[cfg(target_os = "linux")]
@@ -1682,7 +1680,7 @@ pub fn run() {
             internal_state.name = app.package_info().name.to_string();
 
             let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-                .title(&format!(
+                .title(format!(
                     "{} {}",
                     internal_state.name.clone(),
                     internal_state.version.clone()

@@ -20,9 +20,13 @@ function quoteCmdArg(value) {
 
 function spawnCommand(command, args) {
 	if (process.platform === 'win32' && command.toLowerCase().endsWith('.cmd')) {
-		return spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', [command, ...args].map(quoteCmdArg).join(' ')], {
-			stdio: 'inherit'
-		});
+		return spawnSync(
+			process.env.ComSpec ?? 'cmd.exe',
+			['/d', '/s', '/c', [command, ...args].map(quoteCmdArg).join(' ')],
+			{
+				stdio: 'inherit'
+			}
+		);
 	}
 
 	return spawnSync(command, args, { stdio: 'inherit' });

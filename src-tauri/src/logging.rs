@@ -198,6 +198,7 @@ struct ChatParseStats {
 }
 
 impl ChatParseStats {
+    #[allow(clippy::too_many_arguments)]
     fn record(
         &mut self,
         now: Instant,

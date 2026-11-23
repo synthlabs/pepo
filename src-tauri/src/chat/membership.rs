@@ -46,9 +46,12 @@ impl Membership {
         if mode == ChatJoinMode::Recent {
             candidates.extend(self.lingering.iter().cloned());
         }
-        candidates.extend(self.followed.iter().filter_map(|(login, live)| {
-            (mode == ChatJoinMode::All && *live).then(|| login.clone())
-        }));
+        candidates.extend(
+            self.followed
+                .iter()
+                .filter(|(_, live)| mode == ChatJoinMode::All && **live)
+                .map(|(login, _)| login.clone()),
+        );
         candidates
     }
 

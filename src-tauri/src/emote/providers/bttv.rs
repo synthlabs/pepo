@@ -147,7 +147,7 @@ impl EmoteProvider<MultiCache> for BttvProvider {
             let fallback = self.hydrate_persisted_cache(GLOBAL_SCOPE_KEY, provider_settings);
             let url = format!("{}/emotes/global", self.api_base);
 
-            match { fetch_json::<Vec<BttvEmote>>(client, "BTTV", "global", &url).await } {
+            match fetch_json::<Vec<BttvEmote>>(client, "BTTV", "global", &url).await {
                 Ok(emotes) => {
                     let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
                     debug!(count = emotes.len(), "loaded bttv global emotes");
@@ -184,15 +184,14 @@ impl EmoteProvider<MultiCache> for BttvProvider {
             let fallback = self.hydrate_persisted_cache(&broadcaster_id, provider_settings);
             let url = format!("{}/users/twitch/{}", self.api_base, broadcaster_id);
 
-            match {
-                fetch_json::<BttvChannelResponse>(
-                    client,
-                    "BTTV",
-                    format!("channel:{broadcaster_id}"),
-                    &url,
-                )
-                .await
-            } {
+            match fetch_json::<BttvChannelResponse>(
+                client,
+                "BTTV",
+                format!("channel:{broadcaster_id}"),
+                &url,
+            )
+            .await
+            {
                 Ok(resp) => {
                     let cache = EmoteCache::new(broadcaster_id.clone(), self.get_name());
                     let total = resp.channel_emotes.len() + resp.shared_emotes.len();

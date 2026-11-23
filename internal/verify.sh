@@ -8,8 +8,7 @@ if [ -f project.inlang/settings.json ]; then
 		--strategy localStorage preferredLanguage baseLocale
 fi
 
-pnpm check
-cargo check --manifest-path src-tauri/Cargo.toml
-ENABLE_INTERNAL=1 pnpm check
-ENABLE_INTERNAL=1 cargo check --manifest-path src-tauri/Cargo.toml
+ENABLE_INTERNAL=0 pnpm check
+ENABLE_INTERNAL=0 cargo check --manifest-path src-tauri/Cargo.toml
+node internal/internal-test.mjs
 git status --short

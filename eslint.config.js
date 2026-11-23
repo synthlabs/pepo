@@ -13,6 +13,8 @@ export default ts.config(
 			'**/*',
 			'!src/',
 			'!src/**',
+			'!tests/',
+			'!tests/**',
 			'!scripts/',
 			'!scripts/**',
 			'!utils/',

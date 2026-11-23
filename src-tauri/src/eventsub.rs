@@ -57,6 +57,7 @@ pub struct EventNotification {
     pub message_type_override: Option<ChannelMessageType>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum EventSubMessage {
     Notification(EventNotification),
@@ -350,7 +351,7 @@ impl EventSubManager {
     fn add_subscription(&self, channel_name: String, sub: EventSubSubscription) {
         let mut guard = self.subscriptions.lock().unwrap();
 
-        let mut subs = guard.entry(channel_name).or_default().lock().unwrap();
+        let subs = guard.entry(channel_name).or_default().get_mut().unwrap();
         subs.insert(sub);
     }
 
@@ -423,7 +424,8 @@ impl EventSubManager {
             .lock()
             .unwrap()
             .iter()
-            .filter_map(|(login, subs)| (!subs.lock().unwrap().is_empty()).then(|| login.clone()))
+            .filter(|(_, subs)| !subs.lock().unwrap().is_empty())
+            .map(|(login, _)| login.clone())
             .collect();
         channels.extend(self.uncertain_rooms.lock().unwrap().iter().cloned());
         channels

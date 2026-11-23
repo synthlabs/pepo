@@ -260,6 +260,7 @@ impl NetworkRuntime {
             });
         self.wake.notify_one();
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn failed(
         &self,
         app: &AppHandle,
@@ -556,6 +557,7 @@ impl State {
         );
         Some(id)
     }
+    #[allow(clippy::too_many_arguments)]
     fn record_failure(
         &mut self,
         operation: &str,

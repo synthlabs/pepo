@@ -134,7 +134,8 @@ function classCandidatesFromAttribute(attribute) {
 		];
 	}
 
-	const expression = attribute.value?.type === 'ExpressionTag' ? attribute.value.expression : undefined;
+	const expression =
+		attribute.value?.type === 'ExpressionTag' ? attribute.value.expression : undefined;
 
 	if (isStringLiteral(expression)) {
 		return [

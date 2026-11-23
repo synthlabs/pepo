@@ -310,7 +310,8 @@ fn last_lease_and_session_end_cancel_work_and_reject_late_results() {
 
 #[test]
 fn processing_changes_cancel_atomically_but_layout_changes_preserve_work() {
-    let variants: Vec<Box<dyn Fn(&mut TranslationSettings)>> = vec![
+    type SettingsMutator = Box<dyn Fn(&mut TranslationSettings)>;
+    let variants: Vec<SettingsMutator> = vec![
         Box::new(|s| s.enabled = false),
         Box::new(|s| s.target_language = "rus".into()),
         Box::new(|s| s.translate_history = false),

@@ -168,7 +168,7 @@ impl EmoteProvider<MultiCache> for SeventvProvider {
             let fallback = self.hydrate_persisted_cache(GLOBAL_SCOPE_KEY, provider_settings);
             let url = format!("{}/emote-sets/global", self.api_base);
 
-            match { fetch_json::<SeventvGlobalResponse>(client, "7TV", "global", &url).await } {
+            match fetch_json::<SeventvGlobalResponse>(client, "7TV", "global", &url).await {
                 Ok(resp) => {
                     let cache = EmoteCache::new(GLOBAL_SCOPE_KEY.to_owned(), self.get_name());
                     debug!(count = resp.emotes.len(), "loaded seventv global emotes");
@@ -208,15 +208,14 @@ impl EmoteProvider<MultiCache> for SeventvProvider {
             let fallback = self.hydrate_persisted_cache(&broadcaster_id, provider_settings);
             let url = format!("{}/users/twitch/{}", self.api_base, broadcaster_id);
 
-            match {
-                fetch_json::<SeventvChannelResponse>(
-                    client,
-                    "7TV",
-                    format!("channel:{broadcaster_id}"),
-                    &url,
-                )
-                .await
-            } {
+            match fetch_json::<SeventvChannelResponse>(
+                client,
+                "7TV",
+                format!("channel:{broadcaster_id}"),
+                &url,
+            )
+            .await
+            {
                 Ok(resp) => {
                     let cache = EmoteCache::new(broadcaster_id.clone(), self.get_name());
                     let emotes = resp
