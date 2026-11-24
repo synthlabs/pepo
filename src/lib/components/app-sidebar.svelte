@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount, type ComponentProps } from 'svelte';
+	import { onMount, type ComponentProps } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -11,13 +11,12 @@
 	import {
 		commands,
 		type AuthPhase,
-		type AuthState,
 		type Broadcaster,
-		type ChannelCache,
 		type ChannelInfo,
 		type ChannelStatus
 	} from '$lib/bindings.ts';
-	import { SyncedState } from 'tauri-svelte-synced-store';
+	import { authState } from '$lib/stores/auth.svelte';
+	import { channelCache } from '$lib/stores/channel-cache.svelte';
 	import Logger from '$utils/log';
 	import Users from '@lucide/svelte/icons/users';
 
@@ -25,7 +24,6 @@
 	let extra_channel: ChannelInfo | null = $state(null);
 	let pending_extra_channel_login: string | null = $state(null);
 	let search = $state('');
-	let channelCache = new SyncedState<ChannelCache>('channel_cache', { channels: {} });
 	let filtered_channels = $derived(
 		(search
 			? followed_channels.filter((c) => c.login.includes(search.toLowerCase()))
@@ -64,17 +62,6 @@
 		}
 		void goto(resolve(`/app/chat/${login}`));
 	}
-
-	let authState = new SyncedState<AuthState>('auth_state', {
-		phase: 'unauthorized',
-		device_code: '',
-		token: null
-	});
-
-	onDestroy(() => {
-		void channelCache.close();
-		void authState.close();
-	});
 
 	let accounts = $derived(
 		authState.obj.token

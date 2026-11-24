@@ -190,6 +190,7 @@ native.reset = () => {
 export class SyncedState {
 	obj: any = $state({});
 	ready = $state(true);
+	initialized = Promise.resolve();
 	constructor(key: string, fallback: any) {
 		this.obj = structuredClone(fallback ?? {});
 		if (key === 'auth_state') {

@@ -1,24 +1,14 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
-	import { SyncedState } from 'tauri-svelte-synced-store';
+	import { onMount } from 'svelte';
 	import { CircleCheckBig, LoaderCircle } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { commands, type AuthState } from '$lib/bindings';
 	import { hasUsableAuth } from '$lib/auth';
+	import { authState } from '$lib/stores/auth.svelte';
 	import { cn } from '$lib/utils.js';
 	import Logger from '$utils/log';
 	import NetworkStatus from '$lib/components/network-status.svelte';
-
-	let authState = new SyncedState<AuthState>('auth_state', {
-		phase: 'unauthorized',
-		device_code: '',
-		token: null
-	});
-
-	onDestroy(() => {
-		void authState.close();
-	});
 
 	let loading: boolean = $derived(
 		authState.obj.phase === 'waitingForDeviceCode' || authState.obj.phase === 'waitingForAuth'
@@ -47,24 +37,30 @@
 		}
 	});
 
+	async function syncAuthPhase(phase: AuthState['phase']) {
+		authState.obj.phase = phase;
+		try {
+			await authState.sync();
+		} catch (error) {
+			Logger.error('failed to sync auth_state:', error);
+		}
+	}
+
 	async function login() {
 		loginError = '';
 		Logger.debug('login hook');
-		authState.obj.phase = 'waitingForDeviceCode';
-		await authState.sync();
+		await syncAuthPhase('waitingForDeviceCode');
 
 		try {
 			const result = await commands.login(false);
 			if (result.status === 'ok') goto(resolve('/app'));
 			else {
 				loginError = result.error;
-				authState.obj.phase = 'unauthorized';
-				await authState.sync();
+				await syncAuthPhase('unauthorized');
 			}
 		} catch {
 			loginError = 'Could not start sign-in. Try again.';
-			authState.obj.phase = 'unauthorized';
-			await authState.sync();
+			await syncAuthPhase('unauthorized');
 		}
 	}
 </script>

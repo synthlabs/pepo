@@ -3,34 +3,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppSettings, ChannelMessage, FeedFrame } from '$lib/bindings';
 
 type SyncSnapshot = { kind: 'snapshot'; value: AppSettings };
+type MockChannelSink = { onmessage: (message: SyncSnapshot) => void };
 
 const native = vi.hoisted(() => ({
-	channels: new Map<string, Set<{ onmessage: (message: SyncSnapshot) => void }>>(),
-	listeners: new Map<string, Set<(event: { payload: AppSettings }) => void>>(),
+	nextSubscriberId: 1,
+	channels: new Map<string, Map<string, MockChannelSink>>(),
 	requests: [] as {
 		value: AppSettings;
+		subscriberId?: string;
 		resolve: (saved: boolean) => void;
 		reject: (error: Error) => void;
 	}[],
 	receive: undefined as ((frame: FeedFrame) => void) | undefined,
-	emit(value: AppSettings) {
-		for (const channel of this.channels.get('app_settings') ?? []) {
+	emit(value: AppSettings, excludeSubscriberId?: string) {
+		for (const [id, channel] of this.channels.get('app_settings') ?? []) {
+			if (excludeSubscriberId && id === excludeSubscriberId) continue;
 			channel.onmessage({ kind: 'snapshot', value: structuredClone(value) });
-		}
-		for (const listener of this.listeners.get('app_settings_update') ?? []) {
-			listener({ payload: structuredClone(value) });
 		}
 	}
 }));
 
-vi.mock('@tauri-apps/api/event', () => ({
-	listen: async (name: string, listener: (event: { payload: AppSettings }) => void) => {
-		const listeners = native.listeners.get(name) ?? new Set();
-		listeners.add(listener);
-		native.listeners.set(name, listeners);
-		return () => listeners.delete(listener);
-	}
-}));
 vi.mock('@tauri-apps/api/core', () => ({
 	Channel: class MockChannel<T = SyncSnapshot> {
 		onmessage: (message: T) => void;
@@ -42,21 +34,26 @@ vi.mock('@tauri-apps/api/core', () => ({
 		command: string,
 		args: {
 			name?: string;
-			channel?: { onmessage: (message: SyncSnapshot) => void };
-			state?: { value: AppSettings };
+			subscriberId?: string;
+			channel?: MockChannelSink;
+			state?: { value: AppSettings; subscriberId?: string };
 		}
 	) => {
 		if (command === 'subscribe_state' && args.name && args.channel) {
-			const channels = native.channels.get(args.name) ?? new Set();
-			channels.add(args.channel);
+			const channels = native.channels.get(args.name) ?? new Map<string, MockChannelSink>();
+			const id = `sub-${native.nextSubscriberId++}`;
+			channels.set(id, args.channel);
 			native.channels.set(args.name, channels);
-			return 'sub-1';
+			return id;
 		}
-		if (command === 'unsubscribe_state') return true;
+		if (command === 'unsubscribe_state' && args.name && args.subscriberId) {
+			return native.channels.get(args.name)?.delete(args.subscriberId) ?? false;
+		}
 		if (command !== 'update_state' || !args.state) throw new Error(`Unexpected command ${command}`);
 		const value = structuredClone(args.state.value);
+		const subscriberId = args.state.subscriberId;
 		return new Promise<boolean>((resolve, reject) =>
-			native.requests.push({ value, resolve, reject })
+			native.requests.push({ value, subscriberId, resolve, reject })
 		);
 	}
 }));
@@ -148,7 +145,7 @@ async function resetMessages() {
 
 async function acknowledge(index: number, saved = true) {
 	const request = native.requests[index];
-	if (saved) native.emit(request.value);
+	if (saved) native.emit(request.value, request.subscriberId);
 	request.resolve(saved);
 	await flushUi();
 }

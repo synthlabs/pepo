@@ -434,11 +434,6 @@ export type FeedFrame = {
 
 export type Fragment = ({ Text: TextFragment }) & { Cheer?: never; Emote?: never; Mention?: never } | ({ Emote: EmoteFragment }) & { Cheer?: never; Mention?: never; Text?: never } | ({ Cheer: CheerFragment }) & { Emote?: never; Mention?: never; Text?: never } | ({ Mention: MentionFragment }) & { Cheer?: never; Emote?: never; Text?: never };
 
-export type InternalState = {
-	version: string,
-	name: string,
-};
-
 /**
  *  Specta-exportable JSON value type for `Typescript::default()`.
  *

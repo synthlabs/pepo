@@ -7,8 +7,6 @@
 	import { isTauriMobile } from '$lib/tauri';
 	import { cn } from '$lib/utils';
 	import { page } from '$app/state';
-	import { SyncedState } from 'tauri-svelte-synced-store';
-	import type { AuthState, ChannelCache } from '$lib/bindings.ts';
 	import ChannelHeader from '$lib/components/chat/channel-header.svelte';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { Button } from '$lib/components/ui/button';
@@ -16,6 +14,8 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { hasUsableAuth } from '$lib/auth';
+	import { authState } from '$lib/stores/auth.svelte';
+	import { channelCache } from '$lib/stores/channel-cache.svelte';
 	import { getNormalizedAppSettings, settingsState } from '$lib/stores/settings.svelte';
 	import SettingsStatus from '$lib/components/settings/settings-status.svelte';
 	import NetworkStatus from '$lib/components/network-status.svelte';
@@ -39,19 +39,12 @@
 		void translation.dispose();
 	});
 
-	let authState = new SyncedState<AuthState>('auth_state');
-
 	$effect(() => {
 		if (authState.ready && !hasUsableAuth(authState.obj)) {
 			goto(resolve('/'));
 		}
 	});
 
-	let channelCache = new SyncedState<ChannelCache>('channel_cache', { channels: {} });
-	onDestroy(() => {
-		void authState.close();
-		void channelCache.close();
-	});
 	let channelStatus = $derived(
 		page.params.id ? (channelCache.obj.channels[page.params.id] ?? null) : null
 	);

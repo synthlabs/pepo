@@ -1,6 +1,5 @@
 use eventsub::EventSubManager;
 use futures::TryStreamExt;
-use serde::{Deserialize, Serialize};
 #[cfg(debug_assertions)]
 use specta_typescript::Typescript;
 use std::collections::HashMap;
@@ -54,12 +53,6 @@ use usercard::{
     UserCardRuntime,
 };
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, specta::Type)]
-struct InternalState {
-    version: String,
-    name: String,
-}
-
 type SharedEventSubManager = Mutex<EventSubManager>;
 type SharedBadgeManager = Mutex<BadgeManager>;
 type SharedEmoteManager = Mutex<EmoteManager>;
@@ -67,28 +60,6 @@ type SharedPollHandle = Mutex<Option<tauri::async_runtime::JoinHandle<()>>>;
 type SharedEventSubHandles = Mutex<Vec<tauri::async_runtime::JoinHandle<()>>>;
 
 const APP_SETTINGS_KEY: &str = "app_settings";
-
-#[tauri::command]
-#[specta::specta]
-fn subscribe_state(
-    name: String,
-    channel: tauri::ipc::Channel<tauri_svelte_synced_store::SyncMessage>,
-    webview: tauri::Webview<tauri::Wry>,
-    state_syncer: State<'_, StateSyncer>,
-) -> Result<String, tauri_svelte_synced_store::SyncError> {
-    state_syncer.subscribe(&name, &webview, channel)
-}
-
-#[tauri::command]
-#[specta::specta]
-fn unsubscribe_state(
-    name: String,
-    subscriber_id: String,
-    webview: tauri::Webview<tauri::Wry>,
-    state_syncer: State<'_, StateSyncer>,
-) -> Result<bool, tauri_svelte_synced_store::SyncError> {
-    state_syncer.unsubscribe(&name, webview.label(), &subscriber_id)
-}
 
 #[tauri::command]
 #[specta::specta]
@@ -305,7 +276,6 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .typ::<types::ChannelCache>()
         .typ::<types::ChannelStatus>()
         .typ::<types::AppSettings>()
-        .typ::<InternalState>()
         .commands(collect_commands![
             get_followed_streams,
             get_followed_channels,
@@ -319,8 +289,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             login,
             logout,
             send_chat_message,
-            subscribe_state,
-            unsubscribe_state,
+            tauri_svelte_synced_store::commands::subscribe_state,
+            tauri_svelte_synced_store::commands::unsubscribe_state,
             update_state,
             search_emotes,
             get_network_status,
@@ -1619,7 +1589,7 @@ impl inbound::Scrubber<tauri::Wry> for PepoScrubber {
 
 #[tauri::command]
 #[specta::specta]
-fn logout(app_handle: AppHandle, _state_syncer: State<'_, StateSyncer>) -> Result<(), String> {
+fn logout(app_handle: AppHandle) -> Result<(), String> {
     info!("logout");
     clear_auth(&app_handle);
     Ok(())
@@ -1637,9 +1607,6 @@ pub fn run() {
 
     let mut sync_cfg = StateSyncerConfig::default();
     sync_cfg.persist_keys.insert("auth_state".to_owned(), true);
-    sync_cfg
-        .persist_keys
-        .insert("internal_state".to_owned(), true);
     sync_cfg
         .persist_keys
         .insert("channel_cache".to_owned(), true);
@@ -1731,8 +1698,7 @@ pub fn run() {
             let state_syncer = app.state::<StateSyncer>().inner().clone();
 
             let _auth_state: AuthState = state_syncer.load("auth_state");
-            let saved_channels: ChannelCache = state_syncer.load("channel_cache");
-            let mut internal_state: InternalState = state_syncer.load("internal_state");
+            let _channel_cache: ChannelCache = state_syncer.load("channel_cache");
             let settings: AppSettings = state_syncer.load(APP_SETTINGS_KEY);
             let settings = settings.normalized();
             state_syncer.set(APP_SETTINGS_KEY, settings.clone());
@@ -1753,15 +1719,9 @@ pub fn run() {
                     std::time::Duration::from_secs(settings.network.request_timeout_secs),
                     Some(gate),
                 ))?;
-            internal_state.version = app.package_info().version.to_string();
-            internal_state.name = app.package_info().name.to_string();
-
+            let package_info = app.package_info();
             let win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-                .title(format!(
-                    "{} {}",
-                    internal_state.name.clone(),
-                    internal_state.version.clone()
-                ))
+                .title(format!("{} {}", package_info.name, package_info.version))
                 .visible(false);
 
             let window = window_chrome::configure(win_builder).build().unwrap();
@@ -1813,9 +1773,6 @@ pub fn run() {
 
             info!("made client");
 
-            state_syncer.set("internal_state", internal_state);
-            state_syncer.set("channel_cache", saved_channels);
-            state_syncer.set(APP_SETTINGS_KEY, settings);
             app.manage::<SharedPollHandle>(Mutex::new(None));
             app.manage(ChatRuntime::default());
             app.manage::<SharedEventSubHandles>(Mutex::new(Vec::new()));
@@ -1840,18 +1797,19 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    #[cfg(debug_assertions)]
     #[test]
-    fn internal_state_discards_legacy_sidebar_preference() {
-        for open in [true, false] {
-            let state: InternalState = serde_json::from_value(serde_json::json!({
-                "name": "pepo", "version": "0.2.32", "sidebar_open": open
-            }))
-            .unwrap();
-            assert_eq!(
-                serde_json::to_value(state).unwrap(),
-                serde_json::json!({ "name": "pepo", "version": "0.2.32" })
-            );
-        }
+    fn specta_bindings_export_channel_sync_commands_without_internal_state() {
+        let path =
+            std::env::temp_dir().join(format!("pepo-specta-bindings-{}.ts", std::process::id()));
+        export_bindings(&specta_builder(), &path);
+        let generated = std::fs::read_to_string(&path).expect("generated bindings readable");
+        let _ = std::fs::remove_file(&path);
+
+        assert!(generated.contains("\"subscribe_state\""));
+        assert!(generated.contains("\"unsubscribe_state\""));
+        assert!(generated.contains("\"update_state\""));
+        assert!(!generated.contains("InternalState"));
     }
 
     fn auth_state(phase: types::AuthPhase, token: Option<types::UserToken>) -> AuthState {

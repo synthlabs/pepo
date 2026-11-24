@@ -118,6 +118,7 @@ function harnessAliases(name) {
 			];
 		case 'sidebar-header':
 			return [
+				{ find: '$lib/errors/controller', replacement: native },
 				{ find: /^\$lib\/bindings(?:\.ts)?$/, replacement: native },
 				...[
 					'$app/state',

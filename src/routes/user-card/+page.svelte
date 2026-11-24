@@ -39,7 +39,11 @@
 	}
 
 	async function ready() {
-		await appSettings.initialized;
+		try {
+			await appSettings.initialized;
+		} catch {
+			// Already captured by appSettings singleton; fall back to defaults.
+		}
 		await tick();
 		const height =
 			card?.measureContentHeight() ?? errorContent?.getBoundingClientRect().height ?? 120;

@@ -5,6 +5,8 @@ export const commands = {
 };
 export class SyncedState {
 	obj: any;
+	ready = $state(true);
+	initialized = Promise.resolve();
 	constructor(key: string, fallback: any) {
 		this.obj =
 			key === 'auth_state'
@@ -15,6 +17,9 @@ export class SyncedState {
 		return Promise.resolve();
 	}
 }
+export const appErrors = {
+	capture() {}
+};
 export const page = { url: new URL('http://localhost/app/chat/maya') };
 export const goto = () => {};
 export const resolve = (value: string) => value;

@@ -48,7 +48,11 @@
 		if (isTauri && getCurrentWindow().label !== 'main') return;
 		const abort = new AbortController();
 		void (async () => {
-			await appSettings.initialized;
+			try {
+				await appSettings.initialized;
+			} catch {
+				// Already captured by appSettings singleton; fall back to defaults.
+			}
 			await tick();
 			if (abort.signal.aborted) return;
 			await checkForAppUpdates('https://github.com/synthlabs/pepo/releases/latest', {
