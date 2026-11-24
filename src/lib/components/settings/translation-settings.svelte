@@ -64,8 +64,10 @@
 				session.abandonSetup();
 				void session.controller.cancelInstallation();
 			}}
-			data-translation-cancel>{session.snapshot.cancelling ? 'Cancelling…' : 'Cancel'}</Button
+			data-translation-cancel
 		>
+			{session.snapshot.cancelling ? 'Cancelling…' : 'Cancel'}
+		</Button>
 		<progress
 			class="translation-progress h-2 w-full"
 			value={progress}

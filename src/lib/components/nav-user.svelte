@@ -131,8 +131,9 @@
 										<div
 											class="min-w-0 flex-1 pl-2 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden"
 										>
-											<span class="truncate font-semibold">{activeAccount?.login ?? 'Account'}</span
-											>
+											<span class="truncate font-semibold">
+												{activeAccount?.login ?? 'Account'}
+											</span>
 										</div>
 										<ChevronsUpDown class="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
 									</Sidebar.MenuButton>
@@ -160,9 +161,9 @@
 								</div>
 								<div class="min-w-0 flex-1">
 									<div class="flex min-w-0 items-center gap-1.5">
-										<span class="truncate text-sm font-semibold"
-											>{activeAccount?.login ?? 'Account'}</span
-										>
+										<span class="truncate text-sm font-semibold">
+											{activeAccount?.login ?? 'Account'}
+										</span>
 									</div>
 									<div class="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
 										{#if isSignedIn}
@@ -251,9 +252,13 @@
 						</DropdownMenu.Item>
 					</DropdownMenu.Content>
 				</DropdownMenu.Root>
-				{#if showNetworkStatus && network}<Tooltip.Content class="max-w-xs" side="right" align="end"
-						><NetworkTooltip summary={network.summary} /></Tooltip.Content
-					>{/if}
+				{#if showNetworkStatus && network}<Tooltip.Content
+						class="max-w-xs"
+						side="right"
+						align="end"
+					>
+						<NetworkTooltip summary={network.summary} />
+					</Tooltip.Content>{/if}
 			</Tooltip.Root>
 		</Tooltip.Provider>
 	</Sidebar.MenuItem>

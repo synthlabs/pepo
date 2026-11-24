@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex as StdMutex;
 use std::time::Duration;
-use twitch_api::client::{BoxedFuture, Request, Response};
+use twitch_api::client::{Request, Response};
 
 const FOLLOWED_PATH: &str = "/helix/channels/followed";
 const USERS_PATH: &str = "/helix/users";
@@ -54,7 +54,10 @@ impl ScriptedClient {
 impl twitch_api::HttpClient for ScriptedClient {
     type Error = std::io::Error;
 
-    fn req(&self, request: Request) -> BoxedFuture<'_, Result<Response, Self::Error>> {
+    fn req(
+        &self,
+        request: Request,
+    ) -> impl std::future::Future<Output = Result<Response, Self::Error>> + Send + use<> {
         let step = self
             .steps
             .lock()
@@ -66,7 +69,7 @@ impl twitch_api::HttpClient for ScriptedClient {
         };
         assert_eq!(request.uri().path(), *path);
         self.uris.lock().unwrap().push(request.uri().to_string());
-        Box::pin(async move {
+        async move {
             match step {
                 Step::Response(_, status, body, delay) => {
                     if !delay.is_zero() {
@@ -89,7 +92,7 @@ impl twitch_api::HttpClient for ScriptedClient {
                     futures::future::pending().await
                 }
             }
-        })
+        }
     }
 }
 

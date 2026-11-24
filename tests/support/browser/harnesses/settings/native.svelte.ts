@@ -110,6 +110,9 @@ export class SyncedState {
 		this.obj = structuredClone(value);
 		return true;
 	}
+	close() {
+		return Promise.resolve();
+	}
 }
 
 export const commands = {

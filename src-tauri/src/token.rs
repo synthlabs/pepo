@@ -970,7 +970,8 @@ mod tests {
         fn req(
             &self,
             _: Request<Vec<u8>>,
-        ) -> futures::future::BoxFuture<'_, Result<Response<Vec<u8>>, Self::Error>> {
+        ) -> impl std::future::Future<Output = Result<Response<Vec<u8>>, Self::Error>> + Send + use<>
+        {
             self.requests.fetch_add(1, Ordering::SeqCst);
             let step = self
                 .steps
@@ -978,7 +979,7 @@ mod tests {
                 .unwrap()
                 .pop_front()
                 .expect("unexpected OAuth request");
-            Box::pin(async move {
+            async move {
                 let (status, body) = match step {
                     ScriptStep::Response(status, body) => (status, body),
                     ScriptStep::Failure(kind) => return Err(std::io::Error::new(kind, "https://id.twitch.tv/oauth2/token?refresh_token=secret-refresh&access_token=secret-access")),
@@ -993,7 +994,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(body.as_bytes().to_vec())
                     .unwrap())
-            })
+            }
         }
     }
 

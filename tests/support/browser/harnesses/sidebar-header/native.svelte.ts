@@ -11,6 +11,9 @@ export class SyncedState {
 				? { phase: 'authorized', token: { user_id: '2', login: 'jerod', profile_image_url: '' } }
 				: fallback;
 	}
+	close() {
+		return Promise.resolve();
+	}
 }
 export const page = { url: new URL('http://localhost/app/chat/maya') };
 export const goto = () => {};

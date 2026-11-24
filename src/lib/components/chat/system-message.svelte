@@ -68,9 +68,9 @@
 			</span>
 		{/if}
 		{#each message.segments as segment, i (i)}
-			{#if segment.type === 'text'}{segment.text}{:else if segment.type === 'emphasis'}<strong
-					>{segment.text}</strong
-				>{:else if segment.type === 'user'}<Username
+			{#if segment.type === 'text'}{segment.text}{:else if segment.type === 'emphasis'}<strong>
+					{segment.text}
+				</strong>{:else if segment.type === 'user'}<Username
 					userId={segment.user_id}
 					login={segment.login}
 					displayName={segment.display_name}
@@ -85,8 +85,10 @@
 						href={url}
 						rel="external"
 						class="focus-visible:outline-foreground underline underline-offset-2 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2"
-						onclick={(event) => openLink(event, url)}>{segment.text}</a
-					>{:else}{segment.text}{/if}
+						onclick={(event) => openLink(event, url)}
+					>
+						{segment.text}
+					</a>{:else}{segment.text}{/if}
 			{/if}
 		{/each}
 	</div>

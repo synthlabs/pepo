@@ -34,13 +34,13 @@ jobs:
         platform: [ubuntu-24.04, windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: pnpm/action-setup@v6
         with:
           run_install: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: pnpm
@@ -88,7 +88,7 @@ jobs:
         run: git diff --exit-code -- Cargo.lock pnpm-lock.yaml && git diff --check && git -C utils diff --check
       - name: Save test reports and failure artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.platform }}
           path: |
@@ -101,7 +101,7 @@ jobs:
       contents: read
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - name: AUR SSH container regression tests
@@ -125,13 +125,13 @@ jobs:
             bundle-dir: target/release/bundle
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - uses: pnpm/action-setup@v6
         with:
           run_install: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: pnpm
@@ -150,7 +150,7 @@ jobs:
         id: metadata
         run: node scripts/ci-metadata.mjs
       - name: Build signed packages
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
           INBOUND_WEBHOOK_PEPO: ${{ secrets.INBOUND_WEBHOOK_PEPO }}
@@ -167,7 +167,7 @@ jobs:
       - name: Verify bundles and updater signatures
         id: artifacts
         run: node scripts/ci-artifacts.mjs "${{ matrix.bundle-dir }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tauri-${{ matrix.platform }}
           path: ${{ steps.artifacts.outputs.paths }}
@@ -186,7 +186,7 @@ jobs:
       release-tag: ${{ steps.metadata.outputs.release-tag }}
       version: ${{ steps.metadata.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
       - name: Read release metadata
@@ -204,7 +204,7 @@ jobs:
           RELEASE_TAG: ${{ steps.metadata.outputs.release-tag }}
           PACKAGE_FILE: package/${{ steps.metadata.outputs.filename }}
         run: gh release upload "$RELEASE_TAG" "$PACKAGE_FILE" --clobber
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: arch-package
           path: package/${{ steps.metadata.outputs.filename }}
@@ -220,10 +220,10 @@ jobs:
       contents: read
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: arch-package
           path: package

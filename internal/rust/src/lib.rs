@@ -51,6 +51,9 @@ mod runtime {
     #[cfg(debug_assertions)]
     pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         tauri_specta::Builder::<tauri::Wry>::new()
+            .error_handling(tauri_specta::ErrorHandlingMode::Result)
+            .dangerously_cast_bigints_to_number()
+            .disable_serde_phases()
             .plugin_name("internal")
             .commands(collect_commands![internal_build_info])
     }

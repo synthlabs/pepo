@@ -81,7 +81,9 @@ pub struct NetworkIssue {
     pub failures: u32,
     pub affected: usize,
     pub cached: bool,
+    #[specta(type = specta_typescript::Number)]
     pub last_failure_at: f64,
+    #[specta(type = Option<specta_typescript::Number>)]
     pub retry_at: Option<f64>,
     pub retryable: bool,
     pub core: bool,

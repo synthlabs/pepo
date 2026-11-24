@@ -156,8 +156,10 @@
 						class="h-7 px-2.5 text-xs"
 						aria-pressed={value === option.value}
 						disabled={!settingsState.ready}
-						onclick={() => update(option.value)}>{option.label}</Button
+						onclick={() => update(option.value)}
 					>
+						{option.label}
+					</Button>
 				{/each}
 			</div>
 		{:else if control.kind === 'select'}
@@ -174,9 +176,9 @@
 				aria-describedby={`${id}-description`}
 				class="border-input bg-background focus-visible:ring-ring h-8 max-w-full rounded-md border px-2 text-sm outline-none focus-visible:ring-2 disabled:opacity-50"
 			>
-				{#each control.options ?? [] as option (option.value)}<option value={option.value}
-						>{option.label}</option
-					>{/each}
+				{#each control.options ?? [] as option (option.value)}<option value={option.value}>
+						{option.label}
+					</option>{/each}
 			</select>
 		{:else if control.kind === 'provider-order'}
 			<ol
@@ -194,16 +196,20 @@
 							class="size-7"
 							aria-label={`Move ${PROVIDER_LABELS[provider.id]} up`}
 							disabled={!settingsState.ready || index === 0}
-							onclick={() => moveProvider(index, -1)}><ArrowUp /></Button
+							onclick={() => moveProvider(index, -1)}
 						>
+							<ArrowUp />
+						</Button>
 						<Button
 							variant="ghost"
 							size="icon"
 							class="size-7"
 							aria-label={`Move ${PROVIDER_LABELS[provider.id]} down`}
 							disabled={!settingsState.ready || index === settings.emotes.providers.length - 1}
-							onclick={() => moveProvider(index, 1)}><ArrowDown /></Button
+							onclick={() => moveProvider(index, 1)}
 						>
+							<ArrowDown />
+						</Button>
 					</li>
 				{/each}
 			</ol>

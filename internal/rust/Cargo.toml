@@ -12,8 +12,9 @@ features = ["derive"]
 version = "1"
 
 [dependencies.specta]
+features = ["derive", "function"]
 optional = true
-version = "=2.0.0-rc.22"
+version = "=2.0.0-rc.28"
 
 [dependencies.tauri]
 features = []
@@ -23,4 +24,4 @@ version = "2"
 [dependencies.tauri-specta]
 features = ["derive", "typescript"]
 optional = true
-version = "=2.0.0-rc.21"
+version = "=2.0.0-rc.29"

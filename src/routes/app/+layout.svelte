@@ -48,6 +48,10 @@
 	});
 
 	let channelCache = new SyncedState<ChannelCache>('channel_cache', { channels: {} });
+	onDestroy(() => {
+		void authState.close();
+		void channelCache.close();
+	});
 	let channelStatus = $derived(
 		page.params.id ? (channelCache.obj.channels[page.params.id] ?? null) : null
 	);

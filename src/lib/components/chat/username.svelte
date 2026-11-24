@@ -65,5 +65,7 @@
 			channelId,
 			channelLogin,
 			anchor: event.currentTarget
-		})}>{label}</button
+		})}
 >
+	{label}
+</button>

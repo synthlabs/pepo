@@ -44,8 +44,9 @@
 						size="sm"
 						disabled={session.connecting}
 						onclick={() => void session.connect()}
-						>{session.connecting ? 'Connecting…' : 'Retry connection'}</Button
-					>{/if}
+					>
+						{session.connecting ? 'Connecting…' : 'Retry connection'}
+					</Button>{/if}
 			</header>
 		{/snippet}
 		{#snippet action(control)}
@@ -55,8 +56,10 @@
 				disabled={control.disabled}
 				title={control.title}
 				onclick={control.onclick}
-				data-model-action={control.kind}>{control.label}</Button
+				data-model-action={control.kind}
 			>
+				{control.label}
+			</Button>
 		{/snippet}
 		{#snippet modelRow(row, controls)}
 			<div class="min-w-0">
@@ -90,8 +93,10 @@
 								disabled={control.disabled}
 								title={control.title}
 								onclick={control.onclick}
-								data-model-action={control.kind}>{control.label}</Button
-							>{/each}
+								data-model-action={control.kind}
+							>
+								{control.label}
+							</Button>{/each}
 						{#if controls.some((control) => !['install', 'verify', 'remove'].includes(control.kind))}
 							<DropdownMenu.Root>
 								<DropdownMenu.Trigger
@@ -107,8 +112,10 @@
 											disabled={control.disabled}
 											title={control.title}
 											onclick={control.onclick}
-											data-model-action={control.kind}>{control.label}</DropdownMenu.Item
+											data-model-action={control.kind}
 										>
+											{control.label}
+										</DropdownMenu.Item>
 									{/each}
 								</DropdownMenu.Content>
 							</DropdownMenu.Root>
@@ -150,8 +157,10 @@
 								size="sm"
 								disabled={cancelControl.disabled}
 								onclick={cancelControl.onclick}
-								data-model-action="cancel">{cancelControl.label}</Button
-							>{/if}
+								data-model-action="cancel"
+							>
+								{cancelControl.label}
+							</Button>{/if}
 					</div>
 					<progress
 						class="h-2 w-full"

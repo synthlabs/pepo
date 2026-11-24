@@ -20,9 +20,9 @@
 						class="text-destructive size-4"
 					/>{:else}<RefreshCw class="size-4 text-amber-600 dark:text-amber-400" />{/if}
 			</Tooltip.Trigger>
-			<Tooltip.Content class="max-w-xs" align="start"
-				><NetworkTooltip summary={network.summary} /></Tooltip.Content
-			>
+			<Tooltip.Content class="max-w-xs" align="start">
+				<NetworkTooltip summary={network.summary} />
+			</Tooltip.Content>
 		</Tooltip.Root>
 	</Tooltip.Provider>
 {/if}

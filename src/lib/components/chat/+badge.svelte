@@ -49,14 +49,14 @@
 	<div class="max-w-[280px] min-w-0 p-1 text-left whitespace-normal">
 		<strong class="block leading-snug wrap-anywhere">{tooltipContent.name}</strong>
 		{#if tooltipContent.description}
-			<span class="text-muted-foreground mt-1 block text-sm leading-snug wrap-anywhere"
-				>{tooltipContent.description}</span
-			>
+			<span class="text-muted-foreground mt-1 block text-sm leading-snug wrap-anywhere">
+				{tooltipContent.description}
+			</span>
 		{/if}
 		{#if tooltipContent.detail}
-			<span class="text-muted-foreground mt-1 block text-xs leading-snug wrap-anywhere"
-				>{tooltipContent.detail}</span
-			>
+			<span class="text-muted-foreground mt-1 block text-xs leading-snug wrap-anywhere">
+				{tooltipContent.detail}
+			</span>
 		{/if}
 	</div>
 {/snippet}

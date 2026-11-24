@@ -6,7 +6,7 @@ use specta_typescript::Typescript;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
-use tauri::{AppHandle, Emitter, Listener, Manager, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_store::StoreExt;
@@ -68,12 +68,48 @@ type SharedEventSubHandles = Mutex<Vec<tauri::async_runtime::JoinHandle<()>>>;
 
 const APP_SETTINGS_KEY: &str = "app_settings";
 
-tauri_svelte_synced_store::state_handlers!(
-    AuthState = "auth_state",
-    InternalState = "internal_state",
-    ChannelCache = "channel_cache",
-    AppSettings = "app_settings"
-);
+#[tauri::command]
+#[specta::specta]
+fn subscribe_state(
+    name: String,
+    channel: tauri::ipc::Channel<tauri_svelte_synced_store::SyncMessage>,
+    webview: tauri::Webview<tauri::Wry>,
+    state_syncer: State<'_, StateSyncer>,
+) -> Result<String, tauri_svelte_synced_store::SyncError> {
+    state_syncer.subscribe(&name, &webview, channel)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn unsubscribe_state(
+    name: String,
+    subscriber_id: String,
+    webview: tauri::Webview<tauri::Wry>,
+    state_syncer: State<'_, StateSyncer>,
+) -> Result<bool, tauri_svelte_synced_store::SyncError> {
+    state_syncer.unsubscribe(&name, webview.label(), &subscriber_id)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn update_state(
+    state: tauri_svelte_synced_store::StateUpdate,
+    app_handle: AppHandle,
+    state_syncer: State<'_, StateSyncer>,
+) -> Result<bool, tauri_svelte_synced_store::SyncError> {
+    let is_app_settings = state.name == APP_SETTINGS_KEY;
+    state_syncer.update_from_frontend(state)?;
+    if is_app_settings {
+        if let Some(chat_runtime) = app_handle.try_state::<ChatRuntime>() {
+            if let Ok(engine) = chat_runtime.current() {
+                let settings = app_settings(&state_syncer);
+                engine.configure_translation(settings.translation);
+                engine.configure(settings.chat);
+            }
+        }
+    }
+    Ok(true)
+}
 
 fn app_settings(state_syncer: &StateSyncer) -> AppSettings {
     state_syncer
@@ -203,26 +239,63 @@ fn repo_root() -> std::path::PathBuf {
 }
 
 #[cfg(debug_assertions)]
-fn typescript_exporter() -> Typescript {
-    Typescript::default()
-        .formatter(specta_typescript::formatter::prettier)
-        .bigint(specta_typescript::BigIntExportBehavior::Number)
-        .header("/* eslint-disable */")
-}
+pub fn export_bindings(
+    builder: &tauri_specta::Builder<tauri::Wry>,
+    path: impl AsRef<std::path::Path>,
+) {
+    struct RequiredContainerDefaults(Typescript);
 
-#[cfg(debug_assertions)]
-fn export_bindings(builder: &tauri_specta::Builder<tauri::Wry>, path: std::path::PathBuf) {
+    impl tauri_specta::LanguageExt for RequiredContainerDefaults {
+        type Error = <Typescript as tauri_specta::LanguageExt>::Error;
+
+        fn export(
+            self,
+            cfg: &tauri_specta::BuilderConfiguration,
+            path: &std::path::Path,
+        ) -> Result<(), Self::Error> {
+            let mut cfg = cfg.clone();
+            // Container-level #[serde(default)] supports reading partial disk stores;
+            // serialized IPC payloads always include every field.
+            cfg.types.iter_mut(|ndt| {
+                if let Some(specta::datatype::DataType::Struct(strct)) = ndt.ty.as_mut() {
+                    strct
+                        .attributes
+                        .remove(specta::markers::SERDE_CONTAINER_DEFAULT);
+                }
+            });
+            self.0.export(&cfg, path)
+        }
+    }
+
+    let path = path.as_ref();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).expect("Failed to create bindings output directory");
     }
 
     builder
-        .export(typescript_exporter(), path)
+        .export(
+            RequiredContainerDefaults(Typescript::default().header("/* eslint-disable */")),
+            path,
+        )
         .expect("Failed to export typescript bindings");
+
+    let raw = std::fs::read_to_string(path).expect("Failed to read exported bindings");
+    let cleaned = raw
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    if cleaned != raw {
+        std::fs::write(path, cleaned).expect("Failed to normalize exported bindings");
+    }
 }
 
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
+        .error_handling(tauri_specta::ErrorHandlingMode::Result)
+        .dangerously_cast_bigints_to_number()
+        .disable_serde_phases()
         .typ::<types::UserToken>()
         .typ::<types::ChannelMessage>()
         .typ::<types::ChannelMessageTranslation>()
@@ -246,7 +319,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             login,
             logout,
             send_chat_message,
-            emit_state,
+            subscribe_state,
+            unsubscribe_state,
             update_state,
             search_emotes,
             get_network_status,
@@ -539,17 +613,19 @@ struct ChannelCacheTransport<'a, C> {
     timeout: std::time::Duration,
 }
 
-impl<C: twitch_api::HttpClient> twitch_api::HttpClient for ChannelCacheTransport<'_, C> {
+impl<'a, C: twitch_api::HttpClient> twitch_api::HttpClient for ChannelCacheTransport<'a, C> {
     type Error = ChannelCacheRequestError;
 
     fn req(
         &self,
         request: twitch_api::client::Request,
-    ) -> twitch_api::client::BoxedFuture<'_, Result<twitch_api::client::Response, Self::Error>>
-    {
+    ) -> impl std::future::Future<Output = Result<twitch_api::client::Response, Self::Error>>
+           + Send
+           + use<'a, C> {
         let response = self.inner.req(request);
-        Box::pin(async move {
-            let response = tokio::time::timeout(self.timeout, response)
+        let timeout = self.timeout;
+        async move {
+            let response = tokio::time::timeout(timeout, response)
                 .await
                 .map_err(|_| ChannelCacheRequestError {
                     category: "timeout",
@@ -567,7 +643,7 @@ impl<C: twitch_api::HttpClient> twitch_api::HttpClient for ChannelCacheTransport
                 });
             }
             Ok(response)
-        })
+        }
     }
 }
 
@@ -1559,6 +1635,18 @@ pub fn run() {
     let inbound_build = inbound_build_info();
     let internal_build = internal_build_info(&inbound_build);
 
+    let mut sync_cfg = StateSyncerConfig::default();
+    sync_cfg.persist_keys.insert("auth_state".to_owned(), true);
+    sync_cfg
+        .persist_keys
+        .insert("internal_state".to_owned(), true);
+    sync_cfg
+        .persist_keys
+        .insert("channel_cache".to_owned(), true);
+    sync_cfg
+        .persist_keys
+        .insert(APP_SETTINGS_KEY.to_owned(), true);
+
     let builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -1585,7 +1673,8 @@ pub fn run() {
             scrubber: Some(Arc::new(PepoScrubber)),
         }))
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_store::Builder::new().build());
+        .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_svelte_synced_store::plugin(sync_cfg));
 
     let public_handlers = specta_builder();
 
@@ -1639,18 +1728,7 @@ pub fn run() {
             public_handlers.mount_events(app);
             internal::setup(app)?;
 
-            let mut sync_cfg = StateSyncerConfig::default();
-            sync_cfg.persist_keys.insert("auth_state".to_owned(), true);
-            sync_cfg
-                .persist_keys
-                .insert("internal_state".to_owned(), true);
-            sync_cfg
-                .persist_keys
-                .insert("channel_cache".to_owned(), true);
-            sync_cfg
-                .persist_keys
-                .insert(APP_SETTINGS_KEY.to_owned(), true);
-            let state_syncer = StateSyncer::new(sync_cfg, app.handle().clone());
+            let state_syncer = app.state::<StateSyncer>().inner().clone();
 
             let _auth_state: AuthState = state_syncer.load("auth_state");
             let saved_channels: ChannelCache = state_syncer.load("channel_cache");
@@ -1658,7 +1736,6 @@ pub fn run() {
             let settings: AppSettings = state_syncer.load(APP_SETTINGS_KEY);
             let settings = settings.normalized();
             state_syncer.set(APP_SETTINGS_KEY, settings.clone());
-            app.manage(state_syncer.clone());
             app.manage(NetworkRuntime::default());
             app.manage(UserCardRuntime::default());
             let catalog_app = app.handle().clone();
@@ -1741,19 +1818,6 @@ pub fn run() {
             state_syncer.set(APP_SETTINGS_KEY, settings);
             app.manage::<SharedPollHandle>(Mutex::new(None));
             app.manage(ChatRuntime::default());
-            {
-                let settings_app = app.handle().clone();
-                app.listen("app_settings_update", move |event| {
-                    if let (Ok(engine), Ok(settings)) = (
-                        settings_app.state::<ChatRuntime>().current(),
-                        serde_json::from_str::<AppSettings>(event.payload()),
-                    ) {
-                        let settings = settings.normalized();
-                        engine.configure_translation(settings.translation);
-                        engine.configure(settings.chat);
-                    }
-                });
-            }
             app.manage::<SharedEventSubHandles>(Mutex::new(Vec::new()));
 
             let token_manager = TokenManager::new(client.clone(), app.handle().clone());

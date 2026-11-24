@@ -181,8 +181,9 @@
 								class="h-8 rounded-r-none border-r-0 px-2.5 text-xs"
 								disabled={!settingsState.ready}
 								onclick={() => requestReset(selected)}
-								><RotateCcw class="size-3.5" />Reset {category.label}</Button
 							>
+								<RotateCcw class="size-3.5" />Reset {category.label}
+							</Button>
 							<DropdownMenu.Root>
 								<DropdownMenu.Trigger
 									class={buttonVariants({
@@ -192,13 +193,14 @@
 									})}
 									aria-label="More reset actions"
 									disabled={!settingsState.ready}
-									><ChevronDown class="size-3.5" /></DropdownMenu.Trigger
 								>
-								<DropdownMenu.Content align="end"
-									><DropdownMenu.Item onclick={() => requestReset('all')}
-										>Reset all settings</DropdownMenu.Item
-									></DropdownMenu.Content
-								>
+									<ChevronDown class="size-3.5" />
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Content align="end">
+									<DropdownMenu.Item onclick={() => requestReset('all')}>
+										Reset all settings
+									</DropdownMenu.Item>
+								</DropdownMenu.Content>
 							</DropdownMenu.Root>
 						</div>{/if}
 				</div>
@@ -225,8 +227,10 @@
 											variant="outline"
 											size="sm"
 											onclick={() => openTranslationAdvanced('models')}
-											data-open-translation-models>Open translation models</Button
+											data-open-translation-models
 										>
+											Open translation models
+										</Button>
 									</div>{/if}
 							</div>
 						{:else}<p class="text-muted-foreground rounded-lg border px-4 py-8 text-center text-sm">
@@ -262,8 +266,10 @@
 								size="sm"
 								class="self-start"
 								onclick={(event) => network?.show(event.currentTarget)}
-								data-open-background-activity>Background activity</Button
+								data-open-background-activity
 							>
+								Background activity
+							</Button>
 						{/if}
 						{#if extraControls.length > 0}
 							<Button
@@ -309,19 +315,19 @@
 			class="bg-background fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border p-6 shadow-lg"
 		>
 			<AlertDialog.Title class="text-lg font-semibold">Reset {resetLabel}?</AlertDialog.Title>
-			<AlertDialog.Description class="text-muted-foreground mt-2 text-sm leading-relaxed"
-				>{resetTarget === 'all'
+			<AlertDialog.Description class="text-muted-foreground mt-2 text-sm leading-relaxed">
+				{resetTarget === 'all'
 					? 'Restore Chat, Emotes, Translation, and App preferences to their defaults. Model files and downloads will be kept.'
 					: `Restore ${SETTINGS_CATEGORIES.find((item) => item.id === resetTarget)!.label} preferences to their defaults.`}
-				Changes save automatically.</AlertDialog.Description
-			>
+				Changes save automatically.
+			</AlertDialog.Description>
 			<div class="mt-6 flex justify-end gap-2">
-				<AlertDialog.Cancel class={buttonVariants({ variant: 'outline', size: 'sm' })}
-					>Cancel</AlertDialog.Cancel
-				>
-				<AlertDialog.Action class={buttonVariants({ size: 'sm' })} onclick={reset}
-					>Reset to defaults</AlertDialog.Action
-				>
+				<AlertDialog.Cancel class={buttonVariants({ variant: 'outline', size: 'sm' })}>
+					Cancel
+				</AlertDialog.Cancel>
+				<AlertDialog.Action class={buttonVariants({ size: 'sm' })} onclick={reset}>
+					Reset to defaults
+				</AlertDialog.Action>
 			</div>
 		</AlertDialog.Content>
 	</AlertDialog.Portal>

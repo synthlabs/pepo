@@ -15,15 +15,14 @@ version = "2"
 path = "../utils/rust/translate-build"
 
 [dependencies]
-color-eyre = "0.6.3"
-eyre = "0.6.12"
-futures = "0.3.31"
+color-eyre = "0.6.5"
+eyre = "0.6.14"
+futures = "0.3.34"
 httpdate = "1"
-lazy_static = "1.5.0"
-log = "0.4.29"
+lazy_static = "1.5.1"
+log = "0.4.35"
 serde_json = "1"
-specta = "=2.0.0-rc.22"
-specta-typescript = "0.0.9"
+specta-typescript = "0.0.15"
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
@@ -35,11 +34,15 @@ path = "../utils/rust/inbound"
 features = ["runtime"]
 path = "../internal/rust"
 [dependencies.reqwest]
-features = ["json"]
-version = "0.12.28"
+default-features = false
+features = ["native-tls", "charset", "http2", "system-proxy", "json"]
+version = "0.13.5"
 [dependencies.serde]
 features = ["derive"]
 version = "1"
+[dependencies.specta]
+features = ["derive", "function"]
+version = "=2.0.0-rc.28"
 [dependencies.synth-translate]
 features = ["tauri-plugin"]
 path = "../utils/rust/translate"
@@ -48,7 +51,7 @@ features = []
 version = "2"
 [dependencies.tauri-specta]
 features = ["derive", "typescript"]
-version = "=2.0.0-rc.21"
+version = "=2.0.0-rc.29"
 [dependencies.tauri-svelte-synced-store]
 git = "https://github.com/synthlabs/tauri-svelte-synced-store.git"
 [dependencies.time]
@@ -56,25 +59,25 @@ features = ["formatting"]
 version = "0.3.55"
 [dependencies.tokio]
 features = ["macros", "rt-multi-thread"]
-version = "1.52"
+version = "1.54"
 [dependencies.tokio-tungstenite]
 features = ["native-tls", "url"]
-version = "~0.29"
+version = "~0.30"
 [dependencies.tracing]
 features = ["log"]
 version = "0.1.44"
 [dependencies.twitch_api]
 features = ["eventsub", "helix", "reqwest"]
-version = "~0.7.2"
+version = "~0.8.0"
 [dependencies.twitch_oauth2]
 features = ["client"]
-version = "0.15.2"
+version = "0.17.1"
 
 [dev-dependencies]
-httpmock = "0.7.0"
+httpmock = "0.9.0"
 [dev-dependencies.tokio]
 features = ["test-util"]
-version = "1.52"
+version = "1.54"
 
 [[example]]
 name = "gen_bindings"
@@ -110,7 +113,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-window-state = "2"
 [target."cfg(target_os = \"macos\")"]
 [target."cfg(target_os = \"macos\")".dependencies]
-objc2 = "0.6.4"
+objc2 = "0.6.5"
 objc2-app-kit = "0.3.2"
 [target."cfg(target_os = \"windows\")"]
 [target."cfg(target_os = \"windows\")".dependencies]

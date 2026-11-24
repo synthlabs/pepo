@@ -1413,13 +1413,15 @@ mod subscription_tests {
         fn req(
             &self,
             request: twitch_api::client::Request,
-        ) -> twitch_api::client::BoxedFuture<'_, Result<twitch_api::client::Response, Self::Error>>
-        {
-            Box::pin(async move {
+        ) -> impl std::future::Future<Output = Result<twitch_api::client::Response, Self::Error>>
+               + Send
+               + use<> {
+            let base = self.base.clone();
+            let client = self.client.clone();
+            async move {
                 let (parts, body) = request.into_parts();
-                let url = format!("{}{}", self.base, parts.uri.path_and_query().unwrap());
-                let received = self
-                    .client
+                let url = format!("{base}{}", parts.uri.path_and_query().unwrap());
+                let received = client
                     .request(parts.method, url)
                     .headers(parts.headers)
                     .body(body)
@@ -1431,7 +1433,7 @@ mod subscription_tests {
                 *response.status_mut() = status;
                 *response.headers_mut() = headers;
                 Ok(response)
-            })
+            }
         }
     }
     fn token() -> UserToken {
@@ -1476,7 +1478,7 @@ mod subscription_tests {
             for (index, (kind, id)) in kinds.iter().enumerate() {
                 mocks.push(server.mock(|when, then| {
                     when.method(POST).path("/helix/eventsub/subscriptions")
-                        .json_body_partial(format!(r#"{{"type":"{kind}"}}"#));
+                        .json_body_includes(format!(r#"{{"type":"{kind}"}}"#));
                     if index == missing {
                         then.status(429).json_body(json!({"error":"Too Many Requests", "status":429, "message":"rate limited"}));
                     } else { then.status(202).json_body(response(kind, id)); }
@@ -1506,7 +1508,7 @@ mod subscription_tests {
             let retry = server.mock(|when, then| {
                 when.method(POST)
                     .path("/helix/eventsub/subscriptions")
-                    .json_body_partial(format!(r#"{{"type":"{kind}"}}"#));
+                    .json_body_includes(format!(r#"{{"type":"{kind}"}}"#));
                 then.status(202).json_body(response(kind, id));
             });
             assert_eq!(
@@ -1521,10 +1523,10 @@ mod subscription_tests {
             assert_eq!(manager.get_subscriptions("room").len(), 5);
             for (index, mock) in mocks.iter().enumerate() {
                 if index != missing {
-                    mock.assert_hits(1);
+                    mock.assert_calls(1);
                 }
             }
-            retry.assert_hits(1);
+            retry.assert_calls(1);
             manager
                 .clone()
                 .leave_chat("room".into(), &client, token())
@@ -1583,7 +1585,7 @@ mod subscription_tests {
             server.mock(|when, then| {
                 when.method(POST)
                     .path("/helix/eventsub/subscriptions")
-                    .json_body_partial(format!(r#"{{"type":"{kind}"}}"#));
+                    .json_body_includes(format!(r#"{{"type":"{kind}"}}"#));
                 then.status(202).json_body(response(kind, id));
             });
             server.mock(|when, then| {
@@ -1617,7 +1619,7 @@ mod subscription_tests {
         );
         assert!(!manager.channel_complete("room"));
         assert_eq!(manager.desired_channels_snapshot().len(), 1);
-        post.assert_hits(0);
+        post.assert_calls(0);
     }
 
     #[tokio::test]
@@ -1643,7 +1645,7 @@ mod subscription_tests {
         );
         assert!(!manager.is_connected());
         assert!(!manager.channel_complete("room"));
-        post.assert_hits(1);
+        post.assert_calls(1);
     }
 
     #[tokio::test]
@@ -1654,12 +1656,12 @@ mod subscription_tests {
         let message = server.mock(|when, then| {
             when.method(POST)
                 .path("/helix/eventsub/subscriptions")
-                .json_body_partial(r#"{"type":"channel.chat.message"}"#);
+                .json_body_includes(r#"{"type":"channel.chat.message"}"#);
             then.status(202)
                 .json_body(response("channel.chat.message", "message"));
         });
         let mut denied = server.mock(|when, then| {
-            when.method(POST).path("/helix/eventsub/subscriptions").json_body_partial(r#"{"type":"channel.chat.notification"}"#);
+            when.method(POST).path("/helix/eventsub/subscriptions").json_body_includes(r#"{"type":"channel.chat.notification"}"#);
             then.status(403).json_body(json!({"error":"Forbidden","status":403,"message":"subscription missing proper authorization"}));
         });
         let deleted = server.mock(|when, then| {
@@ -1689,12 +1691,12 @@ mod subscription_tests {
             .unwrap();
         assert!(manager.channels_with_subscriptions().is_empty());
         assert!(manager.desired_channels_snapshot().is_empty());
-        deleted.assert_hits(1);
+        deleted.assert_calls(1);
         denied.delete();
         let notification = server.mock(|when, then| {
             when.method(POST)
                 .path("/helix/eventsub/subscriptions")
-                .json_body_partial(r#"{"type":"channel.chat.notification"}"#);
+                .json_body_includes(r#"{"type":"channel.chat.notification"}"#);
             then.status(202)
                 .json_body(response("channel.chat.notification", "notification"));
         });
@@ -1707,8 +1709,8 @@ mod subscription_tests {
             JoinOutcome::Joined
         );
         assert!(manager.channel_complete("room"));
-        message.assert_hits(2);
-        notification.assert_hits(1);
+        message.assert_calls(2);
+        notification.assert_calls(1);
     }
 
     #[test]
@@ -1780,8 +1782,8 @@ mod subscription_tests {
                 .unwrap();
             assert!(manager.channels_with_subscriptions().is_empty());
             assert!(manager.desired_channels_snapshot().is_empty());
-            listing.assert_hits(1);
-            deleted.assert_hits(1);
+            listing.assert_calls(1);
+            deleted.assert_calls(1);
         }
     }
 
@@ -1792,14 +1794,14 @@ mod subscription_tests {
         let message = server.mock(|when, then| {
             when.method(POST)
                 .path("/helix/eventsub/subscriptions")
-                .json_body_partial(r#"{"type":"channel.chat.message"}"#);
+                .json_body_includes(r#"{"type":"channel.chat.message"}"#);
             then.status(202)
                 .json_body(response("channel.chat.message", "message"));
         });
         let mut failure = server.mock(|when, then| {
             when.method(POST)
                 .path("/helix/eventsub/subscriptions")
-                .json_body_partial(r#"{"type":"channel.chat.notification"}"#);
+                .json_body_includes(r#"{"type":"channel.chat.notification"}"#);
             then.status(429).json_body(
                 json!({"error":"Too Many Requests","status":429,"message":"rate limited"}),
             );
@@ -1821,7 +1823,7 @@ mod subscription_tests {
         let notification = server.mock(|when, then| {
             when.method(POST)
                 .path("/helix/eventsub/subscriptions")
-                .json_body_partial(r#"{"type":"channel.chat.notification"}"#);
+                .json_body_includes(r#"{"type":"channel.chat.notification"}"#);
             then.status(202)
                 .json_body(response("channel.chat.notification", "notification"));
         });
@@ -1830,8 +1832,8 @@ mod subscription_tests {
             .await
             .unwrap();
         assert!(manager.channel_complete("room"));
-        message.assert_hits(1);
-        notification.assert_hits(1);
+        message.assert_calls(1);
+        notification.assert_calls(1);
     }
 
     #[tokio::test]
@@ -1877,8 +1879,8 @@ mod subscription_tests {
             .unwrap();
         assert!(manager.channel_complete("room"));
         assert_eq!(manager.get_subscriptions("room").len(), 5);
-        duplicate.assert_hits(1);
-        listing.assert_hits(1);
+        duplicate.assert_calls(1);
+        listing.assert_calls(1);
     }
 
     #[tokio::test]
@@ -1893,7 +1895,7 @@ mod subscription_tests {
             server.mock(|when, then| {
                 when.method(POST)
                     .path("/helix/eventsub/subscriptions")
-                    .json_body_partial(format!(r#"{{"type":"{kind}"}}"#));
+                    .json_body_includes(format!(r#"{{"type":"{kind}"}}"#));
                 then.status(202).json_body(response(kind, id));
             });
         }
@@ -1929,7 +1931,7 @@ mod subscription_tests {
             .is_err());
         assert_eq!(manager.desired_channels_snapshot().len(), 1);
         // HashSet iteration may encounter the failed deletion before the successful one.
-        let previously_deleted = deleted.hits();
+        let previously_deleted = deleted.calls();
         failed.delete();
         let retried = server.mock(|when, then| {
             when.method(DELETE)
@@ -1944,12 +1946,12 @@ mod subscription_tests {
             .unwrap();
         assert!(manager.desired_channels_snapshot().is_empty());
         assert!(manager.get_subscriptions("room").is_empty());
-        deleted.assert_hits(if previously_deleted == 0 {
+        deleted.assert_calls(if previously_deleted == 0 {
             1
         } else {
             previously_deleted
         });
-        retried.assert_hits(1);
+        retried.assert_calls(1);
     }
     #[test]
     fn room_or_version_revocation_does_not_expire_account() {

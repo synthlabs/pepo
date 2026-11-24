@@ -643,9 +643,9 @@
 										/>:&#32;
 									</span>
 									{#each msg.fragments as fragment, i (i)}
-										{#if 'Text' in fragment}
+										{#if 'Text' in fragment && fragment.Text}
 											{fragment.Text.text}
-										{:else if 'Mention' in fragment}
+										{:else if 'Mention' in fragment && fragment.Mention}
 											<Username
 												userId={fragment.Mention.user_id}
 												login={fragment.Mention.login}
@@ -758,8 +758,10 @@
 						class={cn(
 							'shrink-0 px-2 text-xs tabular-nums',
 							chatInput.length >= MAX_MESSAGE_LENGTH ? 'text-destructive' : 'text-muted-foreground'
-						)}>{chatInput.length}/{MAX_MESSAGE_LENGTH}</span
+						)}
 					>
+						{chatInput.length}/{MAX_MESSAGE_LENGTH}
+					</span>
 				{/if}
 				<button
 					type="button"

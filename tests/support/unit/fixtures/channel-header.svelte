@@ -7,6 +7,6 @@
 </script>
 
 <ChannelHeader {header} />
-<button type="button" data-switch-channel onclick={() => (header = nextHeader)}
-	>Switch channel</button
->
+<button type="button" data-switch-channel onclick={() => (header = nextHeader)}>
+	Switch channel
+</button>

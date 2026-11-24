@@ -70,8 +70,10 @@
 {#snippet tagPill(tag: string)}
 	<span
 		class="bg-muted text-muted-foreground block max-w-32 truncate rounded-full px-2 py-1 text-xs leading-none"
-		title={tag}>{tag}</span
+		title={tag}
 	>
+		{tag}
+	</span>
 {/snippet}
 
 {#snippet viewers(count: number)}
@@ -122,8 +124,10 @@
 						<span
 							class="text-primary max-w-40 truncate font-medium"
 							title={header.category}
-							data-header-category>{header.category}</span
+							data-header-category
 						>
+							{header.category}
+						</span>
 					{/if}
 					{#if showPill}
 						<div class="flex items-center gap-1" data-header-tags>
@@ -136,8 +140,10 @@
 												? `${header.language}: show stream tags`
 												: 'Show stream tags'}
 											data-header-language={header.language ? '' : undefined}
-											data-header-tags-trigger>{pillLabel}</Tooltip.Trigger
+											data-header-tags-trigger
 										>
+											{pillLabel}
+										</Tooltip.Trigger>
 										<Tooltip.Content
 											side="bottom"
 											class="flex max-w-[min(20rem,90vw)] flex-wrap gap-1 p-2"
@@ -146,8 +152,9 @@
 											{#each header.tags as tag, index (index)}
 												<span
 													class="bg-muted text-muted-foreground max-w-full rounded-full px-1.5 py-0.5 text-xs leading-snug wrap-anywhere"
-													>{tag}</span
 												>
+													{tag}
+												</span>
 											{/each}
 										</Tooltip.Content>
 									</Tooltip.Root>
@@ -185,27 +192,30 @@
 			<div class="flex items-center gap-1.5" data-header-measure="identity">
 				{@render identity(header)}
 			</div>
-			<span class="text-sm font-normal" data-header-measure="title"
-				>{header.state === 'offline' ? 'Offline' : (header.title ?? '')}</span
-			>
+			<span class="text-sm font-normal" data-header-measure="title">
+				{header.state === 'offline' ? 'Offline' : (header.title ?? '')}
+			</span>
 			{#if header.viewerCount !== null}
 				{#if header.category}
-					<span class="max-w-40 truncate font-medium" data-header-measure="category"
-						>{header.category}</span
-					>
+					<span class="max-w-40 truncate font-medium" data-header-measure="category">
+						{header.category}
+					</span>
 				{/if}
 				{#if pillLabel}
 					<div class="shrink-0" data-header-measure="pill">
 						{@render tagPill(pillLabel)}
 					</div>
 				{/if}
-				<span class="flex items-center gap-1 font-medium tabular-nums" data-header-measure="viewers"
-					>{@render viewers(header.viewerCount)}</span
+				<span
+					class="flex items-center gap-1 font-medium tabular-nums"
+					data-header-measure="viewers"
 				>
+					{@render viewers(header.viewerCount)}
+				</span>
 				{#if uptime}
-					<span class="flex items-center gap-1 tabular-nums" data-header-measure="uptime"
-						>{@render duration(uptime)}</span
-					>
+					<span class="flex items-center gap-1 tabular-nums" data-header-measure="uptime">
+						{@render duration(uptime)}
+					</span>
 				{/if}
 			{/if}
 		</div>

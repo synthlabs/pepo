@@ -31,11 +31,11 @@
 			class="bg-background fixed top-1/2 left-1/2 z-50 max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-lg border p-6 shadow-lg"
 		>
 			{#if request}
-				<AlertDialog.Title class="text-lg font-semibold"
-					>{setup
+				<AlertDialog.Title class="text-lg font-semibold">
+					{setup
 						? 'Download translation support?'
-						: `${verb} ${text.pair(request.pair, text.language)}?`}</AlertDialog.Title
-				>
+						: `${verb} ${text.pair(request.pair, text.language)}?`}
+				</AlertDialog.Title>
 				<AlertDialog.Description class="text-muted-foreground mt-2 text-sm">
 					{#if 'plan' in request}
 						{#if setup}Pepo needs a small language model to translate messages into {text.language(
@@ -67,9 +67,9 @@
 						restored.
 					</p>{/if}
 				<div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-					<AlertDialog.Cancel class={buttonVariants({ variant: 'outline', size: 'sm' })}
-						>Cancel</AlertDialog.Cancel
-					>
+					<AlertDialog.Cancel class={buttonVariants({ variant: 'outline', size: 'sm' })}>
+						Cancel
+					</AlertDialog.Cancel>
 					<AlertDialog.Action
 						class={buttonVariants({
 							variant:
@@ -79,12 +79,13 @@
 							size: 'sm'
 						})}
 						onclick={() => session.respond(true)}
-						>{setup
+					>
+						{setup
 							? session.setupIntent === 'enable'
 								? 'Download & enable'
 								: 'Download & change language'
-							: verb}</AlertDialog.Action
-					>
+							: verb}
+					</AlertDialog.Action>
 				</div>
 			{/if}
 		</AlertDialog.Content>

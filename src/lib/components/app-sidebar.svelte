@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, type ComponentProps } from 'svelte';
+	import { onDestroy, onMount, type ComponentProps } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -71,6 +71,11 @@
 		token: null
 	});
 
+	onDestroy(() => {
+		void channelCache.close();
+		void authState.close();
+	});
+
 	let accounts = $derived(
 		authState.obj.token
 			? [
@@ -135,8 +140,9 @@
 					<div class="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
 						<span>{displayName}</span>
 						{#if status?.stream}
-							<span class="text-muted-foreground block truncate text-xs">{status.stream.title}</span
-							>
+							<span class="text-muted-foreground block truncate text-xs">
+								{status.stream.title}
+							</span>
 						{/if}
 					</div>
 					{#if status?.stream}

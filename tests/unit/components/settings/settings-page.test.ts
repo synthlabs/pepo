@@ -3,11 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppSettings } from '$lib/bindings';
 import { DEFAULT_APP_SETTINGS } from '$lib/settings';
 
+type SyncSnapshot = { kind: 'snapshot'; value: AppSettings };
+
 const native = vi.hoisted(() => ({
+	channels: new Map<string, Set<{ onmessage: (message: SyncSnapshot) => void }>>(),
 	listeners: new Map<string, ((event: { payload: AppSettings }) => void)[]>(),
 	writes: [] as AppSettings[],
 	save: undefined as ((value: AppSettings) => Promise<boolean>) | undefined,
 	emit(value: AppSettings) {
+		for (const channel of this.channels.get('app_settings') ?? []) {
+			channel.onmessage({ kind: 'snapshot', value: structuredClone(value) });
+		}
 		for (const listener of this.listeners.get('app_settings_update') ?? [])
 			listener({ payload: structuredClone(value) });
 	}
@@ -27,10 +33,29 @@ vi.mock('@tauri-apps/api/event', () => ({
 	}
 }));
 vi.mock('@tauri-apps/api/core', () => ({
-	invoke: async (command: string, args: { state?: { value: string } }) => {
-		if (command === 'emit_state') return true;
+	Channel: class MockChannel<T = SyncSnapshot> {
+		onmessage: (message: T) => void;
+		constructor(onmessage?: (message: T) => void) {
+			this.onmessage = onmessage ?? (() => {});
+		}
+	},
+	invoke: async (
+		command: string,
+		args: {
+			name?: string;
+			channel?: { onmessage: (message: SyncSnapshot) => void };
+			state?: { value: AppSettings };
+		}
+	) => {
+		if (command === 'subscribe_state' && args.name && args.channel) {
+			const channels = native.channels.get(args.name) ?? new Set();
+			channels.add(args.channel);
+			native.channels.set(args.name, channels);
+			return 'sub-1';
+		}
+		if (command === 'unsubscribe_state') return true;
 		if (command !== 'update_state' || !args.state) throw new Error(`Unexpected command ${command}`);
-		const value = JSON.parse(args.state.value) as AppSettings;
+		const value = structuredClone(args.state.value);
 		native.writes.push(value);
 		return native.save!(value);
 	}

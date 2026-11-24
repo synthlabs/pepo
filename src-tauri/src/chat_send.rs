@@ -52,6 +52,7 @@ pub struct ChatSendKeyEvent {
     pub picker_visible: bool,
     pub result_count: usize,
     pub selected_index: Option<usize>,
+    #[specta(type = specta_typescript::Number)]
     pub age_ms: f64,
 }
 

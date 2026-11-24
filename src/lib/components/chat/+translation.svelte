@@ -27,8 +27,9 @@
 		</span>
 		<span
 			class="text-muted-foreground align-baseline text-[0.75rem] leading-snug text-wrap wrap-anywhere"
-			>{text}</span
 		>
+			{text}
+		</span>
 	{:else}
 		<span
 			class="text-muted-foreground align-baseline text-[0.75rem] leading-snug text-wrap wrap-anywhere"

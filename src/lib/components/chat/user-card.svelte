@@ -175,8 +175,10 @@
 						class="text-muted-foreground hover:text-foreground size-7 focus-visible:ring-offset-0 focus-visible:ring-inset [&_svg]:size-3.5"
 						data-tauri-drag-region="false"
 						aria-label="Close user card"
-						onclick={onclose}><X aria-hidden="true" /></Button
+						onclick={onclose}
 					>
+						<X aria-hidden="true" />
+					</Button>
 				{/if}
 			</div>
 		</header>
@@ -185,12 +187,9 @@
 				<div class="flex items-start gap-3" data-user-card-summary>
 					<Avatar.Root class="size-12 shrink-0">
 						<Avatar.Image src={cardState.profile_image_url ?? undefined} alt="" />
-						<Avatar.Fallback
-							><UserRound
-								class="text-muted-foreground size-6"
-								aria-hidden="true"
-							/></Avatar.Fallback
-						>
+						<Avatar.Fallback>
+							<UserRound class="text-muted-foreground size-6" aria-hidden="true" />
+						</Avatar.Fallback>
 					</Avatar.Root>
 					<div class="min-w-0">
 						<h1 class="text-base font-semibold wrap-anywhere">
@@ -218,9 +217,9 @@
 								? 'This Twitch profile is unavailable.'
 								: (cardState.error ?? 'Could not load this profile.')}
 						</p>
-						<Button variant="link" size="sm" class="h-6 px-0 text-xs" onclick={onretry}
-							>Retry</Button
-						>
+						<Button variant="link" size="sm" class="h-6 px-0 text-xs" onclick={onretry}>
+							Retry
+						</Button>
 					</div>
 				{/if}
 			</div>

@@ -2,12 +2,14 @@
 	import { onMount, tick } from 'svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { openUrl } from '@tauri-apps/plugin-opener';
-	import { commands, type UserCardState, type Result } from '$lib/bindings';
+	import { commands, type UserCardState } from '$lib/bindings';
 	import { UserCardSession } from '$lib/chat/user-card-session';
 	import UserCard from '$lib/components/chat/user-card.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { getNormalizedAppSettings, appSettings } from '$lib/stores/settings.svelte';
 	import { appErrors } from '$lib/errors/controller';
+
+	type CommandResult<T, E> = { status: 'ok'; data: T } | { status: 'error'; error: E };
 
 	let cardState = $state<UserCardState | null>(null);
 	let error = $state<string | null>(null);
@@ -16,7 +18,7 @@
 	let card = $state<UserCard>();
 	let errorContent = $state<HTMLDivElement>();
 
-	function unwrap<T>(result: Result<T, string>): T {
+	function unwrap<T>(result: CommandResult<T, string>): T {
 		if (result.status === 'error') throw result.error;
 		return result.data;
 	}
@@ -82,10 +84,9 @@
 	}}
 />
 
-<svelte:head
-	><title>{cardState ? `${cardState.user.display_name} — Pepo` : 'User card — Pepo'}</title
-	></svelte:head
->
+<svelte:head>
+	<title>{cardState ? `${cardState.user.display_name} — Pepo` : 'User card — Pepo'}</title>
+</svelte:head>
 
 <div class="h-dvh min-h-0 overflow-hidden">
 	{#if cardState}
@@ -115,8 +116,10 @@
 					size="sm"
 					onclick={() => {
 						void start();
-					}}>Retry</Button
-				><Button size="sm" variant="outline" onclick={close}>Close</Button>
+					}}
+				>
+					Retry
+				</Button><Button size="sm" variant="outline" onclick={close}>Close</Button>
 			</div>
 		</div>
 	{/if}

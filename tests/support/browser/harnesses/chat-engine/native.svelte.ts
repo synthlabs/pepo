@@ -217,6 +217,9 @@ export class SyncedState {
 		}
 		return true;
 	}
+	close() {
+		return Promise.resolve();
+	}
 }
 
 export const commands = {

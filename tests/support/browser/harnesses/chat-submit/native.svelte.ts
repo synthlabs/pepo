@@ -60,6 +60,9 @@ export class SyncedState {
 	async sync() {
 		return true;
 	}
+	close() {
+		return Promise.resolve();
+	}
 }
 
 export const commands = {

@@ -31,9 +31,13 @@ pub struct UserCardTarget {
 
 #[derive(Clone, Debug, Default, Deserialize, specta::Type)]
 pub struct CardAnchor {
+    #[specta(type = specta_typescript::Number)]
     pub x: f64,
+    #[specta(type = specta_typescript::Number)]
     pub y: f64,
+    #[specta(type = specta_typescript::Number)]
     pub width: f64,
+    #[specta(type = specta_typescript::Number)]
     pub height: f64,
 }
 

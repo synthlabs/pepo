@@ -118,9 +118,9 @@
 	>
 		<Sheet.Header>
 			<Sheet.Title>Connection details</Sheet.Title>
-			<Sheet.Description
-				>See what is waiting for a connection and which saved data is available.</Sheet.Description
-			>
+			<Sheet.Description>
+				See what is waiting for a connection and which saved data is available.
+			</Sheet.Description>
 		</Sheet.Header>
 		{#if !issues.length}
 			<p class="text-sm" role="status">Everything has caught up.</p>
@@ -148,19 +148,21 @@
 									: 'soon'}.
 							</p>{/if}
 						<details class="text-xs">
-							<summary class="text-muted-foreground cursor-pointer py-1">Diagnostic details</summary
-							>
+							<summary class="text-muted-foreground cursor-pointer py-1">
+								Diagnostic details
+							</summary>
 							<p class="mt-2 wrap-anywhere whitespace-pre-wrap">{issue.message}</p>
 							<p class="text-muted-foreground mt-2">
 								Last failure: {new Date(issue.last_failure_at).toLocaleTimeString()}
 							</p>
 						</details>
 						<div class="flex flex-wrap gap-2 pt-1">
-							{#if issue.can_retry}<Button variant="outline" size="sm" onclick={() => retry(issue)}
-									>Retry now</Button
-								>{/if}
-							<Button variant="ghost" size="sm" onclick={() => report(issue)}>Report problem</Button
-							>
+							{#if issue.can_retry}<Button variant="outline" size="sm" onclick={() => retry(issue)}>
+									Retry now
+								</Button>{/if}
+							<Button variant="ghost" size="sm" onclick={() => report(issue)}>
+								Report problem
+							</Button>
 						</div>
 					</li>
 				{/each}

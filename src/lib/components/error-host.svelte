@@ -54,9 +54,9 @@
 					<p class="text-muted-foreground mt-1 line-clamp-2 text-xs">{notice.error.message}</p>
 				{/if}
 				<div class="mt-3 flex justify-end gap-2">
-					<Button size="sm" variant="outline" onclick={() => appErrors.dismiss(notice.id)}
-						>Dismiss</Button
-					>
+					<Button size="sm" variant="outline" onclick={() => appErrors.dismiss(notice.id)}>
+						Dismiss
+					</Button>
 					<Button size="sm" onclick={() => appErrors.openReport(notice)}>Report this</Button>
 				</div>
 			</section>

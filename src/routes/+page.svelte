@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { SyncedState } from 'tauri-svelte-synced-store';
 	import { CircleCheckBig, LoaderCircle } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
@@ -14,6 +14,10 @@
 		phase: 'unauthorized',
 		device_code: '',
 		token: null
+	});
+
+	onDestroy(() => {
+		void authState.close();
 	});
 
 	let loading: boolean = $derived(
@@ -81,8 +85,9 @@
 			{:else if authState.obj.phase === 'waitingForAuth'}
 				<span
 					class="bg-muted-foreground text-accent w-3xs rounded-lg px-4 py-2 text-center font-mono text-2xl font-bold tracking-wider hover:cursor-text"
-					>{authState.obj.device_code}</span
 				>
+					{authState.obj.device_code}
+				</span>
 			{:else if usableAuth}
 				{#if showPostAuthSpinner}
 					<LoaderCircle class="text-primary animate-spin" />

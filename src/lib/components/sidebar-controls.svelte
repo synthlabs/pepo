@@ -69,8 +69,9 @@
 				</Tooltip.Trigger>
 				<Tooltip.Content
 					side={sidebar.state === 'collapsed' && !sidebar.isMobile ? 'right' : 'bottom'}
-					>Home</Tooltip.Content
 				>
+					Home
+				</Tooltip.Content>
 			</Tooltip.Root>
 		</div>
 	{/if}
