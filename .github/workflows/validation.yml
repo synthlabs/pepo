@@ -67,8 +67,6 @@ jobs:
         run: pnpm build
       - name: Unit tests
         run: pnpm test:unit
-      - name: Shared tests
-        run: pnpm test:shared
       - name: Script tests
         run: pnpm test:scripts
       - name: Rust tests

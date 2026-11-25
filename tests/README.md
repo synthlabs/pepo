@@ -1,8 +1,8 @@
 # Pepo tests
 
-`pnpm test` runs the portable suites sequentially: app unit tests, shared `utils` JavaScript tests,
-tooling/CI script tests, Rust unit tests, mocked packaging tests, Playwright Chromium browser tests,
-and the internal hook. A failure stops the sequence.
+`pnpm test` runs the portable suites sequentially: app unit tests, tooling/CI script tests, Rust
+unit tests, mocked packaging tests, Playwright Chromium browser tests, and the internal hook. A
+failure stops the sequence.
 
 `pnpm verify` runs frontend type-checking, linting/formatting, frontend build, `pnpm test`, Rust
 formatting (`cargo fmt --all -- --check`), Rust linting (`cargo clippy --workspace --all-targets --locked -- -D warnings`),
@@ -23,16 +23,15 @@ Linux hosts running browser tests also need Playwright's system dependencies
 
 ## Commands
 
-| Suite      | Command                | Make alias             | Covers                                                                                                                                         | Portable?                           |
-| ---------- | ---------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| Unit       | `pnpm test:unit`       | `make test-unit`       | Vitest 5 jsdom suite under `tests/unit/**/*.test.ts` (app logic, Svelte components, CI contract)                                               | Yes                                 |
-| Shared     | `pnpm test:shared`     | `make test-shared`     | `utils/js/**/*.test.ts` (Vitest) + `utils/js/inbound/controller.test.mjs` + `utils/scripts/update-utils-submodules.test.mjs`                   | Yes (until `utils` owns its own CI) |
-| Scripts    | `pnpm test:scripts`    | `make test-scripts`    | `node --test tests/scripts/*.test.mjs` (patch amendment, CI/ESLint contracts, `make dev` env, Tailwind class lint, window-controls diagnostic) | Yes                                 |
-| Rust       | `pnpm test:rust`       | `make test-rust`       | `cargo test --locked --manifest-path src-tauri/Cargo.toml`                                                                                     | Yes                                 |
-| Rust build | `pnpm test:rust:build` | `make test-rust-build` | Compiles Rust tests without running (`--no-run`)                                                                                               | Yes                                 |
-| Packaging  | `pnpm test:packaging`  | `make test-packaging`  | `node tests/packaging/run.mjs` (PowerShell installer tests on Windows; bash integration tests on Linux/macOS)                                  | Yes (CI skips macOS)                |
-| Browser    | `pnpm test:browser`    | `make test-browser`    | Playwright Chromium specs under `tests/browser/*.spec.ts` served by `tests/support/browser/dev-server.mjs`                                     | Yes (CI runs Linux)                 |
-| Internal   | `pnpm test:internal`   | `make test-internal`   | `node internal/internal-test.mjs` (`ENABLE_INTERNAL=1` frontend check, Rust check, and Rust library tests)                                     | Yes                                 |
+| Suite      | Command                | Make alias             | Covers                                                                                                                                         | Portable?            |
+| ---------- | ---------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| Unit       | `pnpm test:unit`       | `make test-unit`       | Vitest 5 jsdom suite under `tests/unit/**/*.test.ts` (app logic, Svelte components, CI contract)                                               | Yes                  |
+| Scripts    | `pnpm test:scripts`    | `make test-scripts`    | `node --test tests/scripts/*.test.mjs` (patch amendment, CI/ESLint contracts, `make dev` env, Tailwind class lint, window-controls diagnostic) | Yes                  |
+| Rust       | `pnpm test:rust`       | `make test-rust`       | `cargo test --locked --manifest-path src-tauri/Cargo.toml`                                                                                     | Yes                  |
+| Rust build | `pnpm test:rust:build` | `make test-rust-build` | Compiles Rust tests without running (`--no-run`)                                                                                               | Yes                  |
+| Packaging  | `pnpm test:packaging`  | `make test-packaging`  | `node tests/packaging/run.mjs` (PowerShell installer tests on Windows; bash integration tests on Linux/macOS)                                  | Yes (CI skips macOS) |
+| Browser    | `pnpm test:browser`    | `make test-browser`    | Playwright Chromium specs under `tests/browser/*.spec.ts` served by `tests/support/browser/dev-server.mjs`                                     | Yes (CI runs Linux)  |
+| Internal   | `pnpm test:internal`   | `make test-internal`   | `node internal/internal-test.mjs` (`ENABLE_INTERNAL=1` frontend check, Rust check, and Rust library tests)                                     | Yes                  |
 
 Focused reruns accept runner arguments:
 
@@ -64,7 +63,6 @@ pnpm exec vitest --config vitest.config.ts
 | Suite                                  | Linux (CI)     | Windows (CI)       | macOS (CI)                       |
 | -------------------------------------- | -------------- | ------------------ | -------------------------------- |
 | `test:unit`                            | Run            | Run                | Run                              |
-| `test:shared`                          | Run            | Run                | Run                              |
 | `test:scripts`                         | Run            | Run                | Run                              |
 | `test:rust`                            | Run            | Run                | Run                              |
 | `test:packaging`                       | Run (`bash`)   | Run (`powershell`) | Skipped (`runner.os != 'macOS'`) |
