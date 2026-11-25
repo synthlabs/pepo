@@ -25,8 +25,21 @@ export default defineConfig(async () => ({
 				}
 			: undefined,
 		watch: {
-			// 3. tell vite to ignore watching `src-tauri`
-			ignored: ['**/src-tauri/**']
+			// 3. tell vite to ignore watching non-frontend trees (Rust targets, local tooling, caches)
+			ignored: [
+				'**/src-tauri/**',
+				'**/target/**',
+				'**/bin/**',
+				'**/.pnpm-store/**',
+				'**/build/**',
+				'**/archive/**',
+				'**/internal/rust/**',
+				'**/utils/rust/**',
+				'**/utils/go/**',
+				'**/utils/packaging/**',
+				'**/utils/.tmp/**',
+				'**/.venv/**'
+			]
 		},
 		fs: {
 			allow: [

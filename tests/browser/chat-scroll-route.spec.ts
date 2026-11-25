@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { CDPSession } from '@playwright/test';
-import { capturedBaseURL, test, until } from '../support/browser/fixtures';
+import type { CDPSession, Page } from '@playwright/test';
+import {
+	capturedBaseURL,
+	test,
+	waitForExpression,
+	waitForSettledAnimations
+} from '../support/browser/fixtures';
 
 // Per-action DOM trace snapshots across 500 rows push consecutive resizes past PAUSED_REFLOW_SETTLE_MS (250ms).
 test.use({ trace: 'off' });
@@ -20,18 +25,22 @@ interface RouteMetadata {
 	error: string | null;
 }
 
-async function checkNoticeScroll(session: CDPSession, evaluate: EvaluateFn) {
+async function checkNoticeScroll(page: Page, session: CDPSession, evaluate: EvaluateFn) {
 	const state = () => evaluate<RouteMetadata>('window.routeFixture.metadata()');
 	const show = async (message: string) => {
 		await evaluate('window.routeFixture.showError(' + JSON.stringify(message) + ')');
-		await delay(350);
+		await waitForExpression(
+			page,
+			`document.querySelector('[data-chat-input-error]')?.textContent?.trim() === ${JSON.stringify(message.trim())}`
+		);
+		await waitForSettledAnimations(page, '[data-chat-input-error]');
 		return state();
 	};
 	const expire = async () => {
-		const deadline = Date.now() + 8000;
-		while ((await state()).error !== null && Date.now() < deadline) await delay(50);
-		assert.equal((await state()).error, null, 'Notice did not expire');
-		await delay(100);
+		await page.clock.fastForward(3500);
+		assert.notEqual((await state()).error, null, 'Notice expired before 5s timeout');
+		await page.clock.fastForward(2000);
+		await waitForExpression(page, `!document.querySelector('[data-chat-input-error]')`, 8000);
 		return state();
 	};
 	const short = 'Message cannot be empty';
@@ -174,6 +183,32 @@ async function checkPinnedResizeGeometry(evaluate: EvaluateFn) {
 	}
 }
 
+test('chat route inline error notice scroll stability', async ({ browser }) => {
+	const context = await browser.newContext({
+		viewport: { width: 800, height: 600 },
+		deviceScaleFactor: 1
+	});
+	const page = await context.newPage();
+	const session = await context.newCDPSession(page);
+	const errors: string[] = [];
+	page.on('pageerror', (error) => errors.push(error.message));
+	const evaluate: EvaluateFn = <T = unknown>(expression: string) =>
+		page.evaluate(expression) as Promise<T>;
+
+	try {
+		await page.clock.install();
+		await page.goto(`${capturedBaseURL()}/?harness=chat-scroll-route`, {
+			waitUntil: 'domcontentloaded'
+		});
+		await waitForExpression(page, 'window.fixtureReady ?? null', 20000);
+		await checkNoticeScroll(page, session, evaluate);
+		assert.deepEqual(errors, [], 'No uncaught frontend exceptions');
+	} finally {
+		await session.detach().catch(() => {});
+		await context.close();
+	}
+});
+
 for (const scale of [1, 1.1, 1.25, 1.5, 1.75, 2] as const) {
 	test(`chat route scroll controller and geometry (DPR ${scale})`, async ({ browser }) => {
 		const context = await browser.newContext({
@@ -191,15 +226,10 @@ for (const scale of [1, 1.1, 1.25, 1.5, 1.75, 2] as const) {
 			await page.goto(`${capturedBaseURL()}/?harness=chat-scroll-route`, {
 				waitUntil: 'domcontentloaded'
 			});
-			const initial = await until(
-				() =>
-					evaluate<{
-						clip: { x: number; y: number; width: number; height: number; scale: number };
-						dpr: number;
-					} | null>('window.fixtureReady ?? null'),
-				`DPR ${scale}: route did not initialize`,
-				20000
-			);
+			const initial = await waitForExpression<{
+				clip: { x: number; y: number; width: number; height: number; scale: number };
+				dpr: number;
+			}>(page, 'window.fixtureReady ?? null', 20000);
 			const capture = async () => {
 				const shot = await session.send('Page.captureScreenshot', {
 					format: 'png',
@@ -298,7 +328,6 @@ for (const scale of [1, 1.1, 1.25, 1.5, 1.75, 2] as const) {
 
 			await checkControllerScroll(evaluate);
 			await checkPinnedResizeGeometry(evaluate);
-			if (scale === 1) await checkNoticeScroll(session, evaluate);
 
 			await evaluate('window.routeFixture.pause()');
 			const pausedAnchor = await evaluate<{ key: string; top: number }>(

@@ -277,7 +277,6 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .typ::<types::ChannelStatus>()
         .typ::<types::AppSettings>()
         .commands(collect_commands![
-            get_followed_streams,
             get_followed_channels,
             get_channel_info,
             subscribe_chat,
@@ -382,27 +381,6 @@ async fn get_channel_info(
     }
 
     Ok(channel_info)
-}
-
-#[tauri::command]
-#[specta::specta]
-fn get_followed_streams(
-    _app_handle: AppHandle,
-    token_manager: State<'_, TokenManager>,
-    client: State<'_, HelixClient<'static, reqwest::Client>>,
-) -> Result<Vec<types::Stream>, String> {
-    let client = client.inner();
-
-    let token_guard = tauri::async_runtime::block_on(token_manager.active_twitch_token())
-        .ok_or_else(|| "no active token".to_owned())?;
-    let streams = tauri::async_runtime::block_on(
-        client
-            .get_followed_streams(&token_guard)
-            .try_collect::<Vec<_>>(),
-    )
-    .unwrap();
-
-    Ok(streams.into_iter().map(types::Stream::from).collect())
 }
 
 #[tauri::command]

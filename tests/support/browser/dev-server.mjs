@@ -164,34 +164,43 @@ async function getVite(name) {
 	let promise = viteServers.get(name);
 	if (!promise) {
 		const dir = path.join(harnessesDir, name);
-		promise = createViteServer({
-			configFile: false,
-			root: dir,
-			base: `/__harness/${name}/`,
-			publicDir: false,
-			cacheDir: path.join(root, 'target/test-results/vite-cache', name),
-			logLevel: 'warn',
-			plugins: [svelte({ configFile: false, preprocess: vitePreprocess() }), tailwindcss()],
-			optimizeDeps: {
-				exclude: [
-					'tauri-svelte-synced-store',
-					'@tauri-apps/api/core',
-					'@tauri-apps/api/event',
-					'@tauri-apps/api/window',
-					'@tauri-apps/plugin-opener',
-					'@tauri-apps/plugin-log'
-				]
-			},
-			resolve: {
-				alias: harnessAliases(name)
-			},
-			server: {
-				middlewareMode: true,
-				hmr: false,
-				ws: false,
-				watch: null,
-				fs: { allow: allowDirs }
-			}
+		promise = (async () => {
+			const vite = await createViteServer({
+				configFile: false,
+				root: dir,
+				base: `/__harness/${name}/`,
+				publicDir: false,
+				cacheDir: path.join(root, 'target/test-results/vite-cache', name),
+				logLevel: 'warn',
+				plugins: [svelte({ configFile: false, preprocess: vitePreprocess() }), tailwindcss()],
+				optimizeDeps: {
+					entries: ['index.html'],
+					exclude: [
+						'tauri-svelte-synced-store',
+						'@tauri-apps/api/core',
+						'@tauri-apps/api/event',
+						'@tauri-apps/api/window',
+						'@tauri-apps/plugin-opener',
+						'@tauri-apps/plugin-log'
+					]
+				},
+				resolve: {
+					alias: harnessAliases(name)
+				},
+				server: {
+					middlewareMode: true,
+					hmr: false,
+					ws: false,
+					watch: null,
+					fs: { allow: allowDirs }
+				}
+			});
+			await vite.warmupRequest('/main.ts');
+			await vite.waitForRequestsIdle();
+			return vite;
+		})().catch((error) => {
+			viteServers.delete(name);
+			throw error;
 		});
 		viteServers.set(name, promise);
 	}

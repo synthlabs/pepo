@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
-import { capturedBaseURL, test, until } from '../support/browser/fixtures';
+import { capturedBaseURL, test, waitForExpression } from '../support/browser/fixtures';
 
 interface RowSnapshot {
 	index: string | undefined;
@@ -23,8 +23,9 @@ const checkHistoricalTranslationsSource = `async function checkHistoricalTransla
 	};
 	const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 	const settle = async () => {
-		await wait(100);
-		for (let i = 0; i < 3; i++) await new Promise(requestAnimationFrame);
+		for (let i = 0; i < 2; i++) await new Promise(requestAnimationFrame);
+		await wait(0);
+		for (let i = 0; i < 2; i++) await new Promise(requestAnimationFrame);
 	};
 	const require = (condition, message) => {
 		if (!condition) throw new Error(message);
@@ -132,6 +133,7 @@ const checkHistoricalTranslationsSource = `async function checkHistoricalTransla
 	native.push('backlog', 'live-after-backlog');
 	await settle();
 	native.translate('backlog', 'live-translation-after-backlog');
+	await wait(50);
 	await settle();
 	require(rows().at(-1).textContent.includes('live-translation-after-backlog'), 'Live translation was deferred');
 	require(gap() < 1, 'Live translation lost the bottom');
@@ -153,16 +155,27 @@ const checkHistoricalTranslationsSource = `async function checkHistoricalTransla
 const checkSystemMessagesSource = `async function checkSystemMessages() {
 	const native = window.chatNative;
 	const wait = (ms = 180) => new Promise((resolve) => setTimeout(resolve, ms));
+	const flush = async () => {
+		await wait(0);
+		for (let i = 0; i < 2; i++) await new Promise(requestAnimationFrame);
+	};
+	const waitFor = async (predicate, timeout = 200) => {
+		const deadline = performance.now() + timeout;
+		while (!predicate() && performance.now() < deadline) {
+			await new Promise(requestAnimationFrame);
+		}
+		return predicate();
+	};
 	const require = (condition, message) => { if (!condition) throw new Error(message); };
 	await native.go(null);
-	await wait();
+	await flush();
 	Object.assign(native.settings.obj.chat, {
 		message_limit: 1000, alternate_backgrounds: true, show_timestamps: true, center_system_messages: false
 	});
 	await native.settings.sync();
 	native.seed('notices', 80);
 	await native.go('notices');
-	await wait();
+	await flush();
 	const viewport = document.querySelector('[aria-label="Chat messages"]');
 	const rows = () => [...viewport.querySelectorAll('[data-chat-message-index]')];
 	const notices = () => [...viewport.querySelectorAll('[data-chat-system-message]')];
@@ -173,7 +186,7 @@ const checkSystemMessagesSource = `async function checkSystemMessages() {
 		native.system('notices', { icon, segments: [{ type: 'text', text: 'Synthetic ' + icon + ' notice' }] });
 	}
 	native.push('notices', 'chat-after-notices');
-	await wait();
+	await flush();
 	require(notices().length === 6, 'Missing system icons');
 	require(notices().every((row) => row.querySelector('svg[aria-hidden="true"]')), 'System icon is not decorative');
 	require(!native.settings.obj.chat.show_system_message_background &&
@@ -181,7 +194,7 @@ const checkSystemMessagesSource = `async function checkSystemMessages() {
 		'System backgrounds are not off by default');
 	native.settings.obj.chat.show_system_message_background = true;
 	await native.settings.sync();
-	await wait();
+	await flush();
 	require(getComputedStyle(rows().at(-1)).backgroundColor !== previousBackground, 'Notices consumed ordinary row alternation');
 	const backgrounds = new Set([previousBackground, getComputedStyle(rows().at(-1)).backgroundColor]);
 	require(!backgrounds.has(getComputedStyle(notices()[0]).backgroundColor), 'System background matches a chat shade');
@@ -196,7 +209,7 @@ const checkSystemMessagesSource = `async function checkSystemMessages() {
 			{ type: 'link', text: ' Details', url: 'https://example.com/notice' }
 		]
 	});
-	await wait();
+	await flush();
 	const notice = notices().at(-1);
 	const canvas = document.createElement('canvas');
 	canvas.width = canvas.height = 1;
@@ -293,7 +306,8 @@ const checkSystemMessagesSource = `async function checkSystemMessages() {
 							alternate_backgrounds: striped
 						});
 						await native.settings.sync();
-						await wait();
+						await flush();
+						await waitFor(() => gap() < 1, 200);
 						checkNoticeLayout();
 						checkNoticeContrast();
 						require(getComputedStyle(notice).textAlign === (centered ? 'center' : 'start'), 'System alignment did not update');
@@ -309,36 +323,36 @@ const checkSystemMessagesSource = `async function checkSystemMessages() {
 	native.settings.obj.chat.alternate_backgrounds = false;
 	native.settings.obj.chat.show_timestamps = false;
 	await native.settings.sync();
-	await wait();
+	await flush();
 	require(getComputedStyle(notice).backgroundColor === enabledBackground, 'Disabling striping removed the system background');
 	require(!notice.querySelector('span.text-xs'), 'System timestamp ignored visibility setting');
 	native.settings.obj.chat.alternate_backgrounds = true;
 	native.settings.obj.chat.show_timestamps = true;
 	await native.settings.sync();
-	await wait();
+	await flush();
 	viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true }));
 	viewport.scrollTop = viewport.scrollHeight / 2;
 	viewport.dispatchEvent(new Event('scroll'));
-	await wait();
+	await wait(280);
 	const box = viewport.getBoundingClientRect();
 	const anchor = rows().find((row) => row.getBoundingClientRect().top >= box.top);
 	const top = anchor.getBoundingClientRect().top;
 	native.system('notices', { segments: [{ type: 'text', text: 'Synthetic paused notice' }] });
 	native.push('notices', 'paused-chat');
-	await wait();
+	await wait(280);
 	require(Math.abs(anchor.getBoundingClientRect().top - top) < 1, 'Mixed arrivals moved paused anchor');
 	const paused = [...document.querySelectorAll('button')].find((button) => button.textContent.includes('chat paused'));
 	require(paused?.textContent.includes('2 new messages'), 'System notice not counted as unread');
 	paused.click();
-	await wait();
+	await flush();
 	require(gap() < 1, 'Jump did not reach mixed timeline bottom');
 	native.reset();
-	await wait();
+	await flush();
 	require(notices().length === 8, 'Reset lost notices');
 	await native.go(null);
-	await wait();
+	await flush();
 	await native.go('notices');
-	await wait();
+	await flush();
 	require(document.querySelectorAll('[data-chat-system-message]').length === 8, 'Channel return lost notices');
 	const originalFrame = window.requestAnimationFrame;
 	let callbacks = 0;
@@ -359,7 +373,20 @@ const checkSystemMessagesSource = `async function checkSystemMessages() {
 
 const checkUsernamesSource = `async function checkUsernames() {
 	const native = window.chatNative;
-	const wait = async () => {
+	const flush = async () => {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		for (let i = 0; i < 2; i++) await new Promise(requestAnimationFrame);
+	};
+	const waitFor = async (predicate, timeout = 1000) => {
+		const deadline = performance.now() + timeout;
+		while (performance.now() < deadline) {
+			const value = predicate();
+			if (value) return value;
+			await new Promise(requestAnimationFrame);
+		}
+		return predicate();
+	};
+	const settlePause = async () => {
 		await new Promise((resolve) => setTimeout(resolve, 350));
 		for (let i = 0; i < 3; i++) await new Promise(requestAnimationFrame);
 	};
@@ -390,7 +417,7 @@ const checkUsernamesSource = `async function checkUsernames() {
 			]
 		});
 	await native.go('usernames');
-	await wait();
+	await flush();
 	let viewport = document.querySelector('[aria-label="Chat messages"]');
 	const mentions = () => [...viewport.querySelectorAll('[data-chat-username="mention"]')];
 	const authors = () => [...viewport.querySelectorAll('[data-chat-username="author"]')];
@@ -403,29 +430,28 @@ const checkUsernamesSource = `async function checkUsernames() {
 	const count = rows().length;
 	const beforeUnread = document.querySelector('[aria-label^="Jump to"]')?.textContent;
 	native.observe({ user_id: 'maya-id', login: 'maya', display_name: '마야', color: '#9c63dc' });
-	await wait();
+	await flush();
 	require(rows().length === count, 'Background metadata added a timeline row');
 	require(document.querySelector('[aria-label^="Jump to"]')?.textContent === beforeUnread, 'Metadata changed unread count');
 	require(mentions().every((button) => button.textContent === '@MaYa' && getComputedStyle(button).color === 'rgb(156, 99, 220)'), 'Observed colors did not enrich typed mentions');
 	require(authors().every((button) => getComputedStyle(button).color === 'rgb(68, 136, 187)'), 'Metadata changed original author colors');
 	Object.assign(native.settings.obj.chat, { use_display_names_in_mentions: true, bold_mentions: true });
 	await native.settings.sync();
-	await wait();
+	await flush();
 	require(mentions().every((button) => button.textContent === '@마야 (maya)' && getComputedStyle(button).fontWeight === '700'), 'Mention settings did not apply');
 	require(gap() < 1, 'Name formatting lost bottom pinning');
 	viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -500, bubbles: true }));
 	viewport.scrollTop = viewport.scrollHeight / 2;
-	await wait();
-	await wait();
+	await settlePause();
 	const box = viewport.getBoundingClientRect();
 	const anchor = rows().find((row) => row.getBoundingClientRect().bottom > box.top);
 	const top = anchor.getBoundingClientRect().top;
 	native.observe({ user_id: 'maya-id', login: 'maya', display_name: '메타데이터로변경된표시이름', color: '#9c63dc' });
-	await wait();
+	await flush();
 	require(Math.abs(anchor.getBoundingClientRect().top - top) < 1, 'Metadata reflow moved the paused anchor');
 	Object.assign(native.settings.obj.chat, { show_login_for_different_display_name: false, bold_mentions: false });
 	await native.settings.sync();
-	await wait();
+	await flush();
 	require(authors()[0].textContent === '작성자', 'Author setting did not update');
 	require(mentions()[0].textContent === '@메타데이터로변경된표시이름', 'Mention setting did not follow name format');
 	native.system('usernames', {
@@ -434,12 +460,12 @@ const checkUsernamesSource = `async function checkUsernames() {
 			{ type: 'text', text: ' was mentioned; plain @other remains text.' }
 		]
 	});
-	await wait();
-	const system = viewport.querySelector('[data-chat-system-message]');
+	const system = await waitFor(() => viewport.querySelector('[data-chat-system-message]'));
+	require(system, 'System notice did not mount');
 	require(system.querySelectorAll('button').length === 1, 'System text was scanned for mentions');
 	require(system.querySelector('button').textContent === '메타데이터로변경된표시이름', 'System name did not use cached metadata');
 	viewport.scrollTop = viewport.scrollHeight;
-	await wait();
+	await flush();
 	native.custom('usernames', {
 		chatter_user_id: 'writer',
 		chatter_user_login: 'writer',
@@ -447,9 +473,11 @@ const checkUsernamesSource = `async function checkUsernames() {
 		text: 'A live translated message',
 		fragments: [{ Text: { index: 0, text: 'A live translated message' } }]
 	});
-	await wait();
+	await waitFor(() => rows().some((row) => row.textContent.includes('A live translated message')));
 	native.translate('usernames', 'Plain translated @MaYa');
-	await wait();
+	await waitFor(() => rows().findLast((row) => row.querySelector('[data-chat-translation]')));
+	await new Promise((resolve) => setTimeout(resolve, 60));
+	await flush();
 	const translatedRow = rows().findLast((row) => row.querySelector('[data-chat-translation]'));
 	require(translatedRow.querySelector('[data-chat-translation] button') === null, 'Translation rendered an interactive spacer or mention');
 	const author = translatedRow.querySelector('[data-chat-username="author"]');
@@ -457,12 +485,12 @@ const checkUsernamesSource = `async function checkUsernames() {
 	const authorSpacerWidth = spacer.getBoundingClientRect().width;
 	require(Math.abs(author.getBoundingClientRect().width - spacer.getBoundingClientRect().width) < 1, 'Translation author spacer has a different width');
 	native.reset();
-	await wait();
+	await flush();
 	require(mentions()[0].textContent === '@메타데이터로변경된표시이름', 'Reset lost cached metadata');
 	await native.go(null);
-	await wait();
+	await flush();
 	await native.go('usernames');
-	await wait();
+	await flush();
 	viewport = document.querySelector('[aria-label="Chat messages"]');
 	require(mentions().length === 100, 'Channel return lost mentions');
 	const lastMention = mentions().at(-1);
@@ -790,8 +818,7 @@ for (const width of [1200, 375] as const) {
 				page.on('pageerror', (error) => errors.push(error.message));
 				const evaluate = <T = unknown>(expression: string) =>
 					page.evaluate(expression) as Promise<T>;
-				const waitFor = (expression: string) =>
-					until(() => evaluate(expression), `Timed out waiting for: ${expression}`, 15000);
+				const waitFor = (expression: string) => waitForExpression(page, expression, 15000);
 
 				try {
 					await page.goto(`${capturedBaseURL()}/app/chat/rooma?harness=chat-engine`, {

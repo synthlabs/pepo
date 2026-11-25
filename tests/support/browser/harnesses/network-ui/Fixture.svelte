@@ -15,7 +15,33 @@
 	let login = $state(false);
 	$effect(() => applyThemePreference(settingsState.value.appearance.theme));
 
-	const pause = (ms = 35) => new Promise((resolve) => setTimeout(resolve, ms));
+	const flush = async () => {
+		await tick();
+		await new Promise(requestAnimationFrame);
+		await new Promise(requestAnimationFrame);
+	};
+	async function waitUntil<T>(
+		predicate: () => T,
+		message: string,
+		timeout = 5000
+	): Promise<NonNullable<T>> {
+		const deadline = performance.now() + timeout;
+		while (performance.now() < deadline) {
+			const value = predicate();
+			if (value) return value;
+			await new Promise(requestAnimationFrame);
+		}
+		throw new Error(message);
+	}
+	const animationsSettled = (node: Element | null) =>
+		!node ||
+		node
+			.getAnimations()
+			.every(
+				(animation) =>
+					animation.playState !== 'running' ||
+					animation.effect?.getComputedTiming().iterations === Infinity
+			);
 	function check(condition: unknown, message: string): asserts condition {
 		if (!condition) throw new Error(message);
 	}
@@ -28,7 +54,7 @@
 	}
 	async function click(text: string) {
 		button(text).click();
-		await pause();
+		await flush();
 	}
 	let revision = 0;
 	function emit(issues: any[]) {
@@ -67,13 +93,13 @@
 	}
 	async function closeDrawer() {
 		await click('Close');
-		await pause(350);
+		await waitUntil(() => !drawer(), 'Drawer did not close');
+		await flush();
 	}
 
 	onMount(() => {
 		void (async () => {
-			for (let i = 0; !native.initial && i < 40; i++) await pause();
-			check(native.initial, 'Native status did not connect');
+			await waitUntil(() => native.initial, 'Native status did not connect');
 			check(native.networkListeners === 1, 'More than one native subscription');
 			check(
 				!document.querySelector('[data-network-avatar-status]'),
@@ -97,9 +123,8 @@
 			const bttv = { ...issue, id: 'bttv:timeout', feature: 'BTTV emotes' };
 			for (let i = 1; i <= 17; i++) emit([{ ...issue, failures: i, affected: i }]);
 			native.initial({ revision: 0, issues: [] });
-			await pause();
-			check(
-				document.querySelectorAll('[data-network-avatar-status]').length === 1,
+			await waitUntil(
+				() => document.querySelectorAll('[data-network-avatar-status]').length === 1,
 				'Startup burst did not produce one avatar indicator'
 			);
 			const dot = document.querySelector<HTMLElement>('[data-network-avatar-status]')!;
@@ -117,10 +142,9 @@
 				'A transient failure produced a popup'
 			);
 			emit([seven, bttv, { ...seven, id: '7tv:connection' }]);
-			await pause();
+			await flush();
 			avatar().focus();
-			await pause(250);
-			check(tooltip(), 'Avatar focus did not show the tooltip');
+			await waitUntil(() => tooltip(), 'Avatar focus did not show the tooltip');
 			check(
 				tooltip()!.textContent?.includes('Some features are still refreshing in the background:'),
 				'Tooltip heading changed'
@@ -131,23 +155,28 @@
 				'Feature list was duplicated or out of order'
 			);
 			avatar().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-			await pause(200);
-			check(!tooltip(), 'Escape did not dismiss the tooltip');
+			await waitUntil(() => !tooltip(), 'Escape did not dismiss the tooltip');
 			avatar().blur();
 			avatar().dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
-			await pause(250);
-			check(tooltip(), 'Avatar hover did not show the tooltip');
+			await waitUntil(() => tooltip(), 'Avatar hover did not show the tooltip');
 			avatar().click();
-			await pause(200);
-			check(document.querySelector('[role="menu"]'), 'Account avatar stopped opening its menu');
+			await waitUntil(
+				() => document.querySelector('[role="menu"]'),
+				'Account avatar stopped opening its menu'
+			);
+			await flush();
 			check(
 				avatar().getAttribute('data-state') === 'open',
 				'Account menu lost its open-state styling'
 			);
 			check(!tooltip() && !drawer(), 'Account menu opened status UI');
 			await click('Settings');
-			await pause(250);
-			check(page.url.pathname === '/app/settings', 'Settings navigation failed');
+			await waitUntil(
+				() =>
+					page.url.pathname === '/app/settings' &&
+					document.querySelector('[data-network-header-status]'),
+				'Settings navigation failed'
+			);
 			check(
 				!document.querySelector('[data-network-avatar-status]'),
 				'Settings retained the avatar indicator'
@@ -162,10 +191,9 @@
 				'Settings status icon has insufficient contrast'
 			);
 			icon.focus();
-			await pause(250);
-			check(tooltip(), 'Settings focus did not show tooltip');
+			await waitUntil(() => tooltip(), 'Settings focus did not show tooltip');
 			icon.click();
-			await pause();
+			await flush();
 			check(!drawer(), 'Settings status icon opened the drawer');
 			emit([
 				bttv,
@@ -174,12 +202,12 @@
 				{ ...issue, id: 'chat', feature: 'Chat', core: true }
 			]);
 			button('Background activity').focus();
-			await pause();
+			await waitUntil(() => !tooltip(), 'Moving focus did not close settings tooltip');
 			icon.focus();
-			await pause(250);
-			check(
-				tooltip()!.textContent?.includes('Reconnecting:') &&
-					tooltip()!.textContent?.includes('Some features need attention:'),
+			await waitUntil(
+				() =>
+					tooltip()?.textContent?.includes('Reconnecting:') &&
+					tooltip()?.textContent?.includes('Some features need attention:'),
 				'Urgent states were labeled as refreshing'
 			);
 			check(
@@ -189,10 +217,12 @@
 			);
 			check(icon.querySelector('.text-destructive'), 'Urgent status had no distinct icon');
 			emit([issue]);
-			await pause();
+			await flush();
 			await click('Background activity');
-			await pause(250);
-			check(drawer(), 'Chat settings did not open the drawer');
+			await waitUntil(
+				() => drawer() && animationsSettled(drawer()),
+				'Chat settings did not open the drawer'
+			);
 			check(
 				document.querySelectorAll('[data-network-issues] > li').length === 1,
 				'Failure group was duplicated'
@@ -207,17 +237,17 @@
 			const frozen = appErrors.snapshot().report;
 			check(frozen?.error?.message.includes('17'), 'Report lost the selected failure counts');
 			emit([]);
-			await pause();
-			check(
-				!document.querySelector('[data-network-header-status]'),
+			await waitUntil(
+				() => !document.querySelector('[data-network-header-status]'),
 				'Recovered icon remained visible'
 			);
 			check(appErrors.snapshot().report?.id === frozen?.id, 'Recovery changed the selected report');
 			appErrors.closeReport();
-			await pause(350);
+			await waitUntil(() => !drawer(), 'Drawer stayed open after report close');
+			await flush();
 			await click('Background activity');
-			check(
-				drawer()!.textContent?.includes('Everything has caught up.'),
+			await waitUntil(
+				() => drawer()?.textContent?.includes('Everything has caught up.'),
 				'Healthy drawer button did not work'
 			);
 			await closeDrawer();
@@ -234,9 +264,8 @@
 			input.value = '45';
 			input.dispatchEvent(new Event('input', { bubbles: true }));
 			input.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
-			await pause();
-			check(
-				settingsState.value.providers.http_request_timeout_secs === 45,
+			await waitUntil(
+				() => settingsState.value.providers.http_request_timeout_secs === 45,
 				'Advanced timeout did not save'
 			);
 			check(
@@ -245,11 +274,10 @@
 			);
 			await goto('/app/chat/maya');
 			emit([seven, bttv]);
-			await pause();
+			await flush();
 			emit([bttv]);
-			await pause();
-			check(
-				document.querySelector('[data-network-avatar-status]'),
+			await waitUntil(
+				() => document.querySelector('[data-network-avatar-status]'),
 				'Partial recovery hid remaining issues'
 			);
 			check(
@@ -257,47 +285,49 @@
 				'Navigation duplicated native status work'
 			);
 			mounted = false;
-			await tick();
-			await pause();
-			check(native.networkListeners === 0, 'Unmount leaked the status subscription');
+			await waitUntil(
+				() => native.networkListeners === 0,
+				'Unmount leaked the status subscription'
+			);
 			login = true;
-			await tick();
-			await pause();
-			const loginButton = document.querySelector<HTMLElement>('[data-network-status]');
-			check(loginButton, 'Standalone login status button disappeared');
+			const loginButton = await waitUntil(
+				() => document.querySelector<HTMLElement>('[data-network-status]'),
+				'Standalone login status button disappeared'
+			);
 			loginButton.click();
-			await pause();
-			check(drawer(), 'Standalone login button did not open the drawer');
+			await waitUntil(
+				() => drawer() && animationsSettled(drawer()),
+				'Standalone login button did not open the drawer'
+			);
 			await closeDrawer();
 			check(document.activeElement === loginButton, 'Standalone drawer lost its focus return');
 			login = false;
-			await tick();
-			await pause();
-			check(native.networkListeners === 0, 'Login status leaked its subscription');
+			await waitUntil(() => native.networkListeners === 0, 'Login status leaked its subscription');
 			mounted = true;
-			await tick();
-			await pause();
-			check(
-				native.networkListeners === 1 && native.snapshots === 3,
+			await waitUntil(
+				() => native.networkListeners === 1 && native.snapshots === 3,
 				'Remount did not establish exactly one subscription'
 			);
 			emit([seven, bttv]);
-			await pause();
+			await flush();
 			const view = params.get('view') ?? 'chat';
 			if (view !== 'chat') {
 				await goto('/app/settings');
-				await pause();
+				await flush();
 			}
 			if (view === 'drawer') {
 				await click('Background activity');
-				await pause(600);
+				await waitUntil(() => drawer() && animationsSettled(drawer()), 'Final drawer did not open');
 			} else {
-				(view === 'chat'
-					? avatar()
-					: document.querySelector<HTMLElement>('[data-network-header-status]')!
-				).focus();
-				await pause(250);
-				check(tooltip(), 'Final tooltip was unavailable');
+				const target = await waitUntil(
+					() =>
+						view === 'chat'
+							? avatar()
+							: document.querySelector<HTMLElement>('[data-network-header-status]'),
+					'Final tooltip trigger was unavailable'
+				);
+				target.focus();
+				await waitUntil(() => tooltip(), 'Final tooltip was unavailable');
 			}
 			check(
 				document.documentElement.scrollWidth <= window.innerWidth,

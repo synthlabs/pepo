@@ -50,8 +50,14 @@ window.addEventListener('popstate', () => {
 });
 
 export const isTauriMobile = false;
+const pendingReleases: (() => void)[] = [];
 export const native: any = (window.settingsNative = {
 	delay: 0,
+	hold: false,
+	release() {
+		this.hold = false;
+		while (pendingReleases.length > 0) pendingReleases.shift()?.();
+	},
 	fail: false,
 	reject: false,
 	writes: [],
@@ -103,7 +109,14 @@ export class SyncedState {
 		native.writes.push(value);
 		const fail = native.fail;
 		const reject = native.reject;
-		await new Promise((resolveDelay) => setTimeout(resolveDelay, native.delay));
+		if (native.hold) {
+			await new Promise<void>((resolveHold) => {
+				pendingReleases.push(resolveHold);
+			});
+		}
+		if (native.delay > 0) {
+			await new Promise((resolveDelay) => setTimeout(resolveDelay, native.delay));
+		}
 		if (reject) throw new Error('Simulated native failure');
 		if (fail) return false;
 		localStorage.setItem('settings-check', JSON.stringify(value));

@@ -21,7 +21,7 @@ for (const scenario of cases) {
 
 		const click = async (selector: string) => {
 			await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
-			await delay(30);
+			await evaluate('new Promise(requestAnimationFrame)');
 		};
 		const pressKey = async (key: string, code = key) => {
 			const virtualKeyCode = { Enter: 13, Space: 32, Tab: 9 }[code];
@@ -57,7 +57,7 @@ for (const scenario of cases) {
 			await evaluate(
 				`(() => { const input = document.querySelector('[aria-label="Search settings"]'); input.value = ${JSON.stringify(value)}; input.dispatchEvent(new Event('input', { bubbles: true })); })()`
 			);
-			await delay(30);
+			await evaluate('new Promise(requestAnimationFrame)');
 		};
 
 		await app.viewport(scenario.width, 800);
@@ -68,7 +68,9 @@ for (const scenario of cases) {
 		});
 		await app.page.goto(`/app/settings?${params}`, { waitUntil: 'domcontentloaded' });
 		await waitFor(`document.querySelector('#setting-chat-show_badges')?.disabled === false`);
-		await delay(250);
+		await app.waitForAnimations(
+			'[data-sidebar="panel"], [data-sidebar="header"], [data-sidebar-search]'
+		);
 
 		const layout = await evaluate<{
 			overflow: boolean;
@@ -488,7 +490,7 @@ for (const scenario of cases) {
 		await evaluate(
 			`document.querySelector('#settings-more-chat').scrollIntoView({ block: 'start' })`
 		);
-		await delay(100);
+		await evaluate('new Promise(requestAnimationFrame)');
 		assert.equal(
 			await evaluate(`document.documentElement.scrollWidth > innerWidth`),
 			false,
@@ -499,62 +501,6 @@ for (const scenario of cases) {
 		await click('#setting-chat-moderation_notices_enabled');
 		await waitFor(`window.settingsNative.writes.at(-1)?.chat.moderation_notices_enabled === true`);
 		await click('[aria-controls="settings-more-chat"]');
-
-		if (scenario.name === 'expanded-dark') {
-			await evaluate(`window.settingsNative.delay = 180`);
-			await click('#setting-chat-show_badges');
-			assert.match(
-				await evaluate<string>(`document.querySelector('[data-settings-status]').ariaLabel`),
-				/Saving/
-			);
-			await waitFor(
-				`document.querySelector('[data-settings-status]').ariaLabel === 'Settings saved'`
-			);
-			await evaluate(`window.settingsNative.fail = true`);
-			await click('#setting-chat-show_badges');
-			await waitFor(
-				`document.querySelector('[data-settings-status]').ariaLabel.includes('Save failed')`
-			);
-			assert.equal(
-				await evaluate(
-					`document.querySelector('#setting-chat-show_badges').getAttribute('aria-checked')`
-				),
-				'false'
-			);
-			await evaluate(`document.querySelector('[data-settings-status]').focus()`);
-			await waitFor(`!!document.querySelector('[data-settings-status-tooltip]')`);
-			await evaluate(`window.settingsNative.fail = false; window.settingsNative.delay = 0`);
-			await click('[aria-label="Reset settings"] > button');
-			await waitFor(`!!document.querySelector('[role="alertdialog"]')`);
-			await evaluate(
-				`Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Cancel').click()`
-			);
-			await search('emote size');
-			await evaluate(
-				`(() => { const input = document.querySelector('#setting-emotes-inline_emote_px'); input.value = '36'; input.dispatchEvent(new Event('input', { bubbles: true })); input.focus(); })()`
-			);
-			await pressKey('Enter');
-			await waitFor(`window.settingsNative.writes.at(-1)?.emotes.inline_emote_px === 36`);
-			await waitFor(
-				`document.querySelector('[data-settings-status]').ariaLabel === 'Settings saved'`
-			);
-			await app.page.reload({ waitUntil: 'domcontentloaded' });
-			await waitFor(`document.querySelector('#setting-chat-show_badges')?.disabled === false`);
-			await search('emote size');
-			assert.equal(
-				await evaluate(`document.querySelector('#setting-emotes-inline_emote_px').value`),
-				'36',
-				'saved mock-native value survives reload'
-			);
-			await click('[aria-label="Settings categories"] button:nth-child(2)');
-			await click('[aria-controls="settings-more-emotes"]');
-			await click('[aria-label="Move BTTV up"]');
-			await waitFor(
-				`document.querySelector('[data-provider-priority]')?.dataset.providerPriority === 'bttv'`
-			);
-			await search('');
-			await click('[aria-label="Settings categories"] button:first-child');
-		}
 
 		if (scenario.name === 'collapsed-dark' || scenario.name === 'expanded-light') {
 			await app.page.goto(`/app/chat/maya?${params}`, { waitUntil: 'domcontentloaded' });
@@ -622,7 +568,9 @@ for (const scenario of cases) {
 
 		if (scenario.width >= 768) {
 			// Wait for the 200ms header search transition after navigating back from /app.
-			await delay(250);
+			await app.waitForAnimations(
+				'[data-sidebar="panel"], [data-sidebar="header"], [data-sidebar-search]'
+			);
 			const inputWidth = await evaluate<number>(
 				`document.querySelector('[data-sidebar-search] input')?.getBoundingClientRect().width`
 			);
@@ -648,7 +596,9 @@ for (const scenario of cases) {
 					);
 				}
 				await waitFor(`!!document.querySelector('[data-sidebar-home]')`);
-				await delay(250);
+				await app.waitForAnimations(
+					'[data-sidebar="panel"], [data-sidebar="header"], [data-sidebar-search]'
+				);
 				const keyboard = source === 'chat' ? scenario.open : !scenario.open;
 				if (keyboard) {
 					if (!scenario.open) {
@@ -696,7 +646,9 @@ for (const scenario of cases) {
 					true,
 					scenario.name + ' navigation preserves sidebar instance'
 				);
-				await delay(250);
+				await app.waitForAnimations(
+					'[data-sidebar="panel"], [data-sidebar="header"], [data-sidebar-search]'
+				);
 				assert.equal(
 					await evaluate(
 						`document.querySelector('[data-sidebar="header"]').getBoundingClientRect().height`
@@ -747,123 +699,200 @@ for (const scenario of cases) {
 				scenario.name + ' Home hidden on direct entry'
 			);
 		}
-
-		if (scenario.name === 'expanded-dark') {
-			await evaluate(`(() => {
-				const saved = JSON.parse(localStorage.getItem('settings-check'));
-				saved.layout = { sidebar_open: false };
-				localStorage.setItem('settings-check', JSON.stringify(saved));
-				localStorage.removeItem('sidebar:state');
-				document.cookie = 'sidebar:state=false; path=/';
-			})()`);
-			await app.page.goto('/app/settings', { waitUntil: 'domcontentloaded' });
-			await waitFor(`document.querySelector('#setting-chat-show_badges')?.disabled === false`);
-			await waitFor(`document.querySelector('[data-collapsible]')?.dataset.state === 'expanded'`);
-			assert.equal(
-				await evaluate(`localStorage.getItem('sidebar:state')`),
-				null,
-				'legacy settings and cookie do not seed local sidebar preference'
-			);
-			const snapshot = () =>
-				evaluate(
-					`({ writes: window.settingsNative.writes.length, status: document.querySelector('[data-settings-status]').ariaLabel })`
-				);
-			const before = await snapshot();
-			await click('[data-sidebar="header"] [data-sidebar="trigger"]');
-			await waitFor(`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`);
-			assert.equal(await evaluate(`localStorage.getItem('sidebar:state')`), 'false');
-			assert.deepEqual(
-				await snapshot(),
-				before,
-				'collapse does not sync settings or change save status'
-			);
-			assert.equal(
-				await evaluate(`document.cookie.includes('sidebar:state=false')`),
-				true,
-				'collapse does not replace the old cookie'
-			);
-			for (const route of ['settings', 'chat/maya', 'settings']) {
-				await app.page.goto(`/app/${route}`, { waitUntil: 'domcontentloaded' });
-				await waitFor(
-					`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`
-				);
-			}
-			await click('[aria-label="Settings categories"] button:last-child');
-			assert.equal(
-				await evaluate(`!!document.querySelector('#setting-layout-sidebar_open')`),
-				false
-			);
-			await search('sidebar');
-			assert.equal(await evaluate(`document.querySelectorAll('[data-setting-row]').length`), 0);
-			await search('');
-			for (const reset of ['app', 'all'] as const) {
-				if (reset === 'app') await click('[aria-label="Reset settings"] > button');
-				else {
-					await click('[aria-label="More reset actions"]');
-					await click('[role="menuitem"]');
-				}
-				await evaluate(
-					`Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent === 'Reset to defaults').click()`
-				);
-				await waitFor(
-					`document.querySelector('[data-settings-status]').ariaLabel === 'Settings saved'`
-				);
-				await click('[data-alert-dialog-cancel]');
-				assert.equal(
-					await evaluate(`localStorage.getItem('sidebar:state')`),
-					'false',
-					reset + ' reset preserves sidebar preference'
-				);
-				assert.equal(
-					await evaluate(`document.querySelector('[data-collapsible]').dataset.state`),
-					'collapsed'
-				);
-			}
-			await evaluate(`window.settingsNative.delay = 3000`);
-			await evaluate(
-				`Array.from(document.querySelectorAll('[data-setting-row="appearance.theme"] button')).find(button => button.textContent === 'Light').click()`
-			);
-			await waitFor(
-				`document.querySelector('[data-settings-status]').ariaLabel === 'Saving settings…'`
-			);
-			const pending = await snapshot();
-			await click('[data-sidebar="header"] [data-sidebar="trigger"]');
-			assert.deepEqual(await snapshot(), pending, 'expand does not enqueue a settings save');
-			assert.equal(await evaluate(`localStorage.getItem('sidebar:state')`), 'true');
-			await waitFor(
-				`document.querySelector('[data-settings-status]').ariaLabel === 'Settings saved'`
-			);
-			await evaluate(`window.settingsNative.delay = 0; window.settingsNative.fail = true`);
-			await evaluate(
-				`Array.from(document.querySelectorAll('[data-setting-row="appearance.theme"] button')).find(button => button.textContent === 'Dark').click()`
-			);
-			await waitFor(
-				`document.querySelector('[data-settings-status]').ariaLabel === 'Save failed. Previous value restored.'`
-			);
-			const failed = await snapshot();
-			await click('[data-sidebar="header"] [data-sidebar="trigger"]');
-			assert.deepEqual(await snapshot(), failed, 'collapse leaves an existing save failure alone');
-			assert.equal(await evaluate(`localStorage.getItem('sidebar:state')`), 'false');
-			assert.equal(
-				await evaluate(`window.settingsNative.writes.every(value => !('layout' in value))`),
-				true,
-				'settings writes omit the retired layout section'
-			);
-			await app.page.reload({ waitUntil: 'domcontentloaded' });
-			await waitFor(`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`);
-			await click('[data-sidebar="footer"] [data-sidebar="menu-button"]');
-			await waitFor(`!!document.querySelector('[role="menuitem"]')`);
-			await evaluate(
-				`Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent.trim() === 'Log out').click()`
-			);
-			await waitFor(`location.pathname === '/'`);
-			assert.equal(
-				await evaluate(`localStorage.getItem('sidebar:state')`),
-				'false',
-				'logout preserves the local sidebar preference'
-			);
-			await app.page.goto('/app/settings', { waitUntil: 'domcontentloaded' });
-			await waitFor(`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`);
-		}
 	});
 }
+
+test('settings persistence, save status, provider order, and sidebar local state (expanded-dark)', async ({
+	app
+}) => {
+	const { cdp, evaluate, waitFor } = app;
+	const send = cdp as (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+
+	const click = async (selector: string) => {
+		await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+		await evaluate('new Promise(requestAnimationFrame)');
+	};
+	const pressKey = async (key: string, code = key) => {
+		const virtualKeyCode = { Enter: 13, Space: 32, Tab: 9 }[code];
+		for (const type of ['keyDown', 'keyUp']) {
+			await send('Input.dispatchKeyEvent', {
+				type,
+				key,
+				code,
+				text: type === 'keyDown' ? { Enter: '\r', Space: ' ' }[code] : undefined,
+				windowsVirtualKeyCode: virtualKeyCode,
+				nativeVirtualKeyCode: virtualKeyCode
+			});
+		}
+	};
+	const search = async (value: string) => {
+		await evaluate(
+			`(() => { const input = document.querySelector('[aria-label="Search settings"]'); input.value = ${JSON.stringify(value)}; input.dispatchEvent(new Event('input', { bubbles: true })); })()`
+		);
+		await evaluate('new Promise(requestAnimationFrame)');
+	};
+
+	await app.viewport(1200, 800);
+	await app.page.goto('/app/settings?harness=settings&open=true&theme=dark', {
+		waitUntil: 'domcontentloaded'
+	});
+	await waitFor(`document.querySelector('#setting-chat-show_badges')?.disabled === false`);
+
+	await evaluate(`window.settingsNative.hold = true`);
+	await click('#setting-chat-show_badges');
+	await waitFor(`/Saving/.test(document.querySelector('[data-settings-status]').ariaLabel)`);
+	await evaluate(`window.settingsNative.release()`);
+	await waitFor(`document.querySelector('[data-settings-status]').ariaLabel === 'Settings saved'`);
+	await evaluate(`window.settingsNative.fail = true`);
+	await click('#setting-chat-show_badges');
+	await waitFor(
+		`document.querySelector('[data-settings-status]').ariaLabel.includes('Save failed')`
+	);
+	assert.equal(
+		await evaluate(
+			`document.querySelector('#setting-chat-show_badges').getAttribute('aria-checked')`
+		),
+		'false'
+	);
+	await evaluate(`document.querySelector('[data-settings-status]').focus()`);
+	await waitFor(`!!document.querySelector('[data-settings-status-tooltip]')`);
+	await evaluate(`window.settingsNative.fail = false; window.settingsNative.delay = 0`);
+	await click('[aria-label="Reset settings"] > button');
+	await waitFor(`!!document.querySelector('[role="alertdialog"]')`);
+	await evaluate(
+		`Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent.trim() === 'Cancel').click()`
+	);
+	await search('emote size');
+	await evaluate(
+		`(() => { const input = document.querySelector('#setting-emotes-inline_emote_px'); input.value = '36'; input.dispatchEvent(new Event('input', { bubbles: true })); input.focus(); })()`
+	);
+	await pressKey('Enter');
+	await waitFor(`window.settingsNative.writes.at(-1)?.emotes.inline_emote_px === 36`);
+	await waitFor(`document.querySelector('[data-settings-status]').ariaLabel === 'Settings saved'`);
+	await app.page.reload({ waitUntil: 'domcontentloaded' });
+	await waitFor(`document.querySelector('#setting-chat-show_badges')?.disabled === false`);
+	await search('emote size');
+	assert.equal(
+		await evaluate(`document.querySelector('#setting-emotes-inline_emote_px').value`),
+		'36',
+		'saved mock-native value survives reload'
+	);
+	await click('[aria-label="Settings categories"] button:nth-child(2)');
+	await click('[aria-controls="settings-more-emotes"]');
+	await click('[aria-label="Move BTTV up"]');
+	await waitFor(
+		`document.querySelector('[data-provider-priority]')?.dataset.providerPriority === 'bttv'`
+	);
+	await search('');
+	await click('[aria-label="Settings categories"] button:first-child');
+
+	await evaluate(`(() => {
+		const saved = JSON.parse(localStorage.getItem('settings-check'));
+		saved.layout = { sidebar_open: false };
+		localStorage.setItem('settings-check', JSON.stringify(saved));
+		localStorage.removeItem('sidebar:state');
+		document.cookie = 'sidebar:state=false; path=/';
+	})()`);
+	await app.page.goto('/app/settings', { waitUntil: 'domcontentloaded' });
+	await waitFor(`document.querySelector('#setting-chat-show_badges')?.disabled === false`);
+	await waitFor(`document.querySelector('[data-collapsible]')?.dataset.state === 'expanded'`);
+	assert.equal(
+		await evaluate(`localStorage.getItem('sidebar:state')`),
+		null,
+		'legacy settings and cookie do not seed local sidebar preference'
+	);
+	const snapshot = () =>
+		evaluate(
+			`({ writes: window.settingsNative.writes.length, status: document.querySelector('[data-settings-status]').ariaLabel })`
+		);
+	const before = await snapshot();
+	await click('[data-sidebar="header"] [data-sidebar="trigger"]');
+	await waitFor(`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`);
+	assert.equal(await evaluate(`localStorage.getItem('sidebar:state')`), 'false');
+	assert.deepEqual(
+		await snapshot(),
+		before,
+		'collapse does not sync settings or change save status'
+	);
+	assert.equal(
+		await evaluate(`document.cookie.includes('sidebar:state=false')`),
+		true,
+		'collapse does not replace the old cookie'
+	);
+	for (const route of ['settings', 'chat/maya', 'settings']) {
+		await app.page.goto(`/app/${route}`, { waitUntil: 'domcontentloaded' });
+		await waitFor(`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`);
+	}
+	await click('[aria-label="Settings categories"] button:last-child');
+	assert.equal(await evaluate(`!!document.querySelector('#setting-layout-sidebar_open')`), false);
+	await search('sidebar');
+	assert.equal(await evaluate(`document.querySelectorAll('[data-setting-row]').length`), 0);
+	await search('');
+	for (const reset of ['app', 'all'] as const) {
+		if (reset === 'app') await click('[aria-label="Reset settings"] > button');
+		else {
+			await click('[aria-label="More reset actions"]');
+			await click('[role="menuitem"]');
+		}
+		await evaluate(
+			`Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(button => button.textContent === 'Reset to defaults').click()`
+		);
+		await waitFor(
+			`document.querySelector('[data-settings-status]').ariaLabel === 'Settings saved'`
+		);
+		await click('[data-alert-dialog-cancel]');
+		assert.equal(
+			await evaluate(`localStorage.getItem('sidebar:state')`),
+			'false',
+			reset + ' reset preserves sidebar preference'
+		);
+		assert.equal(
+			await evaluate(`document.querySelector('[data-collapsible]').dataset.state`),
+			'collapsed'
+		);
+	}
+	await evaluate(`window.settingsNative.hold = true`);
+	await evaluate(
+		`Array.from(document.querySelectorAll('[data-setting-row="appearance.theme"] button')).find(button => button.textContent === 'Light').click()`
+	);
+	await waitFor(
+		`document.querySelector('[data-settings-status]').ariaLabel === 'Saving settings…'`
+	);
+	const pending = await snapshot();
+	await click('[data-sidebar="header"] [data-sidebar="trigger"]');
+	assert.deepEqual(await snapshot(), pending, 'expand does not enqueue a settings save');
+	assert.equal(await evaluate(`localStorage.getItem('sidebar:state')`), 'true');
+	await evaluate(`window.settingsNative.release()`);
+	await waitFor(`document.querySelector('[data-settings-status]').ariaLabel === 'Settings saved'`);
+	await evaluate(`window.settingsNative.delay = 0; window.settingsNative.fail = true`);
+	await evaluate(
+		`Array.from(document.querySelectorAll('[data-setting-row="appearance.theme"] button')).find(button => button.textContent === 'Dark').click()`
+	);
+	await waitFor(
+		`document.querySelector('[data-settings-status]').ariaLabel === 'Save failed. Previous value restored.'`
+	);
+	const failed = await snapshot();
+	await click('[data-sidebar="header"] [data-sidebar="trigger"]');
+	assert.deepEqual(await snapshot(), failed, 'collapse leaves an existing save failure alone');
+	assert.equal(await evaluate(`localStorage.getItem('sidebar:state')`), 'false');
+	assert.equal(
+		await evaluate(`window.settingsNative.writes.every(value => !('layout' in value))`),
+		true,
+		'settings writes omit the retired layout section'
+	);
+	await app.page.reload({ waitUntil: 'domcontentloaded' });
+	await waitFor(`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`);
+	await click('[data-sidebar="footer"] [data-sidebar="menu-button"]');
+	await waitFor(`!!document.querySelector('[role="menuitem"]')`);
+	await evaluate(
+		`Array.from(document.querySelectorAll('[role="menuitem"]')).find(item => item.textContent.trim() === 'Log out').click()`
+	);
+	await waitFor(`location.pathname === '/'`);
+	assert.equal(
+		await evaluate(`localStorage.getItem('sidebar:state')`),
+		'false',
+		'logout preserves the local sidebar preference'
+	);
+	await app.page.goto('/app/settings', { waitUntil: 'domcontentloaded' });
+	await waitFor(`document.querySelector('[data-collapsible]')?.dataset.state === 'collapsed'`);
+});

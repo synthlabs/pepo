@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { setTimeout as delay } from 'node:timers/promises';
 import { test } from '../support/browser/fixtures';
 
 interface SidebarHeaderCase {
@@ -39,7 +38,9 @@ for (const scenario of cases) {
 		await waitFor(
 			'document.querySelector("[data-header-viewers]")?.textContent.trim() === "4,646"'
 		);
-		await delay(250);
+		await app.waitForAnimations(
+			'[data-sidebar="panel"], [data-sidebar="header"], [data-sidebar-search]'
+		);
 
 		const layout = await evaluate<{
 			overflow: boolean;
@@ -95,7 +96,10 @@ for (const scenario of cases) {
 					`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`
 				);
 				await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...center });
-				await delay(200);
+				await waitFor(
+					`getComputedStyle(document.querySelector(${JSON.stringify(selector)})).backgroundColor !== 'rgba(0, 0, 0, 0)'`
+				);
+				await app.waitForAnimations(selector);
 				styles.push(
 					await evaluate(`(() => {
 						const el = document.querySelector(${JSON.stringify(selector)}), r = el.getBoundingClientRect(), s = getComputedStyle(el);
@@ -225,7 +229,9 @@ for (const scenario of cases) {
 					input.value = 'maya'; input.dispatchEvent(new Event('input', { bubbles: true })); input.focus();
 				})()`);
 				await waitFor(`!document.querySelector('[data-sidebar-home]')`);
-				await delay(250);
+				await waitFor(
+					`document.querySelector('[data-sidebar-search] input')?.getBoundingClientRect().width === ${controls.search.width + 40}`
+				);
 				assert.equal(
 					await evaluate(
 						`document.querySelector('[data-sidebar-search] input').getBoundingClientRect().width`
@@ -255,7 +261,9 @@ for (const scenario of cases) {
 					`document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]').focus()`
 				);
 				await waitFor(`!!document.querySelector('[data-sidebar-home]')`);
-				await delay(250);
+				await waitFor(
+					`document.querySelector('[data-sidebar-search] input')?.getBoundingClientRect().width === ${controls.search.width}`
+				);
 				assert.equal(
 					await evaluate(
 						`document.querySelector('[data-sidebar-search] input').getBoundingClientRect().width`
@@ -272,7 +280,9 @@ for (const scenario of cases) {
 					`document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]').focus()`
 				);
 				await waitFor(`!!document.querySelector('[data-sidebar-home]')`);
-				await delay(250);
+				await waitFor(
+					`document.querySelector('[data-sidebar-search] input')?.getBoundingClientRect().width === ${controls.search.width}`
+				);
 				assert.equal(
 					await evaluate(
 						`document.querySelector('[data-sidebar-search] input').getBoundingClientRect().width`
@@ -308,23 +318,40 @@ for (const scenario of cases) {
 		}
 
 		if (scenario.name === 'expanded-dark') {
-			const result = await evaluate(`new Promise(resolve => {
+			const result = await evaluate(`(async () => {
+				const wait = (fn) => new Promise((resolve, reject) => {
+					const deadline = performance.now() + 5000;
+					const tick = () => {
+						const value = fn();
+						if (value) resolve(value);
+						else if (performance.now() > deadline) reject(new Error('Timed out waiting for sidebar transition'));
+						else requestAnimationFrame(tick);
+					};
+					tick();
+				});
 				const input = document.querySelector('[data-sidebar="header"] input');
 				const toggle = document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]');
 				const rect = node => node.getBoundingClientRect();
 				const aligned = rect(input).y === rect(toggle).y && rect(input).height === rect(toggle).height;
 				input.value = 'maya'; input.dispatchEvent(new Event('input', { bubbles: true })); input.focus();
 				toggle.click();
-				setTimeout(() => {
-					const collapsed = document.querySelector('[data-popover-trigger]');
-					const collapsedFocus = document.activeElement === collapsed;
-					toggle.click();
-					setTimeout(() => resolve({ aligned, collapsedFocus,
-						value: document.querySelector('[data-sidebar="header"] input').value,
-						expandedFocus: document.activeElement === document.querySelector('[data-sidebar="header"] input')
-					}), 300);
-				}, 300);
-			})`);
+				const collapsed = await wait(() => {
+					const trigger = document.querySelector('[data-popover-trigger]');
+					return trigger && document.activeElement === trigger ? trigger : null;
+				});
+				const collapsedFocus = document.activeElement === collapsed;
+				toggle.click();
+				const expanded = await wait(() => {
+					const field = document.querySelector('[data-sidebar="header"] input');
+					return field && document.activeElement === field ? field : null;
+				});
+				return {
+					aligned,
+					collapsedFocus,
+					value: expanded.value,
+					expandedFocus: document.activeElement === expanded
+				};
+			})()`);
 			assert.deepEqual(
 				result,
 				{ aligned: true, collapsedFocus: true, value: 'maya', expandedFocus: true },

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
-import { capturedBaseURL, test, until } from '../support/browser/fixtures';
+import { capturedBaseURL, test, waitForExpression } from '../support/browser/fixtures';
 
 interface ScrollMetadata {
 	count: number;
@@ -30,16 +30,11 @@ for (const scale of [1, 1.1, 1.25, 1.5, 1.75, 2] as const) {
 			await page.goto(`${capturedBaseURL()}/?harness=chat-scroll`, {
 				waitUntil: 'domcontentloaded'
 			});
-			const initial = await until(
-				() =>
-					evaluate<{
-						count: number;
-						dpr: number;
-						clip: { x: number; y: number; width: number; height: number; scale: number };
-					} | null>('window.fixtureReady ?? null'),
-				`DPR ${scale}: fixture did not initialize`,
-				15000
-			);
+			const initial = await waitForExpression<{
+				count: number;
+				dpr: number;
+				clip: { x: number; y: number; width: number; height: number; scale: number };
+			}>(page, 'window.fixtureReady ?? null', 15000);
 			assert(Math.abs(initial.dpr - scale) <= 0.001, `Unexpected DPR: ${initial.dpr}`);
 
 			const capture = async () => {
@@ -55,13 +50,10 @@ for (const scale of [1, 1.1, 1.25, 1.5, 1.75, 2] as const) {
 					nonImageChangedPixels?: number;
 				}>('window.compareScreenshot(' + JSON.stringify(shot.data) + ')');
 			};
-			const waitForMeta = async (predicate: (value: ScrollMetadata) => boolean) =>
-				until(
-					async () => {
-						const value = await evaluate<ScrollMetadata>('window.fixture.metadata()');
-						return predicate(value) ? value : null;
-					},
-					`DPR ${scale}: timed out waiting for history update`,
+			const waitForMeta = async (condition: string) =>
+				waitForExpression<ScrollMetadata>(
+					page,
+					`(() => { const value = window.fixture.metadata(); return (${condition}) ? value : null; })()`,
 					10000
 				);
 
@@ -76,7 +68,7 @@ for (const scale of [1, 1.1, 1.25, 1.5, 1.75, 2] as const) {
 					queued.count === initial.count + batch * 25,
 					`DPR ${scale}: paused arrivals appended before the batch deadline`
 				);
-				const visible = await waitForMeta((value) => value.count === next);
+				const visible = await waitForMeta(`value.count === ${next}`);
 				assert(
 					visible.retained && visible.drift !== null && Math.abs(visible.drift) < 0.001,
 					`DPR ${scale}: paused anchor moved`
@@ -117,7 +109,7 @@ for (const scale of [1, 1.1, 1.25, 1.5, 1.75, 2] as const) {
 				live.count === initial.count + 1 && live.last === next - 1,
 				`DPR ${scale}: live following did not append immediately`
 			);
-			const collected = await waitForMeta((value) => value.gcPasses.length === 2);
+			const collected = await waitForMeta('value.gcPasses.length === 2');
 			assert(
 				collected.count === initial.count && collected.gcPasses[1] === 1,
 				`DPR ${scale}: live GC was not batched`

@@ -1,45 +1,48 @@
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
-import { test } from '../support/browser/fixtures';
+import { type BrowserApp, test } from '../support/browser/fixtures';
 
-test('chat submit flows, emote completion, diagnostics, inline notices, and error reporting', async ({
-	app
-}) => {
-	const { cdp, evaluate, waitFor } = app;
+const INPUT = 'document.querySelector(\'[aria-label="Chat message"]\')';
+const FORM = `${INPUT}.form`;
+const NOTICE = '[data-error-notice]';
+const COUNTER = '[data-chat-counter]';
+const INLINE = '[data-chat-input-error]';
+
+function failure(kind: string, message = `${kind} guidance`, details = 'private diagnostics') {
+	return { kind, message, details };
+}
+
+async function openChatSubmit(app: BrowserApp, options: { clock?: boolean } = {}) {
+	const { cdp, evaluate: run, waitFor } = app;
 	const send = cdp as (method: string, params?: Record<string, unknown>) => Promise<unknown>;
-	const run = evaluate;
 	const wait = (expression: string, timeoutMs = 5000) => waitFor(expression, timeoutMs);
 
+	if (options.clock) await app.page.clock.install();
 	await send('Network.enable');
 	await send('Network.setBlockedURLs', {
 		urls: ['https://*', 'http://api.twitch.tv/*', 'wss://*']
 	});
 	await app.page.goto('/?harness=chat-submit', { waitUntil: 'domcontentloaded' });
-
-	const input = 'document.querySelector(\'[aria-label="Chat message"]\')';
-	const form = `${input}.form`;
-	const notice = '[data-error-notice]';
-	const counter = '[data-chat-counter]';
-	const inline = '[data-chat-input-error]';
+	await wait(`${INPUT} && chatNative.joins.length === 1`);
 
 	const clickText = async (selector: string, text: string) => {
 		await run(
 			`Array.from(document.querySelectorAll(${JSON.stringify(selector)})).find(node => node.textContent.trim() === ${JSON.stringify(text)}).click()`
 		);
-		await delay(40);
+		await delay(20);
 	};
 	const type = async (text: string) => {
 		await run(
-			`(() => { const input = ${input}; input.focus(); input.value = ${JSON.stringify(text)}; input.dispatchEvent(new Event('input', { bubbles: true })); })()`
+			`(() => { const input = ${INPUT}; input.focus(); input.value = ${JSON.stringify(text)}; input.dispatchEvent(new Event('input', { bubbles: true })); })()`
 		);
 	};
 	const submit = async (text: string) => {
 		const index = await run<number>('chatNative.calls.length');
 		await type(text);
-		await run(`${form}.requestSubmit()`);
+		await run(`${FORM}.requestSubmit()`);
 		await wait(`chatNative.calls.length === ${index + 1}`);
 		assert.equal(
-			await run(`new Promise(resolve => requestAnimationFrame(() => resolve(${input}.value)))`),
+			await run(`new Promise(resolve => requestAnimationFrame(() => resolve(${INPUT}.value)))`),
 			'',
 			'clears before backend settles'
 		);
@@ -49,19 +52,33 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 		await run(
 			`chatNative.resolve(${index}, ${JSON.stringify(error ? { status: 'error', error } : { status: 'ok', data: null })})`
 		);
-		await wait(`${form}.getAttribute('aria-busy') === 'false'`);
+		await wait(`${FORM}.getAttribute('aria-busy') === 'false'`);
 	};
-	const failure = (
-		kind: string,
-		message = `${kind} guidance`,
-		details = 'private diagnostics'
-	) => ({
-		kind,
-		message,
-		details
-	});
+	const pressKey = async (key: 'Enter' | 'Tab' | 'Escape', shift = false) => {
+		const codes = { Enter: 13, Tab: 9, Escape: 27 };
+		const params = {
+			key,
+			code: key,
+			windowsVirtualKeyCode: codes[key],
+			nativeVirtualKeyCode: codes[key],
+			modifiers: shift ? 8 : 0
+		};
+		await send('Input.dispatchKeyEvent', {
+			...params,
+			type: 'keyDown',
+			...(key === 'Enter' ? { text: '\r', unmodifiedText: '\r' } : {})
+		});
+		await send('Input.dispatchKeyEvent', { ...params, type: 'keyUp' });
+	};
 
-	await wait(`${input} && chatNative.joins.length === 1`);
+	return { run, wait, send, clickText, type, submit, settle, pressKey };
+}
+
+test('chat submit lifecycle, actionable errors, timer replacement, and cross-view isolation', async ({
+	app
+}) => {
+	const { run, wait, clickText, type, submit, settle } = await openChatSubmit(app, { clock: true });
+
 	let index = await submit('first message');
 	assert.deepEqual(await run('chatNative.calls[0]'), {
 		broadcasterId: 'maya-id',
@@ -74,14 +91,14 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 		}
 	});
 	await type('next draft');
-	await run(`${form}.requestSubmit()`);
+	await run(`${FORM}.requestSubmit()`);
 	assert.equal(await run('chatNative.calls.length'), 1);
-	assert.equal(await run(`${input}.value`), 'next draft');
+	assert.equal(await run(`${INPUT}.value`), 'next draft');
 	await wait(
-		`document.querySelector('${inline}')?.textContent.includes('previous message is still sending')`
+		`document.querySelector('${INLINE}')?.textContent.includes('previous message is still sending')`
 	);
 	await settle(index);
-	assert.equal(await run(`${input}.value`), 'next draft', 'success preserves subsequent typing');
+	assert.equal(await run(`${INPUT}.value`), 'next draft', 'success preserves subsequent typing');
 
 	for (const kind of [
 		'authentication',
@@ -95,27 +112,35 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 		await type('new draft');
 		const debugBefore = await run<number>('chatNative.debug.length');
 		await settle(index, failure(kind));
-		await wait(`document.querySelector('${inline}')?.textContent.includes('${kind} guidance')`);
-		assert.equal(await run(`${input}.value`), 'new draft');
+		await wait(`document.querySelector('${INLINE}')?.textContent.includes('${kind} guidance')`);
+		assert.equal(await run(`${INPUT}.value`), 'new draft');
 		assert.equal(
 			await run('chatNative.debug.length'),
 			debugBefore,
 			'returned error never logs success'
 		);
-		assert.equal(await run(`document.querySelectorAll('${notice}').length`), 0);
+		assert.equal(await run(`document.querySelectorAll('${NOTICE}').length`), 0);
 	}
 
-	await wait(`!document.querySelector('${inline}')`, 8000);
+	await app.page.clock.fastForward(5200);
+	await wait(`!document.querySelector('${INLINE}')`, 8000);
 	index = await submit('timer replacement');
 	await type('blocked draft');
-	await run(`${form}.requestSubmit()`);
+	await run(`${FORM}.requestSubmit()`);
 	await wait(
-		`document.querySelector('${inline}')?.textContent.includes('previous message is still sending')`
+		`document.querySelector('${INLINE}')?.textContent.includes('previous message is still sending')`
 	);
-	await delay(2000);
-	const replacedAt = await run<number>(`(${form}.requestSubmit(), performance.now())`);
+	await app.page.clock.fastForward(2000);
+	const replacedAt = await run<number>(`(${FORM}.requestSubmit(), performance.now())`);
 	await settle(index);
-	await wait(`!document.querySelector('${inline}')`, 8000);
+	await app.page.clock.fastForward(3500);
+	assert.equal(
+		await run(`!!document.querySelector('${INLINE}')`),
+		true,
+		'replacing submit extended inline bar lifetime'
+	);
+	await app.page.clock.fastForward(2000);
+	await wait(`!document.querySelector('${INLINE}')`, 8000);
 	const removedAt = await run<number>('performance.now()');
 	assert(
 		removedAt - replacedAt >= 4500,
@@ -125,7 +150,7 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	index = await submit('old view pending');
 	await run(`chatNative.navigate('other')`);
 	await wait(
-		`chatNative.joins.at(-1) === 'other' && ${form}.getAttribute('aria-busy') === 'false'`
+		`chatNative.joins.at(-1) === 'other' && ${FORM}.getAttribute('aria-busy') === 'false'`
 	);
 	const other = await submit('new view send');
 	const logsBeforeLate = await run<number>('chatNative.logs.length');
@@ -134,12 +159,12 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	);
 	await wait(`chatNative.logs.length > ${logsBeforeLate}`);
 	assert.equal(
-		await run(`!!document.querySelector('${inline}')`),
+		await run(`!!document.querySelector('${INLINE}')`),
 		false,
 		'no late actionable feedback in another view'
 	);
 	await settle(other);
-	assert.equal(await run(`${input}.value`), '', 'failed text is not restored');
+	assert.equal(await run(`${INPUT}.value`), '', 'failed text is not restored');
 
 	index = await submit('late technical failure');
 	await run(`chatNative.navigate('third')`);
@@ -147,15 +172,27 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	await run(
 		`chatNative.resolve(${index}, { status: 'error', error: ${JSON.stringify(failure('unexpected', 'not user guidance', 'late technical details'))} })`
 	);
-	await wait(`document.querySelector('${notice}')?.textContent.includes('#other')`);
-	assert.equal(await run(`!!document.querySelector('${inline}')`), false);
+	await wait(`document.querySelector('${NOTICE}')?.textContent.includes('#other')`);
+	assert.equal(await run(`!!document.querySelector('${INLINE}')`), false);
 	assert.equal(
-		await run(`document.querySelector('${notice}').textContent.includes('late technical details')`),
+		await run(`document.querySelector('${NOTICE}').textContent.includes('late technical details')`),
 		false
 	);
-	await clickText(`${notice} button`, 'Dismiss');
-	await wait(`!document.querySelector('${notice}')`);
+	await clickText(`${NOTICE} button`, 'Dismiss');
+	await wait(`!document.querySelector('${NOTICE}')`);
+});
 
+test('technical error toasts, hover/focus pause, report wizard retry, and invoke failures', async ({
+	app
+}) => {
+	const { run, wait, send, clickText, type, submit, settle } = await openChatSubmit(app, {
+		clock: true
+	});
+
+	await run(`chatNative.navigate('third')`);
+	await wait(`chatNative.joins.at(-1) === 'third'`);
+
+	let index: number;
 	for (let repeat = 0; repeat < 2; repeat++) {
 		index = await submit(`technical failure ${repeat}`);
 		await settle(
@@ -163,22 +200,22 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 			failure('unexpected', 'not user guidance', `selected technical details ${repeat}`)
 		);
 	}
-	await wait(`document.querySelectorAll('${notice}').length === 2`);
+	await wait(`document.querySelectorAll('${NOTICE}').length === 2`);
 	const box = await run<{ x: number; y: number }>(
-		`(() => { const box = document.querySelector('${notice}').getBoundingClientRect(); return { x: box.x + 8, y: box.y + 8 }; })()`
+		`(() => { const box = document.querySelector('${NOTICE}').getBoundingClientRect(); return { x: box.x + 8, y: box.y + 8 }; })()`
 	);
 	await send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...box });
 	await wait(`chatNative.pauses.some(event => event[0] === 'pause' && event[1] === 'hover')`);
-	await run(`document.querySelector('${notice} button').focus()`);
+	await run(`document.querySelector('${NOTICE} button').focus()`);
 	await wait(`chatNative.pauses.some(event => event[0] === 'pause' && event[1] === 'focus')`);
 	await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
 	await wait(`chatNative.pauses.some(event => event[0] === 'resume' && event[1] === 'hover')`);
-	await clickText(`${notice} button`, 'Report this');
+	await clickText(`${NOTICE} button`, 'Report this');
 	await wait(`!!document.querySelector('[data-inbound-wizard]')`);
 	index = await submit('another failure during report');
 	await settle(index, failure('unexpected', 'not user guidance', 'newest technical details'));
 	assert.equal(
-		await run(`document.querySelectorAll('${notice}').length`),
+		await run(`document.querySelectorAll('${NOTICE}').length`),
 		0,
 		'offers pause during reporting'
 	);
@@ -202,10 +239,17 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	const closedAt = await run<number>(
 		`(Array.from(document.querySelectorAll('[data-inbound-wizard] button')).find(node => node.textContent.trim() === 'Done').click(), performance.now())`
 	);
-	await wait(`!!document.querySelector('${notice}')`);
+	await wait(`!!document.querySelector('${NOTICE}')`);
 	await type('focus outside notification');
 	await wait(`chatNative.pauses.some(event => event[0] === 'resume' && event[1] === 'focus')`);
-	await wait(`!document.querySelector('${notice}')`, 15000);
+	await app.page.clock.fastForward(7500);
+	assert.equal(
+		await run(`!!document.querySelector('${NOTICE}')`),
+		true,
+		'toast remains visible before 10s TTL'
+	);
+	await app.page.clock.fastForward(3000);
+	await wait(`!document.querySelector('${NOTICE}')`, 15000);
 	const expiredAt = await run<number>('performance.now()');
 	assert(
 		expiredAt - closedAt >= 8000,
@@ -216,10 +260,10 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	await type('draft survives exception');
 	await run(`chatNative.reject(${index}, 'invocation exploded')`);
 	await wait(
-		`${form}.getAttribute('aria-busy') === 'false' && !!document.querySelector('${notice}')`
+		`${FORM}.getAttribute('aria-busy') === 'false' && !!document.querySelector('${NOTICE}')`
 	);
-	assert.equal(await run(`${input}.value`), 'draft survives exception');
-	assert.equal(await run(`!!document.querySelector('${inline}')`), false);
+	assert.equal(await run(`${INPUT}.value`), 'draft survives exception');
+	assert.equal(await run(`!!document.querySelector('${INLINE}')`), false);
 	assert.equal(
 		await run(
 			`Array.from(document.querySelectorAll('button')).some(button => button.textContent.trim() === 'Report this')`
@@ -240,21 +284,30 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 		await run('chatNative.logs.some(log => log.message.includes("invocation exploded"))'),
 		true
 	);
-	assert.equal(await run(`document.querySelectorAll('${notice}').length`), 1, 'one card');
+	const invokeFailure = await run<{ record: { attempt_id: string } }>(
+		"chatNative.diagnostics.find(entry => entry.event === 'chat.send.frontend_failure' && entry.record.stage === 'invoke')"
+	);
+	assert(invokeFailure);
+	assert(
+		await run(
+			`chatNative.logs.some(entry => entry.message.includes(${JSON.stringify(invokeFailure.record.attempt_id)}))`
+		)
+	);
+	assert.equal(await run(`document.querySelectorAll('${NOTICE}').length`), 1, 'one card');
 	assert.deepEqual(app.errors, [], 'no uncaught browser errors');
 
-	await clickText(`${notice} button`, 'Dismiss');
-	await wait(`!document.querySelector('${notice}')`);
+	await clickText(`${NOTICE} button`, 'Dismiss');
+	await wait(`!document.querySelector('${NOTICE}')`);
 	index = await submit('string rejection');
 	await run(
 		`chatNative.resolve(${index}, { status: 'error', error: 'invalid args broadcasterId for command send_chat_message: missing required key broadcasterId' })`
 	);
 	await wait(
-		`${form}.getAttribute('aria-busy') === 'false' && !!document.querySelector('${notice}')`
+		`${FORM}.getAttribute('aria-busy') === 'false' && !!document.querySelector('${NOTICE}')`
 	);
-	assert.equal(await run(`!!document.querySelector('${inline}')`), false, 'no inline guidance');
+	assert.equal(await run(`!!document.querySelector('${INLINE}')`), false, 'no inline guidance');
 	assert.equal(
-		await run(`document.querySelector('${notice}').textContent.includes('#third')`),
+		await run(`document.querySelector('${NOTICE}').textContent.includes('#third')`),
 		true,
 		'card names the channel'
 	);
@@ -264,53 +317,43 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 		),
 		true
 	);
-	await clickText(`${notice} button`, 'Dismiss');
-	await wait(`!document.querySelector('${notice}')`);
+	await clickText(`${NOTICE} button`, 'Dismiss');
+	await wait(`!document.querySelector('${NOTICE}')`);
+});
 
-	assert.equal(await run(`${input}.maxLength`), 500);
+test('character counter, 500-char refusal, emote completion, and composer diagnostics', async ({
+	app
+}) => {
+	const { run, wait, type, submit, settle, pressKey } = await openChatSubmit(app);
+
+	assert.equal(await run(`${INPUT}.maxLength`), 500);
 	await type('a'.repeat(399));
-	assert.equal(await run(`!!document.querySelector('${counter}')`), false, 'counter hidden');
+	assert.equal(await run(`!!document.querySelector('${COUNTER}')`), false, 'counter hidden');
 	await type('a'.repeat(400));
-	await wait(`document.querySelector('${counter}')?.textContent === '400/500'`);
+	await wait(`document.querySelector('${COUNTER}')?.textContent === '400/500'`);
 	assert.equal(
-		await run(`document.querySelector('${counter}').classList.contains('text-destructive')`),
+		await run(`document.querySelector('${COUNTER}').classList.contains('text-destructive')`),
 		false
 	);
 	await type('a'.repeat(500));
-	await wait(`document.querySelector('${counter}')?.classList.contains('text-destructive')`);
+	await wait(`document.querySelector('${COUNTER}')?.classList.contains('text-destructive')`);
 	await type('a'.repeat(496) + ' :ka');
 	await wait(`!!document.querySelector('img[alt="Kappa"]')`);
-	const keydown = `${input}.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`;
+	const keydown = `${INPUT}.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`;
 	const callsBeforeEmote = await run<number>('chatNative.calls.length');
 	await run(keydown);
 	await wait(
-		`document.querySelector('${inline}')?.textContent.includes('cannot exceed 500 characters')`
+		`document.querySelector('${INLINE}')?.textContent.includes('cannot exceed 500 characters')`
 	);
-	assert.equal(await run(`${input}.value`), 'a'.repeat(496) + ' :ka', 'refused insertion');
+	assert.equal(await run(`${INPUT}.value`), 'a'.repeat(496) + ' :ka', 'refused insertion');
 	await wait(`!document.querySelector('img[alt="Kappa"]')`);
 	await type('a'.repeat(10) + ' :kap');
 	await wait(`!!document.querySelector('img[alt="Kappa"]')`);
 	await run(keydown);
-	await wait(`${input}.value === ${JSON.stringify('a'.repeat(10) + ' Kappa ')}`);
+	await wait(`${INPUT}.value === ${JSON.stringify('a'.repeat(10) + ' Kappa ')}`);
 	assert.equal(await run('chatNative.calls.length'), callsBeforeEmote, 'Enter picked, not sent');
 	await type('');
 
-	const pressKey = async (key: 'Enter' | 'Tab' | 'Escape', shift = false) => {
-		const codes = { Enter: 13, Tab: 9, Escape: 27 };
-		const params = {
-			key,
-			code: key,
-			windowsVirtualKeyCode: codes[key],
-			nativeVirtualKeyCode: codes[key],
-			modifiers: shift ? 8 : 0
-		};
-		await send('Input.dispatchKeyEvent', {
-			...params,
-			type: 'keyDown',
-			...(key === 'Enter' ? { text: '\r', unmodifiedText: '\r' } : {})
-		});
-		await send('Input.dispatchKeyEvent', { ...params, type: 'keyUp' });
-	};
 	const assertSentPayload = async (callIndex: number, message: string) => {
 		const call = await run<{
 			broadcasterId: string;
@@ -322,9 +365,9 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 				key_events: { key: string; shift?: boolean; picker_visible: boolean }[];
 			};
 		}>(`chatNative.calls[${callIndex}]`);
-		assert.equal(call.broadcasterId, 'third-id');
+		assert.equal(call.broadcasterId, 'maya-id');
 		assert.equal(call.message, message);
-		assert.equal(call.diagnostics.channel_login, 'third');
+		assert.equal(call.diagnostics.channel_login, 'maya');
 		assert.match(call.diagnostics.attempt_id, /^[0-9a-f-]{36}$/);
 		return call;
 	};
@@ -336,6 +379,7 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	await run(
 		`chatNative.fixtures = ${JSON.stringify(fixtures)}.map((emote, i) => ({ ...chatNative.emote, ...emote, id: String(i) }))`
 	);
+	let index: number;
 	for (let target = 0; target < fixtures.length; target++) {
 		const name = fixtures[target].name;
 		index = await submit(name);
@@ -375,11 +419,11 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	}
 
 	await type('');
-	await run(`${form}.querySelector('button[type="button"]').click()`);
+	await run(`${FORM}.querySelector('button[type="button"]').click()`);
 	await wait(`!!document.querySelector('input[placeholder="Search emotes..."]')`);
 	await run(`document.querySelector('img[alt="Kappa"]').closest('button').click()`);
-	await wait(`${input}.value === 'Kappa '`);
-	await run(`${input}.focus()`);
+	await wait(`${INPUT}.value === 'Kappa '`);
+	await run(`${INPUT}.focus()`);
 	await pressKey('Enter');
 	index = await run<number>('chatNative.calls.length - 1');
 	assert.equal(
@@ -401,8 +445,8 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	await type(':ka');
 	await wait(`!!document.querySelector('img[alt="Kappa"]')`);
 	await run(`document.querySelector('img[alt="Kappa"]').closest('button').click()`);
-	await wait(`${input}.value === 'Kappa '`);
-	await run(`${input}.focus()`);
+	await wait(`${INPUT}.value === 'Kappa '`);
+	await run(`${INPUT}.focus()`);
 	await pressKey('Enter');
 	index = await run<number>('chatNative.calls.length - 1');
 	assert.equal(
@@ -438,8 +482,8 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	assert.equal(failedRecord.record.message, failedCall.message);
 	assert.equal(failedRecord.record.composer.last_completion.emote_name, 'Kappa');
 	assert(failedRecord.record.unusual_codepoints.some((point) => point.codepoint === 'U+200B'));
-	assert.equal(await run(`${input}.value`), 'next draft while pending');
-	assert.equal(await run(`document.querySelectorAll('${notice}').length`), 0);
+	assert.equal(await run(`${INPUT}.value`), 'next draft while pending');
+	assert.equal(await run(`document.querySelectorAll('${NOTICE}').length`), 0);
 	assert(
 		await run(
 			`chatNative.logs.some(entry => entry.message.includes(${JSON.stringify(failedCall.diagnostics.attempt_id)}))`
@@ -482,16 +526,13 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	assert(
 		successRecords.every((entry) => !('message' in entry.record) && !('composer' in entry.record))
 	);
-	const invokeFailure = await run<{ record: { attempt_id: string } }>(
-		"chatNative.diagnostics.find(entry => entry.event === 'chat.send.frontend_failure' && entry.record.stage === 'invoke')"
-	);
-	assert(invokeFailure);
-	assert(
-		await run(
-			`chatNative.logs.some(entry => entry.message.includes(${JSON.stringify(invokeFailure.record.attempt_id)}))`
-		)
-	);
 	await run('delete chatNative.fixtures');
+});
+
+test('inline error animations, responsive contrast/wrapping, and picker placement', async ({
+	app
+}) => {
+	const { run, wait, send, type } = await openChatSubmit(app, { clock: true });
 
 	await run("chatNative.navigate('notice-preview')");
 	await wait("chatNative.joins.at(-1) === 'notice-preview'");
@@ -500,17 +541,18 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 	});
 	await run("chatNative.roomError('Message cannot be empty')");
 	await wait(
-		`document.querySelector('${inline}')?.getAnimations().some(animation => animation.effect.getTiming().duration === 250)`
+		`document.querySelector('${INLINE}')?.getAnimations().some(animation => animation.effect.getTiming().duration === 250)`
 	);
-	await wait(`!document.querySelector('${inline}')`, 8000);
+	await app.page.clock.fastForward(5200);
+	await wait(`!document.querySelector('${INLINE}')`, 8000);
 	await send('Emulation.setEmulatedMedia', {
 		features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
 	});
 	await run("chatNative.roomError('Message cannot be empty')");
-	await wait(`!!document.querySelector('${inline}')`);
+	await wait(`!!document.querySelector('${INLINE}')`);
 	assert.equal(
 		await run(
-			`document.querySelector('${inline}').getAnimations().filter(animation => animation.effect.getTiming().duration > 0).length`
+			`document.querySelector('${INLINE}').getAnimations().filter(animation => animation.effect.getTiming().duration > 0).length`
 		),
 		0
 	);
@@ -572,7 +614,7 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 					await type('draft stays focused');
 					await run(`chatNative.roomError(${JSON.stringify(message)})`);
 					await wait(
-						`document.querySelector('${inline}')?.textContent.includes(${JSON.stringify(message)})`
+						`document.querySelector('${INLINE}')?.textContent.includes(${JSON.stringify(message)})`
 					);
 					const state = await run<{
 						text: string;
@@ -605,25 +647,30 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 		"document.documentElement.style.fontSize = ''; document.documentElement.classList.remove('dark')"
 	);
 	await send('Emulation.setEmulatedMedia', { features: [] });
+	const keydown = `${INPUT}.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`;
 	await type(':ka');
 	await wait('!!document.querySelector(\'img[alt="Kappa"]\')');
 	assert(
 		await run(
-			`document.querySelector('img[alt="Kappa"]').getBoundingClientRect().bottom <= ${input}.getBoundingClientRect().top`
+			`document.querySelector('img[alt="Kappa"]').getBoundingClientRect().bottom <= ${INPUT}.getBoundingClientRect().top`
 		),
 		'picker remains above the input while an error is visible'
 	);
 	await run(keydown);
-	await wait(`${input}.value === 'Kappa '`);
+	await wait(`${INPUT}.value === 'Kappa '`);
+});
+
+test('native log errors and window error capture toggle', async ({ app }) => {
+	const { run, wait, clickText } = await openChatSubmit(app);
 
 	await run(`chatNative.logError('native failure 42')`);
 	await wait(
-		`document.querySelector('${notice}')?.textContent.includes('Error detected') && document.querySelector('${notice}').textContent.includes('native failure 42')`
+		`document.querySelector('${NOTICE}')?.textContent.includes('Error detected') && document.querySelector('${NOTICE}').textContent.includes('native failure 42')`
 	);
-	await clickText(`${notice} button`, 'Dismiss');
-	await wait(`!document.querySelector('${notice}')`);
+	await clickText(`${NOTICE} button`, 'Dismiss');
+	await wait(`!document.querySelector('${NOTICE}')`);
 	await run(`setTimeout(() => { throw new Error('window boom'); }, 0)`);
-	await wait(`document.querySelector('${notice}')?.textContent.includes('window boom')`);
+	await wait(`document.querySelector('${NOTICE}')?.textContent.includes('window boom')`);
 	assert.equal(
 		await run(
 			'chatNative.logs.some(log => log.message.includes("window boom") && log.options?.keyValues?.["inbound.handled"] === "true")'
@@ -631,15 +678,15 @@ test('chat submit flows, emote completion, diagnostics, inline notices, and erro
 		true,
 		'window error logged as handled'
 	);
-	await clickText(`${notice} button`, 'Dismiss');
-	await wait(`!document.querySelector('${notice}')`);
+	await clickText(`${NOTICE} button`, 'Dismiss');
+	await wait(`!document.querySelector('${NOTICE}')`);
 	await run('chatNative.updateSettings({ diagnostics: { capture_window_errors: false } })');
 	await wait('chatNative.settings().diagnostics.capture_window_errors === false');
 	await run(`setTimeout(() => { throw new Error('window silent'); }, 0)`);
 	await run(`chatNative.logError('native after toggle')`);
-	await wait(`document.querySelector('${notice}')?.textContent.includes('native after toggle')`);
+	await wait(`document.querySelector('${NOTICE}')?.textContent.includes('native after toggle')`);
 	assert.equal(await run(`document.body.textContent.includes('window silent')`), false);
-	assert.equal(await run(`document.querySelectorAll('${notice}').length`), 1);
+	assert.equal(await run(`document.querySelectorAll('${NOTICE}').length`), 1);
 	// Clear expected thrown window errors before fixture teardown checks app.errors
 	const unexpected = app.errors.filter((text) => !/window (boom|silent)/.test(text));
 	app.errors.length = 0;

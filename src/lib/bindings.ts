@@ -6,7 +6,6 @@ import type { InvokeOptions } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
-	getFollowedStreams: (options?: InvokeOptions) => typedError<Stream[], string>(__TAURI_INVOKE("get_followed_streams", undefined, options)),
 	getFollowedChannels: (options?: InvokeOptions) => typedError<Broadcaster[], string>(__TAURI_INVOKE("get_followed_channels", undefined, options)),
 	getChannelInfo: (channelName: string, options?: InvokeOptions) => typedError<ChannelInfo, string>(__TAURI_INVOKE("get_channel_info", { channelName }, options)),
 	subscribeChat: (channelName: string, request: ChatFeedRequest, onEvent: Channel<FeedFrame>, options?: InvokeOptions) => typedError<ChatRoomInfo, string>(__TAURI_INVOKE("subscribe_chat", { channelName, request, onEvent }, options)),

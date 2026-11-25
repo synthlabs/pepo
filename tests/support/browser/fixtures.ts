@@ -18,9 +18,59 @@ export async function until<T>(
 		} catch (error) {
 			cause = error;
 		}
-		await delay(40);
+		await delay(10);
 	}
 	throw new Error(message, { cause });
+}
+
+export async function waitForExpression<T = unknown>(
+	page: Page,
+	expression: string,
+	timeout = 15000
+): Promise<T> {
+	try {
+		const handle = await page.waitForFunction(
+			(source) => {
+				try {
+					const value = (0, eval)(source);
+					if (!value) return false;
+					return value instanceof Node ? true : value;
+				} catch {
+					return false;
+				}
+			},
+			expression,
+			{ timeout, polling: 'raf' }
+		);
+		try {
+			return (await handle.jsonValue()) as T;
+		} finally {
+			await handle.dispose();
+		}
+	} catch (cause) {
+		throw new Error(`Timed out waiting for: ${expression}`, { cause });
+	}
+}
+
+export async function waitForSettledAnimations(
+	page: Page,
+	selector: string,
+	timeout = 5000
+): Promise<void> {
+	await page.waitForFunction(
+		(sel) =>
+			Array.from(document.querySelectorAll(sel)).every((element) =>
+				element
+					.getAnimations()
+					.every(
+						(animation) =>
+							animation.playState !== 'running' ||
+							animation.effect?.getComputedTiming().iterations === Infinity
+					)
+			),
+		selector,
+		{ timeout, polling: 'raf' }
+	);
 }
 
 export async function createBrowserApp(page: Page, testInfo: TestInfo, session: CDPSession) {
@@ -32,7 +82,9 @@ export async function createBrowserApp(page: Page, testInfo: TestInfo, session: 
 	const evaluate = <T = unknown>(expression: string): Promise<T> =>
 		page.evaluate(expression) as Promise<T>;
 	const waitFor = async <T = unknown>(expression: string, timeout = 15000): Promise<T> =>
-		until(() => evaluate<T>(expression), `Timed out waiting for: ${expression}`, timeout);
+		waitForExpression<T>(page, expression, timeout);
+	const waitForAnimations = async (selector: string, timeout = 5000): Promise<void> =>
+		waitForSettledAnimations(page, selector, timeout);
 	const cdp = session.send.bind(session);
 	const viewport = async (width: number, height: number) => page.setViewportSize({ width, height });
 	const save = async (name: string, value: unknown) => {
@@ -44,6 +96,7 @@ export async function createBrowserApp(page: Page, testInfo: TestInfo, session: 
 		cdp,
 		evaluate,
 		waitFor,
+		waitForAnimations,
 		viewport,
 		save,
 		errors,

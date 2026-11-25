@@ -1,10 +1,18 @@
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from '@playwright/test';
 
+function resolveWorkers(): number {
+	const override = Number.parseInt(process.env.PEPO_PLAYWRIGHT_WORKERS ?? '', 10);
+	if (Number.isInteger(override) && override > 0) return override;
+	if (process.env.CI) return 2;
+	return Math.max(2, Math.min(6, Math.floor(os.availableParallelism() / 2)));
+}
+
 export default defineConfig({
 	testDir: './tests/browser',
-	fullyParallel: false,
-	workers: 1,
+	fullyParallel: true,
+	workers: resolveWorkers(),
 	retries: 0,
 	timeout: 180000,
 	outputDir: 'target/test-results/browser',
